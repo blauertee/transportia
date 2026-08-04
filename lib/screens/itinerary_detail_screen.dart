@@ -99,16 +99,18 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
     if (_isRefreshing) return;
 
     _isRefreshing = true;
-    final refreshed = await ItineraryRefreshService.refresh(_itinerary);
+    final result = await ItineraryRefreshService.refresh(_itinerary);
 
     if (!mounted) {
       _isRefreshing = false;
       return;
     }
 
-    if (refreshed != null) {
+    // Only move the timestamp when live data actually arrived, so a pull
+    // that reached nothing does not read as a successful refresh.
+    if (result.didRefresh) {
       setState(() {
-        _itinerary = refreshed;
+        _itinerary = result.itinerary;
         _lastUpdated = DateTime.now();
       });
     }
