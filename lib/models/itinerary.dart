@@ -205,6 +205,17 @@ class Itinerary {
   final FareInfo? fare;
   final List<FareLegInfo> ticketInfo;
 
+  /// The raw API object this itinerary was parsed from, kept so the
+  /// itinerary can be persisted and re-parsed without hand-written
+  /// serializers for the whole model tree. Null for itineraries that were
+  /// not built from an API response.
+  ///
+  /// This is always the *planned* snapshot: [withLegs] carries it over
+  /// unchanged, so a real-time refresh does not rewrite it. That is
+  /// deliberate — live times are re-derived on load, and the schedule is
+  /// what is worth storing.
+  final Map<String, dynamic>? sourceJson;
+
   Itinerary({
     required this.duration,
     required this.startTime,
@@ -214,6 +225,7 @@ class Itinerary {
     this.isDirect = false,
     this.fare,
     this.ticketInfo = const [],
+    this.sourceJson,
   });
 
   bool get hasTicketInfo => ticketInfo.isNotEmpty;
@@ -235,6 +247,7 @@ class Itinerary {
       isDirect: isDirect,
       fare: fare,
       ticketInfo: ticketInfo,
+      sourceJson: sourceJson,
     );
   }
 
@@ -372,6 +385,7 @@ class Itinerary {
       isDirect: isDirect,
       fare: fare,
       ticketInfo: ticketInfo,
+      sourceJson: json,
     );
   }
 }

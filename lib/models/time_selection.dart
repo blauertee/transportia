@@ -48,6 +48,20 @@ class TimeSelection {
     return '$dateStr $timeStr';
   }
 
+  Map<String, dynamic> toJson() => {
+    'dateTime': dateTime.toIso8601String(),
+    'isArriveBy': isArriveBy,
+    'isDefaultNow': _isDefaultNow,
+  };
+
+  factory TimeSelection.fromJson(Map<String, dynamic> json) {
+    return TimeSelection(
+      dateTime: DateTime.parse(json['dateTime'] as String),
+      isArriveBy: json['isArriveBy'] as bool? ?? false,
+      isDefaultNow: json['isDefaultNow'] as bool? ?? false,
+    );
+  }
+
   TimeSelection copyWith({
     DateTime? dateTime,
     bool? isArriveBy,
