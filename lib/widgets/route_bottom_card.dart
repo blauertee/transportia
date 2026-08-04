@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import '../models/saved_trip.dart';
 import '../models/time_selection.dart';
 import '../models/trip_history_item.dart';
 import '../services/favorites_service.dart';
@@ -7,6 +8,7 @@ import '../services/transitous_geocode_service.dart';
 import '../widgets/route_field_box.dart';
 import '../theme/app_colors.dart';
 import '../utils/favorite_icons.dart';
+import 'saved_trip_card.dart';
 import 'buttons/pill_button.dart';
 import 'buttons/primary_button.dart';
 import 'skeletons/skeleton_shimmer.dart';
@@ -40,6 +42,9 @@ class BottomCard extends StatefulWidget {
     required this.timeSelection,
     required this.recentTrips,
     required this.onRecentTripTap,
+    required this.savedTrips,
+    required this.onSavedTripTap,
+    required this.onSeeAllSavedTrips,
     required this.favorites,
     required this.onFavoriteTap,
     required this.hasLocationPermission,
@@ -72,6 +77,9 @@ class BottomCard extends StatefulWidget {
   final TimeSelection timeSelection;
   final List<TripHistoryItem> recentTrips;
   final ValueChanged<TripHistoryItem> onRecentTripTap;
+  final List<SavedTrip> savedTrips;
+  final ValueChanged<SavedTrip> onSavedTripTap;
+  final VoidCallback onSeeAllSavedTrips;
   final List<FavoritePlace> favorites;
   final ValueChanged<FavoritePlace> onFavoriteTap;
   final bool hasLocationPermission;
@@ -324,6 +332,19 @@ class _BottomCardState extends State<BottomCard> {
                                   ),
                                 ),
                               ),
+                              if (widget.savedTrips.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 16),
+                                  child: GestureDetector(
+                                    behavior: HitTestBehavior.translucent,
+                                    onTap: widget.onUnfocus,
+                                    child: _SavedTripsSection(
+                                      savedTrips: widget.savedTrips,
+                                      onSavedTripTap: widget.onSavedTripTap,
+                                      onSeeAll: widget.onSeeAllSavedTrips,
+                                    ),
+                                  ),
+                                ),
                               if (widget.recentTrips.isNotEmpty)
                                 Padding(
                                   padding: const EdgeInsets.only(top: 16),
@@ -371,6 +392,85 @@ class _BottomCardState extends State<BottomCard> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// The next few kept connections, shown above Recent trips because a trip
+/// the user chose to keep outranks one they merely searched for.
+///
+/// Deliberately capped: this is a shortcut on the way to searching, not the
+/// full list, which lives one tap away behind "See all".
+class _SavedTripsSection extends StatelessWidget {
+  const _SavedTripsSection({
+    required this.savedTrips,
+    required this.onSavedTripTap,
+    required this.onSeeAll,
+  });
+
+  static const int _maxShown = 3;
+
+  final List<SavedTrip> savedTrips;
+  final ValueChanged<SavedTrip> onSavedTripTap;
+  final VoidCallback onSeeAll;
+
+  @override
+  Widget build(BuildContext context) {
+    // Anything already finished belongs in the history on the full screen,
+    // not in the way of planning the next journey.
+    final upcoming = savedTrips.where((trip) => !trip.isPast).toList();
+    if (upcoming.isEmpty) return const SizedBox.shrink();
+
+    final shown = upcoming.take(_maxShown).toList();
+    final hiddenCount = upcoming.length - shown.length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              'Saved trips',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: AppColors.black,
+              ),
+            ),
+            const Spacer(),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onSeeAll,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    hiddenCount > 0 ? 'See all ($hiddenCount more)' : 'See all',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.accentOf(context),
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  Icon(
+                    LucideIcons.chevronRight,
+                    size: 16,
+                    color: AppColors.accentOf(context),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        for (final trip in shown)
+          SavedTripCard(
+            trip: trip,
+            margin: const EdgeInsets.symmetric(vertical: 4),
+            onTap: () => onSavedTripTap(trip),
+          ),
+      ],
     );
   }
 }
