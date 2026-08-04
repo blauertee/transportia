@@ -317,8 +317,6 @@ class ItineraryCard extends StatefulWidget {
 
 class _ItineraryCardState extends State<ItineraryCard>
     with SingleTickerProviderStateMixin {
-  static const Color _softRed = Color(0xFFE57373);
-
   late final Timer _departInTimer;
   late final AnimationController _realTimeIconController;
 
@@ -378,7 +376,7 @@ class _ItineraryCardState extends State<ItineraryCard>
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
                         color: hasDeparted
-                            ? _softRed
+                            ? AppColors.disrupted
                             : AppColors.black.withValues(alpha: 0.7),
                       ),
                     ),
