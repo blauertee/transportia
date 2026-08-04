@@ -38,6 +38,8 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.14.4
+  # In-memory SharedPreferencesAsync backend, used to test storage services.
+  shared_preferences_platform_interface: ^2.4.1
 
 dependency_overrides:
   geolocator_android:

@@ -26,6 +26,7 @@ class PrefsKeys {
 
   static const String favoritePlaces = 'favorite_places';
   static const String recentTrips = 'recent_trips';
+  static const String savedTrips = 'saved_trips_v1';
   static const String savedPlacesSearch = 'saved_places_search_v1';
   static const String savedPlacesTimetable = 'saved_places_timetable_v1';
 

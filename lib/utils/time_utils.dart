@@ -32,6 +32,51 @@ String formatDelay(Duration delay) {
   return '$sign${buffer.join(' ')}';
 }
 
+const List<String> _weekdayNames = [
+  'Mon',
+  'Tue',
+  'Wed',
+  'Thu',
+  'Fri',
+  'Sat',
+  'Sun',
+];
+
+const List<String> _monthNames = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+
+/// Day label for a date the user is looking at in relation to now:
+/// 'Today', 'Tomorrow', a weekday name within the coming week, or a
+/// short date beyond that.
+String formatRelativeDay(DateTime dateTime, {DateTime? now}) {
+  final local = dateTime.toLocal();
+  final reference = (now ?? DateTime.now()).toLocal();
+
+  final day = DateTime(local.year, local.month, local.day);
+  final today = DateTime(reference.year, reference.month, reference.day);
+  final dayDifference = day.difference(today).inDays;
+
+  if (dayDifference == 0) return 'Today';
+  if (dayDifference == 1) return 'Tomorrow';
+  if (dayDifference == -1) return 'Yesterday';
+  if (dayDifference > 1 && dayDifference < 7) {
+    return _weekdayNames[local.weekday - 1];
+  }
+  return '${local.day} ${_monthNames[local.month - 1]}';
+}
+
 String formatIso8601Millis(DateTime dateTime) {
   final utc = dateTime.toUtc();
   final base = utc.toIso8601String();
