@@ -225,11 +225,17 @@ class _ItineraryListScreenState extends State<ItineraryListScreen> {
                                   CustomPageRoute(
                                     child: ItineraryDetailScreen(
                                       itinerary: itin,
+                                      fromName: widget.fromSelection?.name,
+                                      toName: widget.toSelection?.name,
                                     ),
                                   ),
                                 );
                               },
-                              child: ItineraryCard(itinerary: itin),
+                              child: ItineraryCard(
+                                itinerary: itin,
+                                fromName: widget.fromSelection?.name,
+                                toName: widget.toSelection?.name,
+                              ),
                             );
                           }
 
@@ -310,7 +316,17 @@ class _ItineraryListScreenState extends State<ItineraryListScreen> {
 class ItineraryCard extends StatefulWidget {
   final Itinerary itinerary;
 
-  const ItineraryCard({super.key, required this.itinerary});
+  /// Passed through to the save action so a kept trip is named after the
+  /// places the user searched for.
+  final String? fromName;
+  final String? toName;
+
+  const ItineraryCard({
+    super.key,
+    required this.itinerary,
+    this.fromName,
+    this.toName,
+  });
 
   @override
   State<ItineraryCard> createState() => _ItineraryCardState();
@@ -412,6 +428,8 @@ class _ItineraryCardState extends State<ItineraryCard>
                     ),
                   SaveTripButton(
                     itinerary: itinerary,
+                    fromName: widget.fromName,
+                    toName: widget.toName,
                     size: 18,
                     padding: const EdgeInsets.only(left: 10),
                   ),

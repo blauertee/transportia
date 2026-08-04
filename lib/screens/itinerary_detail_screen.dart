@@ -14,6 +14,7 @@ import '../models/saved_trip.dart';
 import '../models/time_selection.dart';
 import '../providers/theme_provider.dart';
 import '../services/itinerary_refresh_service.dart';
+import '../services/transitous_geocode_service.dart';
 import '../theme/app_colors.dart';
 import '../utils/color_utils.dart';
 import '../utils/custom_page_route.dart';
@@ -50,10 +51,17 @@ class ItineraryDetailScreen extends StatefulWidget {
   /// open and the screen says what that check found.
   final SavedTrip? savedTrip;
 
+  /// The places the user searched for, so saving from here names the trip
+  /// the same way saving from the results list does.
+  final String? fromName;
+  final String? toName;
+
   const ItineraryDetailScreen({
     super.key,
     required this.itinerary,
     this.savedTrip,
+    this.fromName,
+    this.toName,
   });
 
   @override
@@ -155,6 +163,20 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
           fromLon: trip.fromLon,
           toLat: trip.toLat,
           toLon: trip.toLon,
+          fromSelection: TransitousLocationSuggestion(
+            id: 'saved-from-${trip.id}',
+            name: trip.fromName,
+            lat: trip.fromLat,
+            lon: trip.fromLon,
+            type: 'PLACE',
+          ),
+          toSelection: TransitousLocationSuggestion(
+            id: 'saved-to-${trip.id}',
+            name: trip.toName,
+            lat: trip.toLat,
+            lon: trip.toLon,
+            type: 'PLACE',
+          ),
           timeSelection: TimeSelection(dateTime: departAt, isArriveBy: false),
         ),
       ),
@@ -232,7 +254,11 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
             CustomAppBar(
               title: 'Itinerary Details',
               onBackButtonPressed: () => Navigator.of(context).pop(),
-              trailing: SaveTripButton(itinerary: _itinerary),
+              trailing: SaveTripButton(
+                itinerary: _itinerary,
+                fromName: widget.fromName ?? widget.savedTrip?.fromName,
+                toName: widget.toName ?? widget.savedTrip?.toName,
+              ),
             ),
             JourneyOverviewWidget(itinerary: _itinerary),
             if (savedTripNotice != null) savedTripNotice,

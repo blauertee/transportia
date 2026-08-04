@@ -1,45 +1,16 @@
-import 'dart:convert';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:transportia/models/itinerary.dart';
 import 'package:transportia/models/saved_trip.dart';
 import 'package:transportia/services/itinerary_refresh_service.dart';
 
+import 'support/plan_fixtures.dart';
+
 /// The notice shown on a saved trip is chosen from its freshness and
 /// whether it has already run. These tests pin that decision down through
 /// the refresh service, which is where the states come from.
-Map<String, dynamic> _planJson({
-  required DateTime departure,
-  bool cancelled = false,
-}) {
-  final arrival = departure.add(const Duration(minutes: 15));
-  return jsonDecode(
-        jsonEncode({
-          'duration': 900,
-          'startTime': departure.toUtc().toIso8601String(),
-          'endTime': arrival.toUtc().toIso8601String(),
-          'transfers': 0,
-          'legs': [
-            {
-              'mode': 'RAIL',
-              'startTime': departure.toUtc().toIso8601String(),
-              'endTime': arrival.toUtc().toIso8601String(),
-              'duration': 900,
-              'tripId': 'trip-re7',
-              'displayName': 'RE7',
-              'cancelled': cancelled,
-              'from': {'name': 'Hauptbahnhof', 'lat': 52.525, 'lon': 13.369},
-              'to': {'name': 'Airport', 'lat': 52.366, 'lon': 13.503},
-            },
-          ],
-        }),
-      )
-      as Map<String, dynamic>;
-}
-
 SavedTrip _trip({required DateTime departure}) {
   return SavedTrip.fromItinerary(
-    itinerary: Itinerary.fromJson(_planJson(departure: departure)),
+    itinerary: Itinerary.fromJson(planItineraryJson(departure: departure)),
   );
 }
 
@@ -48,10 +19,10 @@ void main() {
     final departure = DateTime.now().add(const Duration(days: 1));
     final trip = _trip(departure: departure);
 
-    expect(trip.itinerary.legs.single.tripId, 'trip-re7');
-    expect(trip.itinerary.legs.single.displayName, 'RE7');
-    expect(trip.fromName, 'Hauptbahnhof');
-    expect(trip.toName, 'Airport');
+    expect(trip.itinerary.legs[1].tripId, 'trip-re7');
+    expect(trip.itinerary.legs[1].displayName, 'RE7');
+    expect(trip.fromName, 'S+U Berlin Hauptbahnhof');
+    expect(trip.toName, 'Flughafen BER');
   });
 
   test(
@@ -80,8 +51,13 @@ void main() {
 
     final result = await ItineraryRefreshService.refresh(
       trip.itinerary,
-      fetchTripDetails: ({required String tripId}) async =>
-          Itinerary.fromJson(_planJson(departure: departure, cancelled: true)),
+      fetchTripDetails: ({required String tripId}) async => Itinerary.fromJson(
+        planItineraryJson(
+          departure: departure,
+          cancelled: true,
+          withEdgeWalks: false,
+        ),
+      ),
     );
 
     expect(result.freshness, ItineraryFreshness.changed);
@@ -98,12 +74,17 @@ void main() {
       final result = await ItineraryRefreshService.refresh(
         trip.itinerary,
         fetchTripDetails: ({required String tripId}) async =>
-            Itinerary.fromJson(_planJson(departure: delayed)),
+            Itinerary.fromJson(
+              planItineraryJson(departure: delayed, withEdgeWalks: false),
+            ),
       );
 
       expect(result.freshness, ItineraryFreshness.live);
+      final refreshedRide = result.itinerary.legs.firstWhere(
+        (leg) => leg.tripId == 'trip-re7',
+      );
       expect(
-        result.itinerary.startTime.toUtc(),
+        refreshedRide.startTime.toUtc(),
         DateTime.parse(delayed.toUtc().toIso8601String()),
       );
     },

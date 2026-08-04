@@ -1,6 +1,25 @@
 import 'itinerary.dart';
 import 'time_selection.dart';
+import '../utils/itinerary_leg_utils.dart';
 import '../utils/time_utils.dart';
+
+/// Last resort when a journey has no named place anywhere in it — a walk
+/// between two coordinates.
+String _coordinateLabel(double lat, double lon) =>
+    '${lat.toStringAsFixed(4)}, ${lon.toStringAsFixed(4)}';
+
+/// Picks the best available name for one end of a journey: what the user
+/// searched for, else the stop they board or leave from, else coordinates.
+String _resolveEndpointName({
+  required String? searched,
+  required String? derived,
+  required double lat,
+  required double lon,
+}) {
+  if (!isPlaceholderEndpointName(searched)) return searched!.trim();
+  if (!isPlaceholderEndpointName(derived)) return derived!.trim();
+  return _coordinateLabel(lat, lon);
+}
 
 /// A connection the user deliberately kept, as opposed to the
 /// origin/destination pairs `RecentTripsService` records automatically.
@@ -101,11 +120,16 @@ class SavedTrip {
   /// The itinerary must have come from the API — [Itinerary.sourceJson] is
   /// what gets persisted, so an itinerary assembled in code cannot be saved.
   ///
-  /// The endpoints and [timeSelection] default to the itinerary's own, which
-  /// is usually what you want: the origin the user typed may have been "My
-  /// Location", and that means nothing when the trip is opened again from
-  /// somewhere else, whereas the first leg says where the journey actually
-  /// starts.
+  /// [fromName] and [toName] are the places the user searched for, when
+  /// there were any. Each falls back to the stop the traveller boards or
+  /// leaves from, and finally to coordinates.
+  ///
+  /// The fallback matters as much as the preference. The planner names the
+  /// query's own endpoints "START" and "END" whenever they were plain
+  /// coordinates, so the outermost leg names are frequently useless — see
+  /// [resolveOriginName]. And an origin of "My Location" means nothing when
+  /// the trip is reopened from somewhere else, whereas the boarding stop
+  /// still does.
   factory SavedTrip.fromItinerary({
     required Itinerary itinerary,
     String? fromName,
@@ -149,14 +173,24 @@ class SavedTrip {
         toLon: resolvedToLon,
       ),
       label: label,
-      fromName: fromName ?? firstLeg.fromName,
+      fromName: _resolveEndpointName(
+        searched: fromName,
+        derived: resolveOriginName(snapshot.legs),
+        lat: resolvedFromLat,
+        lon: resolvedFromLon,
+      ),
       fromLat: resolvedFromLat,
       fromLon: resolvedFromLon,
-      fromStopId: firstLeg.fromStopId,
-      toName: toName ?? lastLeg.toName,
+      fromStopId: resolveOriginStopId(snapshot.legs),
+      toName: _resolveEndpointName(
+        searched: toName,
+        derived: resolveDestinationName(snapshot.legs),
+        lat: resolvedToLat,
+        lon: resolvedToLon,
+      ),
       toLat: resolvedToLat,
       toLon: resolvedToLon,
-      toStopId: lastLeg.toStopId,
+      toStopId: resolveDestinationStopId(snapshot.legs),
       timeSelection:
           timeSelection ??
           TimeSelection(dateTime: snapshot.startTime, isArriveBy: false),
@@ -215,16 +249,47 @@ class SavedTrip {
   };
 
   factory SavedTrip.fromJson(Map<String, dynamic> json) {
+    final fromLat = (json['fromLat'] as num).toDouble();
+    final fromLon = (json['fromLon'] as num).toDouble();
+    final toLat = (json['toLat'] as num).toDouble();
+    final toLon = (json['toLon'] as num).toDouble();
+    final itineraryJson = json['itinerary'] as Map<String, dynamic>;
+    final isDirect = json['isDirect'] as bool? ?? false;
+
+    var fromName = json['fromName'] as String;
+    var toName = json['toName'] as String;
+
+    // Trips stored before endpoint names were resolved properly kept the
+    // planner's "START"/"END" placeholders. Repair them from the snapshot
+    // on read, so an existing list heals itself instead of needing every
+    // trip saved again. Only broken entries pay the parse.
+    if (isPlaceholderEndpointName(fromName) ||
+        isPlaceholderEndpointName(toName)) {
+      final legs = Itinerary.fromJson(itineraryJson, isDirect: isDirect).legs;
+      fromName = _resolveEndpointName(
+        searched: fromName,
+        derived: resolveOriginName(legs),
+        lat: fromLat,
+        lon: fromLon,
+      );
+      toName = _resolveEndpointName(
+        searched: toName,
+        derived: resolveDestinationName(legs),
+        lat: toLat,
+        lon: toLon,
+      );
+    }
+
     return SavedTrip(
       id: json['id'] as String,
       label: json['label'] as String?,
-      fromName: json['fromName'] as String,
-      fromLat: (json['fromLat'] as num).toDouble(),
-      fromLon: (json['fromLon'] as num).toDouble(),
+      fromName: fromName,
+      fromLat: fromLat,
+      fromLon: fromLon,
       fromStopId: json['fromStopId'] as String?,
-      toName: json['toName'] as String,
-      toLat: (json['toLat'] as num).toDouble(),
-      toLon: (json['toLon'] as num).toDouble(),
+      toName: toName,
+      toLat: toLat,
+      toLon: toLon,
       toStopId: json['toStopId'] as String?,
       timeSelection: TimeSelection.fromJson(
         json['timeSelection'] as Map<String, dynamic>,
@@ -232,8 +297,8 @@ class SavedTrip {
       departureTime: DateTime.parse(json['departureTime'] as String),
       arrivalTime: DateTime.parse(json['arrivalTime'] as String),
       savedAt: DateTime.parse(json['savedAt'] as String),
-      isDirect: json['isDirect'] as bool? ?? false,
-      itineraryJson: json['itinerary'] as Map<String, dynamic>,
+      isDirect: isDirect,
+      itineraryJson: itineraryJson,
     );
   }
 }

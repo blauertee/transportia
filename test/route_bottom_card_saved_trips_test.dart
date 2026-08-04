@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -12,35 +10,14 @@ import 'package:transportia/providers/theme_provider.dart';
 import 'package:transportia/widgets/route_bottom_card.dart';
 import 'package:transportia/widgets/saved_trip_card.dart';
 
+import 'support/plan_fixtures.dart';
+
 SavedTrip _trip({required DateTime departure, required String to}) {
-  final arrival = departure.add(const Duration(minutes: 15));
-  final json =
-      jsonDecode(
-            jsonEncode({
-              'duration': 900,
-              'startTime': departure.toUtc().toIso8601String(),
-              'endTime': arrival.toUtc().toIso8601String(),
-              'transfers': 0,
-              'legs': [
-                {
-                  'mode': 'RAIL',
-                  'startTime': departure.toUtc().toIso8601String(),
-                  'endTime': arrival.toUtc().toIso8601String(),
-                  'duration': 900,
-                  'tripId': 'trip-$to',
-                  'displayName': 'RE7',
-                  'from': {
-                    'name': 'Hauptbahnhof',
-                    'lat': 52.525,
-                    'lon': 13.369,
-                  },
-                  'to': {'name': to, 'lat': 52.366, 'lon': 13.503},
-                },
-              ],
-            }),
-          )
-          as Map<String, dynamic>;
-  return SavedTrip.fromItinerary(itinerary: Itinerary.fromJson(json));
+  return SavedTrip.fromItinerary(
+    itinerary: Itinerary.fromJson(
+      planItineraryJson(departure: departure, toStop: to, tripId: 'trip-$to'),
+    ),
+  );
 }
 
 Future<void> _pumpCard(

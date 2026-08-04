@@ -22,11 +22,19 @@ class SaveTripButton extends StatefulWidget {
   const SaveTripButton({
     super.key,
     required this.itinerary,
+    this.fromName,
+    this.toName,
     this.size = 20,
     this.padding = const EdgeInsets.all(6),
   });
 
   final Itinerary itinerary;
+
+  /// The places the user searched for, when the caller knows them. Without
+  /// these the trip is named after the stops it boards and leaves from.
+  final String? fromName;
+  final String? toName;
+
   final double size;
   final EdgeInsetsGeometry padding;
 
@@ -50,14 +58,20 @@ class _SaveTripButtonState extends State<SaveTripButton> {
   @override
   void didUpdateWidget(SaveTripButton oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!identical(oldWidget.itinerary, widget.itinerary)) {
+    if (!identical(oldWidget.itinerary, widget.itinerary) ||
+        oldWidget.fromName != widget.fromName ||
+        oldWidget.toName != widget.toName) {
       _trip = _buildTrip();
     }
   }
 
   SavedTrip? _buildTrip() {
     try {
-      return SavedTrip.fromItinerary(itinerary: widget.itinerary);
+      return SavedTrip.fromItinerary(
+        itinerary: widget.itinerary,
+        fromName: widget.fromName,
+        toName: widget.toName,
+      );
     } on ArgumentError {
       return null;
     }

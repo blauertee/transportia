@@ -8,45 +8,7 @@ import 'package:transportia/models/saved_trip.dart';
 import 'package:transportia/models/time_selection.dart';
 import 'package:transportia/services/saved_trips_service.dart';
 
-/// Builds a `/plan`-shaped itinerary JSON for a single rail leg.
-Map<String, dynamic> _planJson({
-  required String tripId,
-  required DateTime departure,
-  Duration length = const Duration(minutes: 15),
-}) {
-  final arrival = departure.add(length);
-  return jsonDecode(
-        jsonEncode({
-          'duration': length.inSeconds,
-          'startTime': departure.toUtc().toIso8601String(),
-          'endTime': arrival.toUtc().toIso8601String(),
-          'transfers': 0,
-          'legs': [
-            {
-              'mode': 'RAIL',
-              'startTime': departure.toUtc().toIso8601String(),
-              'endTime': arrival.toUtc().toIso8601String(),
-              'duration': length.inSeconds,
-              'tripId': tripId,
-              'routeShortName': 'RE7',
-              'from': {
-                'name': 'Hauptbahnhof',
-                'lat': 52.525,
-                'lon': 13.369,
-                'stopId': 'stop-from',
-              },
-              'to': {
-                'name': 'Airport',
-                'lat': 52.366,
-                'lon': 13.503,
-                'stopId': 'stop-to',
-              },
-            },
-          ],
-        }),
-      )
-      as Map<String, dynamic>;
-}
+import 'support/plan_fixtures.dart';
 
 SavedTrip _savedTrip({
   String tripId = 'trip-re7',
@@ -55,14 +17,8 @@ SavedTrip _savedTrip({
 }) {
   return SavedTrip.fromItinerary(
     itinerary: Itinerary.fromJson(
-      _planJson(tripId: tripId, departure: departure),
+      planItineraryJson(tripId: tripId, departure: departure),
     ),
-    fromName: 'Hauptbahnhof',
-    fromLat: 52.525,
-    fromLon: 13.369,
-    toName: 'Airport',
-    toLat: 52.366,
-    toLon: 13.503,
     timeSelection: TimeSelection(dateTime: departure, isArriveBy: false),
     label: label,
   );
@@ -89,21 +45,25 @@ void main() {
 
       expect(restored.id, original.id);
       expect(restored.label, 'Airport run');
-      expect(restored.fromName, 'Hauptbahnhof');
-      expect(restored.toName, 'Airport');
+      expect(restored.fromName, 'S+U Berlin Hauptbahnhof');
+      expect(restored.toName, 'Flughafen BER');
       expect(restored.fromStopId, 'stop-from');
       expect(restored.toStopId, 'stop-to');
       expect(restored.departureTime, original.departureTime);
       expect(restored.arrivalTime, original.arrivalTime);
       expect(restored.timeSelection.dateTime, original.timeSelection.dateTime);
       // The snapshot survives and still parses into the same connection.
-      expect(restored.itinerary.legs.single.tripId, 'trip-re7');
+      expect(restored.itinerary.legs, hasLength(3));
+      expect(restored.itinerary.legs[1].tripId, 'trip-re7');
       expect(restored.itinerary.startTime, original.itinerary.startTime);
     });
 
     test('falls back to a generated label, and prefers a user one', () {
       final generated = _savedTrip(departure: future);
-      expect(generated.displayLabel, contains('Hauptbahnhof → Airport'));
+      expect(
+        generated.displayLabel,
+        contains('S+U Berlin Hauptbahnhof → Flughafen BER'),
+      );
 
       final named = _savedTrip(departure: future, label: 'Airport run');
       expect(named.displayLabel, 'Airport run');
@@ -134,6 +94,54 @@ void main() {
       );
     });
 
+    test('is never named after the planner placeholders', () {
+      final trip = _savedTrip(departure: future);
+
+      // The planner wraps this journey in walk legs called START and END.
+      // Naming the trip after them is the bug this guards.
+      expect(trip.fromName, isNot(equalsIgnoringCase('START')));
+      expect(trip.toName, isNot(equalsIgnoringCase('END')));
+      expect(trip.fromName, 'S+U Berlin Hauptbahnhof');
+      expect(trip.toName, 'Flughafen BER');
+    });
+
+    test('prefers the places the user searched for', () {
+      final trip = SavedTrip.fromItinerary(
+        itinerary: Itinerary.fromJson(planItineraryJson(departure: future)),
+        fromName: 'Home',
+        toName: 'Berlin Brandenburg Airport',
+      );
+
+      expect(trip.fromName, 'Home');
+      expect(trip.toName, 'Berlin Brandenburg Airport');
+    });
+
+    test('ignores a searched name that is itself a placeholder', () {
+      final trip = SavedTrip.fromItinerary(
+        itinerary: Itinerary.fromJson(planItineraryJson(departure: future)),
+        fromName: 'START',
+        toName: '   ',
+      );
+
+      expect(trip.fromName, 'S+U Berlin Hauptbahnhof');
+      expect(trip.toName, 'Flughafen BER');
+    });
+
+    test('repairs placeholder names stored by an earlier version', () {
+      final trip = _savedTrip(departure: future);
+      final stored = trip.toJson();
+      // Exactly what the buggy version wrote to shared_preferences.
+      stored['fromName'] = 'START';
+      stored['toName'] = 'END';
+
+      final healed = SavedTrip.fromJson(
+        jsonDecode(jsonEncode(stored)) as Map<String, dynamic>,
+      );
+
+      expect(healed.fromName, 'S+U Berlin Hauptbahnhof');
+      expect(healed.toName, 'Flughafen BER');
+    });
+
     test('marks a finished trip as past', () {
       final old = _savedTrip(
         departure: DateTime.now().subtract(const Duration(days: 1)),
@@ -149,7 +157,7 @@ void main() {
 
       final trips = await SavedTripsService.getSavedTrips();
       expect(trips, hasLength(1));
-      expect(trips.single.toName, 'Airport');
+      expect(trips.single.toName, 'Flughafen BER');
       expect(await SavedTripsService.isSaved(trips.single.id), isTrue);
     });
 
