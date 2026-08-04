@@ -100,15 +100,21 @@ class SavedTrip {
   ///
   /// The itinerary must have come from the API — [Itinerary.sourceJson] is
   /// what gets persisted, so an itinerary assembled in code cannot be saved.
+  ///
+  /// The endpoints and [timeSelection] default to the itinerary's own, which
+  /// is usually what you want: the origin the user typed may have been "My
+  /// Location", and that means nothing when the trip is opened again from
+  /// somewhere else, whereas the first leg says where the journey actually
+  /// starts.
   factory SavedTrip.fromItinerary({
     required Itinerary itinerary,
-    required String fromName,
-    required double fromLat,
-    required double fromLon,
-    required String toName,
-    required double toLat,
-    required double toLon,
-    required TimeSelection timeSelection,
+    String? fromName,
+    double? fromLat,
+    double? fromLon,
+    String? toName,
+    double? toLat,
+    double? toLon,
+    TimeSelection? timeSelection,
     String? label,
     DateTime? savedAt,
   }) {
@@ -122,25 +128,38 @@ class SavedTrip {
     // Read the schedule back out of the snapshot rather than off the
     // in-memory itinerary, which may already carry real-time offsets.
     final snapshot = Itinerary.fromJson(json, isDirect: itinerary.isDirect);
+    final firstLeg = snapshot.legs.firstOrNull;
+    final lastLeg = snapshot.legs.lastOrNull;
+
+    if (firstLeg == null || lastLeg == null) {
+      throw ArgumentError('An itinerary without legs cannot be saved.');
+    }
+
+    final resolvedFromLat = fromLat ?? firstLeg.fromLat;
+    final resolvedFromLon = fromLon ?? firstLeg.fromLon;
+    final resolvedToLat = toLat ?? lastLeg.toLat;
+    final resolvedToLon = toLon ?? lastLeg.toLon;
 
     return SavedTrip(
       id: buildId(
         itinerary: snapshot,
-        fromLat: fromLat,
-        fromLon: fromLon,
-        toLat: toLat,
-        toLon: toLon,
+        fromLat: resolvedFromLat,
+        fromLon: resolvedFromLon,
+        toLat: resolvedToLat,
+        toLon: resolvedToLon,
       ),
       label: label,
-      fromName: fromName,
-      fromLat: fromLat,
-      fromLon: fromLon,
-      fromStopId: snapshot.legs.firstOrNull?.fromStopId,
-      toName: toName,
-      toLat: toLat,
-      toLon: toLon,
-      toStopId: snapshot.legs.lastOrNull?.toStopId,
-      timeSelection: timeSelection,
+      fromName: fromName ?? firstLeg.fromName,
+      fromLat: resolvedFromLat,
+      fromLon: resolvedFromLon,
+      fromStopId: firstLeg.fromStopId,
+      toName: toName ?? lastLeg.toName,
+      toLat: resolvedToLat,
+      toLon: resolvedToLon,
+      toStopId: lastLeg.toStopId,
+      timeSelection:
+          timeSelection ??
+          TimeSelection(dateTime: snapshot.startTime, isArriveBy: false),
       departureTime: snapshot.startTime,
       arrivalTime: snapshot.endTime,
       savedAt: savedAt ?? DateTime.now(),

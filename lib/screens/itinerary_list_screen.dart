@@ -19,6 +19,7 @@ import '../utils/duration_formatter.dart';
 import '../utils/time_utils.dart';
 import 'itinerary_detail_screen.dart';
 import '../widgets/load_more_button.dart';
+import '../widgets/save_trip_button.dart';
 import '../widgets/skeletons/skeleton_list.dart';
 
 class ItineraryListScreen extends StatefulWidget {
@@ -409,6 +410,11 @@ class _ItineraryCardState extends State<ItineraryCard>
                         color: AppColors.accentOf(context),
                       ),
                     ),
+                  SaveTripButton(
+                    itinerary: itinerary,
+                    size: 18,
+                    padding: const EdgeInsets.only(left: 10),
+                  ),
                 ],
               ),
             ],

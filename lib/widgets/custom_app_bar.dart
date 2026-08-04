@@ -8,10 +8,15 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;
   final VoidCallback? onBackButtonPressed;
 
+  /// Optional action pinned to the right of the bar, opposite the back
+  /// button.
+  final Widget? trailing;
+
   const CustomAppBar({
     super.key,
     required this.title,
     this.onBackButtonPressed,
+    this.trailing,
   });
 
   @override
@@ -63,6 +68,8 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
                 ),
               ),
             ),
+            if (trailing != null)
+              Align(alignment: Alignment.centerRight, child: trailing),
           ],
         ),
       ),

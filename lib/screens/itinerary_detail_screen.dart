@@ -23,6 +23,7 @@ import '../widgets/custom_app_bar.dart';
 import '../widgets/custom_card.dart';
 import '../widgets/info_chip.dart';
 import '../widgets/last_updated_footer.dart';
+import '../widgets/save_trip_button.dart';
 import '../widgets/stop_departures_sheet.dart';
 import 'connection_info_screen.dart';
 import 'itinerary_map_screen.dart';
@@ -132,6 +133,7 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
             CustomAppBar(
               title: 'Itinerary Details',
               onBackButtonPressed: () => Navigator.of(context).pop(),
+              trailing: SaveTripButton(itinerary: _itinerary),
             ),
             JourneyOverviewWidget(itinerary: _itinerary),
             Expanded(
