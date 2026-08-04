@@ -11,7 +11,7 @@ import 'package:timelines_plus/timelines_plus.dart';
 
 import '../models/itinerary.dart';
 import '../providers/theme_provider.dart';
-import '../services/trip_details_service.dart';
+import '../services/itinerary_refresh_service.dart';
 import '../theme/app_colors.dart';
 import '../utils/color_utils.dart';
 import '../utils/custom_page_route.dart';
@@ -98,45 +98,19 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
   Future<void> _refreshRealTimeInfo() async {
     if (_isRefreshing) return;
 
-    final tripIds = _itinerary.legs
-        .map((leg) => leg.tripId)
-        .whereType<String>()
-        .where((id) => id.isNotEmpty)
-        .toSet();
-
-    if (tripIds.isEmpty) return;
-
     _isRefreshing = true;
-    final updates = <String, Leg>{};
-    await Future.wait(
-      tripIds.map((tripId) async {
-        try {
-          final details = await TripDetailsService.fetchTripDetails(
-            tripId: tripId,
-          );
-          if (details.legs.isNotEmpty) {
-            updates[tripId] = details.legs.first;
-          }
-        } catch (_) {}
-      }),
-    );
+    final refreshed = await ItineraryRefreshService.refresh(_itinerary);
 
     if (!mounted) {
       _isRefreshing = false;
       return;
     }
 
-    if (updates.isNotEmpty) {
-      final newLegs = _itinerary.legs.map((leg) {
-        final fresh = leg.tripId != null ? updates[leg.tripId] : null;
-        return fresh != null ? leg.withRealTimeFrom(fresh) : leg;
-      }).toList();
+    if (refreshed != null) {
       setState(() {
-        _itinerary = _itinerary.withLegs(newLegs);
+        _itinerary = refreshed;
         _lastUpdated = DateTime.now();
       });
-    } else {
-      setState(() => _lastUpdated = DateTime.now());
     }
 
     _isRefreshing = false;
