@@ -4087,7 +4087,10 @@ class _MapScreenState extends State<MapScreen>
     Navigator.of(context)
         .push(
           CustomPageRoute(
-            child: ItineraryDetailScreen(itinerary: trip.itinerary),
+            child: ItineraryDetailScreen(
+              itinerary: trip.itinerary,
+              savedTrip: trip,
+            ),
           ),
         )
         .then((_) => unawaited(_loadSavedTrips()));

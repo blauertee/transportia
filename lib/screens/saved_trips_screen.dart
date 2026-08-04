@@ -50,7 +50,12 @@ class _SavedTripsScreenState extends State<SavedTripsScreen> {
 
   void _openTrip(SavedTrip trip) {
     Navigator.of(context).push(
-      CustomPageRoute(child: ItineraryDetailScreen(itinerary: trip.itinerary)),
+      CustomPageRoute(
+        child: ItineraryDetailScreen(
+          itinerary: trip.itinerary,
+          savedTrip: trip,
+        ),
+      ),
     );
   }
 
