@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:transportia/models/routing_options.dart';
+import 'package:transportia/models/transit_mode_group.dart';
 import 'package:transportia/models/transitous/enums.dart';
 
 /// Query the options would produce, nulls stripped.
@@ -120,6 +121,58 @@ void main() {
       });
       expect(restored.bikeCarriageIsManual, isFalse);
       expect(restored.requireBikeTransport, isTrue);
+    });
+  });
+
+  group('slider ranges', () {
+    test('unlimited transfers omits the parameter', () {
+      // A large number would still be a limit; the server should keep
+      // deciding.
+      final unlimited = const RoutingOptions(
+        maxTransfers: 2,
+      ).withTransfersSliderValue(RoutingOptions.unlimitedTransfersSliderValue);
+      expect(unlimited.maxTransfers, isNull);
+      expect(_query(unlimited).containsKey('maxTransfers'), isFalse);
+    });
+
+    test('the slider round-trips a real limit', () {
+      for (var i = 0; i <= RoutingOptions.maxTransferChoice; i++) {
+        final withLimit = RoutingOptions.defaults.withTransfersSliderValue(i);
+        expect(withLimit.maxTransfers, i);
+        expect(withLimit.transfersSliderValue, i);
+      }
+    });
+
+    test('no limit reads as the top slider position', () {
+      expect(
+        RoutingOptions.defaults.transfersSliderValue,
+        RoutingOptions.unlimitedTransfersSliderValue,
+      );
+    });
+
+    test('the mile budget tops out at the server ceiling', () {
+      expect(RoutingOptions.maxMileBudget, const Duration(hours: 2));
+    });
+  });
+
+  group('transit selection', () {
+    test('untouched options mean every mode', () {
+      expect(RoutingOptions.defaults.transitSelection.isEverything, isTrue);
+    });
+
+    test('a narrowed selection survives a round trip', () {
+      final narrowed = RoutingOptions.defaults.withTransitSelection(
+        TransitSelection.everything.toggleGroup(TransitModeGroup.boat),
+      );
+      expect(narrowed.transitSelection.has(TransitModeGroup.boat), isFalse);
+      expect(narrowed.transitSelection.has(TransitModeGroup.rail), isTrue);
+    });
+
+    test('an extra reaches the query', () {
+      final withFlights = RoutingOptions.defaults.withTransitSelection(
+        TransitSelection.everything.toggleExtra(TransitMode.airplane),
+      );
+      expect(_query(withFlights)['transitModes'], contains('AIRPLANE'));
     });
   });
 }

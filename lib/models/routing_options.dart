@@ -1,4 +1,5 @@
 import '../api/params/plan_params.dart';
+import 'transit_mode_group.dart';
 import 'transitous/enums.dart';
 
 /// A stop the user wants the journey to pass through.
@@ -156,6 +157,38 @@ class RoutingOptions {
 
   /// How hard to avoid inclines. Needs a server with elevation data.
   final ElevationCosts elevationCosts;
+
+  /// Slider range for a mile budget. The upper bound matches the server's own
+  /// `maxPrePostTransitTimeLimit`; read the live value from
+  /// `ServerCapabilitiesService` where one is available.
+  static const Duration maxMileBudget = Duration(hours: 2);
+  static const Duration mileBudgetStep = Duration(minutes: 5);
+
+  /// Highest transfer count offered before the slider reads "unlimited".
+  ///
+  /// Unlimited omits `maxTransfers` rather than sending a large number, so the
+  /// server keeps deciding.
+  static const int maxTransferChoice = 5;
+
+  /// Slider position standing for unlimited, one past the last real number.
+  static const int unlimitedTransfersSliderValue = maxTransferChoice + 1;
+
+  /// Slider position for the current transfer limit.
+  int get transfersSliderValue => maxTransfers ?? unlimitedTransfersSliderValue;
+
+  /// The transit selection as the four groups plus named extras.
+  TransitSelection get transitSelection =>
+      TransitSelection.fromModes(transitModes);
+
+  RoutingOptions withTransitSelection(TransitSelection selection) =>
+      copyWith(transitModes: selection.toModes());
+
+  /// Transfer limit from a slider position, where the top stop means
+  /// unlimited.
+  RoutingOptions withTransfersSliderValue(int value) =>
+      value >= unlimitedTransfersSliderValue
+      ? copyWith(clearMaxTransfers: true)
+      : copyWith(maxTransfers: value);
 
   /// Modes the street legs may use, i.e. the ones a speed applies to.
   static const List<TransitMode> streetModeChoices = [
