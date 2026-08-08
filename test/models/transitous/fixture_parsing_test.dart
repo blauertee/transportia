@@ -258,6 +258,22 @@ void main() {
     });
   });
 
+  group('debug_transfers.json', () {
+    test('parses per-profile transfer times', () {
+      final response = TransfersDebugResponse.fromJson(
+        _fixture('debug_transfers.json') as Map<String, dynamic>,
+      );
+
+      expect(response.place.name, isNotEmpty);
+      expect(response.transfers, isNotEmpty);
+
+      final withFoot = response.transfers.firstWhere((t) => t.foot != null);
+      // Reported in minutes, unlike the seconds used almost everywhere else.
+      expect(withFoot.foot, greaterThan(Duration.zero));
+      expect(withFoot.foot!.inMinutes, lessThan(60));
+    });
+  });
+
   group('numbers', () {
     test('exponential integers survive parsing', () {
       // MOTIS writes every number in exponential form, so `duration` arrives

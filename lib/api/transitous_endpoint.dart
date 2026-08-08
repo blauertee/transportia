@@ -106,7 +106,6 @@ enum TransitousEndpoint {
     fixedVersion: 'experimental',
   ),
 
-  /// Not exposed by Transitous (404); available on self-hosted MOTIS instances.
   debugTransfers(
     prefKey: 'debugTransfers',
     path: 'transfers',

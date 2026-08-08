@@ -22,6 +22,48 @@ enum RoutePathSource with WireEnum {
   static RoutePathSource? fromWire(Object? raw) => enumFromWire(values, raw);
 }
 
+/// A transit line serving a stop, as returned by `/stop`.
+class StopRoute {
+  const StopRoute({
+    required this.routeId,
+    required this.routeShortName,
+    required this.routeLongName,
+    required this.agencyId,
+    required this.agencyName,
+    this.agencyUrl,
+    this.mode,
+    this.routeColor,
+    this.routeTextColor,
+    this.routeType,
+  });
+
+  final String routeId;
+  final String routeShortName;
+  final String routeLongName;
+  final String agencyId;
+  final String agencyName;
+  final String? agencyUrl;
+  final TransitMode? mode;
+  final String? routeColor;
+  final String? routeTextColor;
+
+  /// Raw GTFS `route_type`, finer-grained than [mode].
+  final int? routeType;
+
+  factory StopRoute.fromJson(Map<String, dynamic> json) => StopRoute(
+    routeId: asString(json['routeId']) ?? '',
+    routeShortName: asString(json['routeShortName']) ?? '',
+    routeLongName: asString(json['routeLongName']) ?? '',
+    agencyId: asString(json['agencyId']) ?? '',
+    agencyName: asString(json['agencyName']) ?? '',
+    agencyUrl: asString(json['agencyUrl']),
+    mode: TransitMode.fromWire(json['mode']),
+    routeColor: asString(json['routeColor']),
+    routeTextColor: asString(json['routeTextColor']),
+    routeType: asInt(json['routeType']),
+  );
+}
+
 /// A transit line served by a route.
 class TransitRouteInfo {
   const TransitRouteInfo({
@@ -218,4 +260,47 @@ class Transfer {
     final minutes = asInt(value);
     return minutes == null ? null : Duration(minutes: minutes);
   }
+}
+
+/// Response of `/debug/transfers`: every transfer computed out of one stop.
+///
+/// Useful for explaining why a connection was or was not found, and for
+/// checking whether a station has step-free transfers at all.
+class TransfersDebugResponse {
+  const TransfersDebugResponse({
+    required this.place,
+    required this.root,
+    this.equivalences = const [],
+    this.hasFootTransfers = false,
+    this.hasWheelchairTransfers = false,
+    this.hasCarTransfers = false,
+    this.transfers = const [],
+  });
+
+  /// The stop that was asked about.
+  final TransitPlace place;
+
+  /// Parent station the transfers were computed from, which may differ from
+  /// [place] when a platform was requested.
+  final TransitPlace root;
+
+  /// Stops treated as the same location as [root].
+  final List<TransitPlace> equivalences;
+
+  final bool hasFootTransfers;
+  final bool hasWheelchairTransfers;
+  final bool hasCarTransfers;
+
+  final List<Transfer> transfers;
+
+  factory TransfersDebugResponse.fromJson(Map<String, dynamic> json) =>
+      TransfersDebugResponse(
+        place: TransitPlace.fromJson(asMap(json['place']) ?? const {}),
+        root: TransitPlace.fromJson(asMap(json['root']) ?? const {}),
+        equivalences: asList(json['equivalences'], TransitPlace.fromJson),
+        hasFootTransfers: asBool(json['hasFootTransfers']) ?? false,
+        hasWheelchairTransfers: asBool(json['hasWheelchairTransfers']) ?? false,
+        hasCarTransfers: asBool(json['hasCarTransfers']) ?? false,
+        transfers: asList(json['transfers'], Transfer.fromJson),
+      );
 }

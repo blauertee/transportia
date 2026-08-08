@@ -21,13 +21,15 @@ than against hand-written JSON that agrees with our assumptions.
 | `one_to_many_intermodal.json` | `/api/experimental/one-to-many-intermodal` |
 | `rentals.json` | `/api/v1/rentals` over central Berlin, all sub-resources |
 | `health.json` | `/api/v1/health` |
+| `debug_transfers.json` | `/api/debug/transfers` for Alexanderplatz |
 
 ## Trimming
 
-Three files were shortened after capture, because the endpoints return far
+Four files were shortened after capture, because the endpoints return far
 more than a parser test needs: `map_routes.json` keeps 1 route, 3 polylines
 and 5 stops; `one_to_all.json` keeps 30 reachable places; `map_stops.json`
-keeps 20 stops. Nothing else was edited, and no field was removed — array
+keeps 20 stops; `debug_transfers.json` keeps 5 equivalences and 15
+transfers. Nothing else was edited, and no field was removed — array
 lengths are the only thing that differs from the wire.
 
 Because of that, do not assert cross-references in `map_routes.json`: its
