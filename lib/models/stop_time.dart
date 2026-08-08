@@ -1,4 +1,4 @@
-import '../models/itinerary.dart' show Alert;
+import 'transitous/place.dart';
 
 class StopTimesResponse {
   final List<StopTime> stopTimes;
@@ -93,79 +93,6 @@ class StopTime {
   }
 }
 
-class StopPlace {
-  final String name;
-  final String? stopId;
-  final double? importance;
-  final double lat;
-  final double lon;
-  final double? level;
-  final String? tz;
-  final DateTime? arrival;
-  final DateTime? departure;
-  final DateTime? scheduledArrival;
-  final DateTime? scheduledDeparture;
-  final String? scheduledTrack;
-  final String? track;
-  final String? vertexType;
-  final String? pickupType;
-  final String? dropoffType;
-  final bool? cancelled;
-  final List<Alert> alerts;
-
-  const StopPlace({
-    required this.name,
-    this.stopId,
-    this.importance,
-    required this.lat,
-    required this.lon,
-    this.level,
-    this.tz,
-    this.arrival,
-    this.departure,
-    this.scheduledArrival,
-    this.scheduledDeparture,
-    this.scheduledTrack,
-    this.track,
-    this.vertexType,
-    this.pickupType,
-    this.dropoffType,
-    this.cancelled,
-    this.alerts = const [],
-  });
-
-  factory StopPlace.fromJson(Map<String, dynamic> json) {
-    return StopPlace(
-      name: json['name'] as String,
-      stopId: json['stopId'] as String?,
-      importance: (json['importance'] as num?)?.toDouble(),
-      lat: (json['lat'] as num).toDouble(),
-      lon: (json['lon'] as num).toDouble(),
-      level: (json['level'] as num?)?.toDouble(),
-      tz: json['tz'] as String?,
-      arrival: json['arrival'] != null
-          ? DateTime.parse(json['arrival'] as String)
-          : null,
-      departure: json['departure'] != null
-          ? DateTime.parse(json['departure'] as String)
-          : null,
-      scheduledArrival: json['scheduledArrival'] != null
-          ? DateTime.parse(json['scheduledArrival'] as String)
-          : null,
-      scheduledDeparture: json['scheduledDeparture'] != null
-          ? DateTime.parse(json['scheduledDeparture'] as String)
-          : null,
-      scheduledTrack: json['scheduledTrack'] as String?,
-      track: json['track'] as String?,
-      vertexType: json['vertexType'] as String?,
-      pickupType: json['pickupType'] as String?,
-      dropoffType: json['dropoffType'] as String?,
-      cancelled: json['cancelled'] as bool?,
-      alerts:
-          (json['alerts'] as List<dynamic>?)
-              ?.map((item) => Alert.fromJson(item as Map<String, dynamic>))
-              .toList() ??
-          const [],
-    );
-  }
-}
+/// Alias for the shared place model: `/stoptimes` returns the same `Place`
+/// object as the itinerary endpoints.
+typedef StopPlace = TransitPlace;

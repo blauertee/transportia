@@ -1,5 +1,17 @@
 import 'dart:developer' as developer;
 
+import 'transitous/alert.dart';
+import 'transitous/place.dart';
+
+export 'transitous/alert.dart' show Alert;
+export 'transitous/place.dart' show TransitPlace;
+
+/// A stop a leg passes through without the rider boarding or alighting.
+///
+/// MOTIS returns the same `Place` object here as for leg endpoints, so this is
+/// an alias rather than a separate model.
+typedef IntermediateStop = TransitPlace;
+
 class FareInfo {
   final double amount;
   final String currency;
@@ -83,96 +95,6 @@ class FareLegInfo {
             .join(','),
       )
       .join(';');
-}
-
-class Alert {
-  final String? cause;
-  final String? causeDetail;
-  final String? effect;
-  final String? effectDetail;
-  final String? url;
-  final String? headerText;
-  final String? descriptionText;
-  final String? severityLevel;
-
-  Alert({
-    this.cause,
-    this.causeDetail,
-    this.effect,
-    this.effectDetail,
-    this.url,
-    this.headerText,
-    this.descriptionText,
-    this.severityLevel,
-  });
-
-  factory Alert.fromJson(Map<String, dynamic> json) {
-    return Alert(
-      cause: json['cause'],
-      causeDetail: json['causeDetail'],
-      effect: json['effect'],
-      effectDetail: json['effectDetail'],
-      url: json['url'],
-      headerText: json['headerText'],
-      descriptionText: json['descriptionText'],
-      severityLevel: json['severityLevel'],
-    );
-  }
-}
-
-class IntermediateStop {
-  final String name;
-  final String? stopId;
-  final double lat;
-  final double lon;
-  final DateTime? arrival;
-  final DateTime? departure;
-  final DateTime? scheduledArrival;
-  final DateTime? scheduledDeparture;
-  final String? track;
-  final String? scheduledTrack;
-  final bool cancelled;
-  final List<Alert> alerts;
-
-  IntermediateStop({
-    required this.name,
-    this.stopId,
-    required this.lat,
-    required this.lon,
-    this.arrival,
-    this.departure,
-    this.scheduledArrival,
-    this.scheduledDeparture,
-    this.track,
-    this.scheduledTrack,
-    this.cancelled = false,
-    this.alerts = const [],
-  });
-
-  factory IntermediateStop.fromJson(Map<String, dynamic> json) {
-    return IntermediateStop(
-      name: json['name'] ?? '',
-      stopId: json['stopId'],
-      lat: json['lat']?.toDouble() ?? 0.0,
-      lon: json['lon']?.toDouble() ?? 0.0,
-      arrival: json['arrival'] != null ? DateTime.parse(json['arrival']) : null,
-      departure: json['departure'] != null
-          ? DateTime.parse(json['departure'])
-          : null,
-      scheduledArrival: json['scheduledArrival'] != null
-          ? DateTime.parse(json['scheduledArrival'])
-          : null,
-      scheduledDeparture: json['scheduledDeparture'] != null
-          ? DateTime.parse(json['scheduledDeparture'])
-          : null,
-      track: json['track'],
-      scheduledTrack: json['scheduledTrack'],
-      cancelled: json['cancelled'] ?? false,
-      alerts: json['alerts'] != null
-          ? (json['alerts'] as List).map((a) => Alert.fromJson(a)).toList()
-          : [],
-    );
-  }
 }
 
 class EncodedPolyline {
