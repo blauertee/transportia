@@ -4,7 +4,6 @@ import 'package:transportia/screens/appearance_screen.dart';
 import 'package:transportia/screens/developer_info_screen.dart';
 import 'package:transportia/screens/statistics_screen.dart';
 import 'package:transportia/screens/favourites_screen.dart';
-import 'package:transportia/screens/saved_trips_screen.dart';
 import 'package:transportia/screens/info_screen.dart';
 import 'package:transportia/screens/legal_screen.dart';
 import 'package:transportia/screens/location_settings_screen.dart';
@@ -25,14 +24,14 @@ import '../widgets/settings_tile.dart';
 import '../widgets/icon_badge.dart';
 import '../widgets/custom_card.dart';
 
-class AccountScreen extends StatefulWidget {
-  const AccountScreen({super.key});
+class SettingsScreen extends StatefulWidget {
+  const SettingsScreen({super.key});
 
   @override
-  State<AccountScreen> createState() => _AccountScreenState();
+  State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _AccountScreenState extends State<AccountScreen> {
+class _SettingsScreenState extends State<SettingsScreen> {
   Timer? _debugHoldTimer;
   bool _debugOpened = false;
 
@@ -222,16 +221,6 @@ class _AccountScreenState extends State<AccountScreen> {
                       Navigator.of(
                         context,
                       ).push(CustomPageRoute(child: const FavouritesScreen()));
-                    },
-                  ),
-                  SettingsTile(
-                    icon: LucideIcons.bookmark,
-                    title: 'Saved trips',
-                    subtitle: 'Connections you kept for later',
-                    onPressed: () {
-                      Navigator.of(
-                        context,
-                      ).push(CustomPageRoute(child: const SavedTripsScreen()));
                     },
                   ),
                   SettingsTile(

@@ -3,7 +3,7 @@ import '../widgets/floating_nav_bar.dart';
 import 'map_screen.dart';
 import 'saved_trips_screen.dart';
 import 'timetables_screen.dart';
-import 'user_screen.dart';
+import 'settings_screen.dart';
 import '../services/transitous_geocode_service.dart';
 
 class MainNavigationScreen extends StatefulWidget {
@@ -87,7 +87,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               ),
               TimetablesScreen(initialStop: _pendingTimetableStop),
               const SavedTripsScreen(),
-              const AccountScreen(),
+              const SettingsScreen(),
             ],
           ),
 
