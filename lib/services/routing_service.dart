@@ -1,12 +1,15 @@
-import 'dart:convert';
 import 'dart:developer' as developer;
-import 'package:http/http.dart' as http;
+
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../api/endpoints/plan_endpoint.dart';
+import '../api/params/plan_params.dart';
+import '../api/query.dart';
+import '../api/transitous_api_exception.dart';
 import '../constants/prefs_keys.dart';
-import '../environment.dart';
 import '../models/itinerary.dart';
-import '../models/time_selection.dart';
 import '../models/itinerary_response.dart';
+import '../models/time_selection.dart';
 
 class RoutingService {
   static Future<List<Itinerary>> findRoutes({
@@ -34,13 +37,6 @@ class RoutingService {
     TimeSelection? timeSelection,
     String? pageCursor,
   }) async {
-    final params = {
-      'fromPlace': '$fromLat,$fromLon',
-      'toPlace': '$toLat,$toLon',
-      'withFares': 'true',
-      'useRoutedTransfers': 'true',
-    };
-
     final prefs = SharedPreferencesAsync();
     final walkingSpeedKmh = await prefs.getDouble(
       PrefsKeys.transitWalkingSpeed,
@@ -50,60 +46,46 @@ class RoutingService {
       PrefsKeys.transitSelectedModes,
     );
 
-    if (walkingSpeedKmh != null) {
-      params['pedestrianSpeed'] = (walkingSpeedKmh / 3.6).toStringAsFixed(3);
-    }
-    if (transferBuffer != null && transferBuffer > 0) {
-      params['additionalTransferTime'] = transferBuffer.toString();
-    }
-    if (selectedModes != null && selectedModes.isNotEmpty) {
-      params['transitModes'] = selectedModes.join(',');
-    }
-
-    if (pageCursor != null) {
-      params['pageCursor'] = pageCursor;
-    }
-
-    if (timeSelection != null && !timeSelection.isNow) {
-      params['time'] = timeSelection.dateTime.toUtc().toIso8601String();
-      if (timeSelection.isArriveBy) {
-        params['arriveBy'] = 'true';
-      }
-    }
-
-    final uri = Uri.https(
-      Environment.transitousHost,
-      '/api/${Environment.planApiVersion}/plan',
-      params,
+    final params = PlanParams(
+      fromPlace: Q.latLonComma(fromLat, fromLon),
+      toPlace: Q.latLonComma(toLat, toLon),
+      withFares: true,
+      useRoutedTransfers: true,
+      // The UI stores km/h; the API takes metres per second.
+      pedestrianSpeed: walkingSpeedKmh == null ? null : walkingSpeedKmh / 3.6,
+      additionalTransferTime: transferBuffer == null || transferBuffer <= 0
+          ? null
+          : Duration(minutes: transferBuffer),
+      transitModes: _modesFrom(selectedModes),
+      pageCursor: pageCursor,
+      time: timeSelection == null || timeSelection.isNow
+          ? null
+          : timeSelection.dateTime,
+      arriveBy: timeSelection != null && !timeSelection.isNow
+          ? timeSelection.isArriveBy
+          : null,
     );
 
     try {
-      final response = await http.get(
-        uri,
-        headers: Environment.transitousHeaders(),
-      );
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body) as Map<String, dynamic>;
-        return ItineraryResponse.fromJson(data);
-      } else {
-        developer.log(
-          'API error status: ${response.statusCode}',
-          name: 'RoutingService',
-        );
-        developer.log(
-          'API error body: ${response.body}',
-          name: 'RoutingService',
-        );
-        throw Exception('Failed to load routes: ${response.statusCode}');
-      }
-    } catch (e, stackTrace) {
+      return await PlanEndpoint.plan(params);
+    } on TransitousApiException catch (e, stackTrace) {
       developer.log(
-        'Exception in findRoutesPaginated',
+        'Failed to load routes',
         name: 'RoutingService',
         error: e,
         stackTrace: stackTrace,
       );
       rethrow;
     }
+  }
+
+  /// Maps the stored mode names onto the enum, dropping any this build does
+  /// not know so a stale preference cannot break a search.
+  static List<TransitMode> _modesFrom(List<String>? stored) {
+    if (stored == null || stored.isEmpty) return const [];
+    return [
+      for (final name in stored)
+        if (TransitMode.fromWire(name) case final mode?) mode,
+    ];
   }
 }

@@ -1,10 +1,11 @@
-import 'dart:convert';
 import 'dart:math' as math;
 
-import 'package:http/http.dart' as http;
 import 'package:maplibre_gl/maplibre_gl.dart';
-import '../environment.dart';
-import '../utils/time_utils.dart';
+
+import '../api/endpoints/map_endpoint.dart';
+import '../api/transitous_api_exception.dart';
+import '../models/transitous/place.dart';
+import '../models/transitous/trip_segment.dart';
 
 class TransitousMapServiceException implements Exception {
   TransitousMapServiceException(this.message);
@@ -33,25 +34,20 @@ class MapStop {
 
   LatLng get latLng => LatLng(lat, lon);
 
-  factory MapStop.fromJson(Map<String, dynamic> json) {
-    final name = json['name'] as String?;
-    final lat = (json['lat'] as num?)?.toDouble();
-    final lon = (json['lon'] as num?)?.toDouble();
-    if (name == null || lat == null || lon == null) {
-      throw TransitousMapServiceException('Invalid stop payload');
-    }
-    final stopId = json['stopId'] as String?;
-    final importance = (json['importance'] as num?)?.toDouble();
+  /// Stops without an id are keyed by their coordinate so the map can still
+  /// track them across refreshes.
+  factory MapStop.fromPlace(TransitPlace place) {
+    final stopId = place.stopId;
     final id = (stopId == null || stopId.isEmpty)
-        ? 'stop-${lat.toStringAsFixed(6)}-${lon.toStringAsFixed(6)}'
+        ? 'stop-${place.lat.toStringAsFixed(6)}-${place.lon.toStringAsFixed(6)}'
         : stopId;
     return MapStop(
       id: id,
-      name: name,
-      lat: lat,
-      lon: lon,
+      name: place.name,
+      lat: place.lat,
+      lon: place.lon,
       stopId: stopId,
-      importance: importance,
+      importance: place.importance,
     );
   }
 }
@@ -91,49 +87,29 @@ class MapTripSegment {
   final DateTime? arrival;
   final String? polyline;
 
-  factory MapTripSegment.fromJson(Map<String, dynamic> json) {
-    final trips = json['trips'];
-    String? tripId;
-    String? routeShortName;
-    String? displayName;
-    if (trips is List && trips.isNotEmpty && trips.first is Map) {
-      final trip = trips.first as Map;
-      tripId = trip['tripId'] as String?;
-      routeShortName = trip['routeShortName'] as String?;
-      displayName = trip['displayName'] as String?;
-    }
-    if (tripId == null || tripId.isEmpty) {
-      throw TransitousMapServiceException('Trip segment missing tripId');
-    }
-
-    final from = json['from'] as Map<String, dynamic>?;
-    final to = json['to'] as Map<String, dynamic>?;
-    final fromLat = (from?['lat'] as num?)?.toDouble();
-    final fromLon = (from?['lon'] as num?)?.toDouble();
-    final toLat = (to?['lat'] as num?)?.toDouble();
-    final toLon = (to?['lon'] as num?)?.toDouble();
-
+  /// Flattens the API segment for the map layer, which keys vehicles by trip.
+  ///
+  /// Returns null for a segment without a trip id, since there would be
+  /// nothing to track it by.
+  static MapTripSegment? fromSegment(TripSegment segment) {
+    final trip = segment.primaryTrip;
+    if (trip == null || trip.tripId.isEmpty) return null;
     return MapTripSegment(
-      tripId: tripId,
-      routeShortName: routeShortName,
-      displayName: displayName,
-      routeColor: json['routeColor'] as String?,
-      realTime:
-          (json['realTime'] as bool?) ?? (json['realtime'] as bool?) ?? false,
-      mode: json['mode'] as String?,
-      fromName: from?['name'] as String?,
-      toName: to?['name'] as String?,
-      fromLat: fromLat,
-      fromLon: fromLon,
-      toLat: toLat,
-      toLon: toLon,
-      departure: json['departure'] != null
-          ? DateTime.tryParse(json['departure'] as String)
-          : null,
-      arrival: json['arrival'] != null
-          ? DateTime.tryParse(json['arrival'] as String)
-          : null,
-      polyline: json['polyline'] as String?,
+      tripId: trip.tripId,
+      routeShortName: trip.routeShortName,
+      displayName: trip.displayName,
+      routeColor: segment.routeColor,
+      realTime: segment.realTime,
+      mode: segment.mode?.wireName,
+      fromName: segment.from.name,
+      toName: segment.to.name,
+      fromLat: segment.from.lat,
+      fromLon: segment.from.lon,
+      toLat: segment.to.lat,
+      toLon: segment.to.lon,
+      departure: segment.departure,
+      arrival: segment.arrival,
+      polyline: segment.polyline,
     );
   }
 }
@@ -145,119 +121,68 @@ class TransitousMapService {
     required DateTime startTime,
     required DateTime endTime,
   }) async {
-    final south = math.min(
-      bounds.southwest.latitude,
-      bounds.northeast.latitude,
-    );
-    final north = math.max(
-      bounds.southwest.latitude,
-      bounds.northeast.latitude,
-    );
-    final west = math.min(
-      bounds.southwest.longitude,
-      bounds.northeast.longitude,
-    );
-    final east = math.max(
-      bounds.southwest.longitude,
-      bounds.northeast.longitude,
-    );
-
-    final params = <String, String>{
-      'zoom': zoom.toStringAsFixed(2),
-      'min': '${south.toStringAsFixed(6)},${east.toStringAsFixed(6)}',
-      'max': '${north.toStringAsFixed(6)},${west.toStringAsFixed(6)}',
-      'startTime': formatIso8601Millis(startTime),
-      'endTime': formatIso8601Millis(endTime),
-    };
-
-    final uri = Uri.https(
-      Environment.transitousHost,
-      '/api/${Environment.mapTripsApiVersion}/map/trips',
-      params,
-    );
+    final box = _Box.of(bounds);
     try {
-      final resp = await http.get(
-        uri,
-        headers: Environment.transitousHeaders(),
+      final segments = await MapEndpoint.trips(
+        zoom: zoom,
+        minLat: box.south,
+        minLon: box.west,
+        maxLat: box.north,
+        maxLon: box.east,
+        startTime: startTime,
+        endTime: endTime,
       );
-      if (resp.statusCode != 200) {
-        throw TransitousMapServiceException(
-          'Unexpected status ${resp.statusCode}',
-        );
-      }
-      final decoded = jsonDecode(resp.body);
-      if (decoded is! List) {
-        throw TransitousMapServiceException('Unexpected trip payload');
-      }
-      final segments = <MapTripSegment>[];
-      for (final entry in decoded) {
-        if (entry is! Map<String, dynamic>) continue;
-        try {
-          segments.add(MapTripSegment.fromJson(entry));
-        } catch (_) {}
-      }
-      return segments;
-    } catch (e) {
-      if (e is TransitousMapServiceException) rethrow;
-      throw TransitousMapServiceException('Failed to fetch trips: $e');
+      return [
+        for (final segment in segments)
+          if (MapTripSegment.fromSegment(segment) case final trip?) trip,
+      ];
+    } on TransitousApiException catch (e) {
+      throw TransitousMapServiceException(e.message);
     }
   }
 
   static Future<List<MapStop>> fetchStops({
     required LatLngBounds bounds,
   }) async {
-    final south = math.min(
-      bounds.southwest.latitude,
-      bounds.northeast.latitude,
-    );
-    final north = math.max(
-      bounds.southwest.latitude,
-      bounds.northeast.latitude,
-    );
-    final west = math.min(
-      bounds.southwest.longitude,
-      bounds.northeast.longitude,
-    );
-    final east = math.max(
-      bounds.southwest.longitude,
-      bounds.northeast.longitude,
-    );
-
-    final params = <String, String>{
-      'min': '${south.toStringAsFixed(6)},${east.toStringAsFixed(6)}',
-      'max': '${north.toStringAsFixed(6)},${west.toStringAsFixed(6)}',
-    };
-
-    final uri = Uri.https(
-      Environment.transitousHost,
-      '/api/${Environment.mapStopsApiVersion}/map/stops',
-      params,
-    );
+    final box = _Box.of(bounds);
     try {
-      final resp = await http.get(
-        uri,
-        headers: Environment.transitousHeaders(),
+      final places = await MapEndpoint.stops(
+        minLat: box.south,
+        minLon: box.west,
+        maxLat: box.north,
+        maxLon: box.east,
       );
-      if (resp.statusCode != 200) {
-        throw TransitousMapServiceException(
-          'Unexpected status ${resp.statusCode}',
-        );
-      }
-      final decoded = jsonDecode(resp.body);
-      if (decoded is! List) {
-        throw TransitousMapServiceException('Unexpected stop payload');
-      }
-      final stops = <MapStop>[];
-      for (final entry in decoded) {
-        if (entry is! Map<String, dynamic>) continue;
-        try {
-          stops.add(MapStop.fromJson(entry));
-        } catch (_) {}
-      }
-      return stops;
-    } catch (e) {
-      if (e is TransitousMapServiceException) rethrow;
-      throw TransitousMapServiceException('Failed to fetch stops: $e');
+      return [
+        for (final place in places)
+          if (place.name.isNotEmpty) MapStop.fromPlace(place),
+      ];
+    } on TransitousApiException catch (e) {
+      throw TransitousMapServiceException(e.message);
     }
   }
+}
+
+/// Normalised bounding box.
+///
+/// MapLibre's bounds do not guarantee which corner is which, so the extremes
+/// are taken explicitly rather than assumed.
+class _Box {
+  const _Box({
+    required this.south,
+    required this.north,
+    required this.west,
+    required this.east,
+  });
+
+  final double south;
+  final double north;
+  final double west;
+  final double east;
+
+  factory _Box.of(LatLngBounds bounds) => _Box(
+    south: math.min(bounds.southwest.latitude, bounds.northeast.latitude),
+    north: math.max(bounds.southwest.latitude, bounds.northeast.latitude),
+    west: math.min(bounds.southwest.longitude, bounds.northeast.longitude),
+    east: math.max(bounds.southwest.longitude, bounds.northeast.longitude),
+  );
 }

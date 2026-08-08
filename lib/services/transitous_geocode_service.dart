@@ -1,7 +1,9 @@
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:maplibre_gl/maplibre_gl.dart';
-import '../environment.dart';
+
+import '../api/endpoints/geocode_endpoint.dart';
+import '../api/transitous_api_exception.dart';
+import '../models/transitous/enums.dart';
+import '../models/transitous/match.dart';
 
 class TransitousGeocodeException implements Exception {
   TransitousGeocodeException(this.message, [this.cause]);
@@ -12,6 +14,11 @@ class TransitousGeocodeException implements Exception {
   String toString() => 'TransitousGeocodeException: $message';
 }
 
+/// A geocoder result as the search UI needs it.
+///
+/// Thin view over the API's [Match]: the full result is kept in [match] so
+/// callers that want the address parts, served modes or matched token ranges
+/// can reach them, while the fields below stay as the UI has always used them.
 class TransitousLocationSuggestion {
   TransitousLocationSuggestion({
     required this.id,
@@ -21,6 +28,7 @@ class TransitousLocationSuggestion {
     required this.type,
     this.country,
     this.defaultArea,
+    this.match,
   });
 
   final String id;
@@ -30,6 +38,9 @@ class TransitousLocationSuggestion {
   final String type;
   final String? country;
   final String? defaultArea;
+
+  /// Null for suggestions built from a raw coordinate.
+  final Match? match;
 
   LatLng get latLng => LatLng(lat, lon);
 
@@ -66,34 +77,28 @@ class TransitousLocationSuggestion {
     );
   }
 
-  factory TransitousLocationSuggestion.fromJson(Map<String, dynamic> json) {
-    final areas = json['areas'];
-    String? defaultArea;
-    if (areas is List) {
-      for (final area in areas) {
-        if (area is Map<String, dynamic> && area['default'] == true) {
-          defaultArea = area['name'] as String?;
-          break;
-        }
-      }
-    }
-    final lat = (json['lat'] as num?)?.toDouble();
-    final lon = (json['lon'] as num?)?.toDouble();
-    final name = json['name'] as String?;
-    final rawId = json['id'] as String?;
-    if (lat == null || lon == null || name == null) {
+  factory TransitousLocationSuggestion.fromMatch(Match match) {
+    if (match.name.isEmpty) {
       throw TransitousGeocodeException('Incomplete suggestion payload');
     }
-    final id = (rawId == null || rawId.isEmpty) ? _fallbackId(lat, lon) : rawId;
     return TransitousLocationSuggestion(
-      id: id,
-      name: name,
-      lat: lat,
-      lon: lon,
-      type: (json['type'] as String?) ?? 'STOP',
-      country: json['country'] as String?,
-      defaultArea: defaultArea,
+      id: match.id.isEmpty ? _fallbackId(match.lat, match.lon) : match.id,
+      name: match.name,
+      lat: match.lat,
+      lon: match.lon,
+      type: match.type?.wireName ?? 'STOP',
+      country: match.country,
+      defaultArea: _defaultAreaOf(match),
+      match: match,
     );
+  }
+
+  /// The area the geocoder marks as the one to show by default.
+  static String? _defaultAreaOf(Match match) {
+    for (final area in match.areas) {
+      if (area.isDefault) return area.name;
+    }
+    return null;
   }
 }
 
@@ -122,108 +127,66 @@ class TransitousGeocodeService {
       return const <TransitousLocationSuggestion>[];
     }
 
-    final params = <String, String>{'text': query};
-
-    if (placeBias != null) {
-      params['place'] =
-          '${placeBias.latitude.toStringAsFixed(6)},${placeBias.longitude.toStringAsFixed(6)}';
-      params['placeBias'] = '5';
-    }
-
-    if (type != null) {
-      params['type'] = type;
-    }
-
-    final uri = Uri.https(
-      Environment.transitousHost,
-      '/api/${Environment.geocodeApiVersion}/geocode',
-      params,
-    );
+    final List<Match> matches;
     try {
-      final resp = await http.get(
-        uri,
-        headers: Environment.transitousHeaders(),
+      matches = await GeocodeEndpoint.geocode(
+        text: query,
+        placeLat: placeBias?.latitude,
+        placeLon: placeBias?.longitude,
+        placeBias: placeBias == null ? null : 5,
+        type: type == null ? null : LocationType.fromWire(type),
       );
-      if (resp.statusCode != 200) {
-        throw TransitousGeocodeException(
-          'Unexpected status ${resp.statusCode}',
-        );
-      }
-      final body = resp.body;
-      final decoded = jsonDecode(body);
-      if (decoded is! List) {
-        throw TransitousGeocodeException('Unexpected payload from API');
-      }
-      final seen = <String>{};
-      final suggestions = <TransitousLocationSuggestion>[];
-      final orderMap = <TransitousLocationSuggestion, int>{};
-      var order = 0;
-      for (final entry in decoded) {
-        if (entry is! Map<String, dynamic>) continue;
-        try {
-          final suggestion = TransitousLocationSuggestion.fromJson(entry);
-          final key = suggestion.dedupeKey;
-          if (seen.add(key)) {
-            suggestions.add(suggestion);
-            orderMap[suggestion] = order++;
-          }
-        } catch (_) {
-          continue;
-        }
-      }
-      suggestions.sort((a, b) {
-        final byType = a.typePriority.compareTo(b.typePriority);
-        if (byType != 0) return byType;
-        final ao = orderMap[a] ?? 0;
-        final bo = orderMap[b] ?? 0;
-        return ao.compareTo(bo);
-      });
-      return suggestions;
-    } catch (err) {
-      if (err is TransitousGeocodeException) rethrow;
-      throw TransitousGeocodeException('Failed to fetch suggestions', err);
+    } on TransitousApiException catch (e) {
+      throw TransitousGeocodeException('Failed to fetch suggestions', e);
     }
+
+    final seen = <String>{};
+    final suggestions = <TransitousLocationSuggestion>[];
+    final orderMap = <TransitousLocationSuggestion, int>{};
+    var order = 0;
+    for (final match in matches) {
+      try {
+        final suggestion = TransitousLocationSuggestion.fromMatch(match);
+        final key = suggestion.dedupeKey;
+        if (seen.add(key)) {
+          suggestions.add(suggestion);
+          orderMap[suggestion] = order++;
+        }
+      } catch (_) {
+        continue;
+      }
+    }
+    suggestions.sort((a, b) {
+      final byType = a.typePriority.compareTo(b.typePriority);
+      if (byType != 0) return byType;
+      final ao = orderMap[a] ?? 0;
+      final bo = orderMap[b] ?? 0;
+      return ao.compareTo(bo);
+    });
+    return suggestions;
   }
 
   static Future<TransitousLocationSuggestion?> reverseGeocode({
     required LatLng place,
   }) async {
-    final params = <String, String>{
-      'place':
-          '${place.latitude.toStringAsFixed(6)},${place.longitude.toStringAsFixed(6)}',
-    };
-    final uri = Uri.https(
-      Environment.transitousHost,
-      '/api/${Environment.geocodeApiVersion}/reverse-geocode',
-      params,
-    );
+    final List<Match> matches;
     try {
-      final resp = await http.get(
-        uri,
-        headers: Environment.transitousHeaders(),
+      matches = await GeocodeEndpoint.reverseGeocode(
+        lat: place.latitude,
+        lon: place.longitude,
       );
-      if (resp.statusCode != 200) {
-        throw TransitousGeocodeException(
-          'Unexpected status ${resp.statusCode}',
-        );
-      }
-      final decoded = jsonDecode(resp.body);
-      if (decoded is! List) {
-        throw TransitousGeocodeException('Unexpected payload from API');
-      }
-      for (final entry in decoded) {
-        if (entry is! Map<String, dynamic>) continue;
-        try {
-          return TransitousLocationSuggestion.fromJson(entry);
-        } catch (_) {
-          continue;
-        }
-      }
-      return null;
-    } catch (err) {
-      if (err is TransitousGeocodeException) rethrow;
-      throw TransitousGeocodeException('Failed to reverse geocode', err);
+    } on TransitousApiException catch (e) {
+      throw TransitousGeocodeException('Failed to reverse geocode', e);
     }
+
+    for (final match in matches) {
+      try {
+        return TransitousLocationSuggestion.fromMatch(match);
+      } catch (_) {
+        continue;
+      }
+    }
+    return null;
   }
 }
 
