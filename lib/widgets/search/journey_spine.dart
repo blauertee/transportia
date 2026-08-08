@@ -1,0 +1,271 @@
+import 'package:flutter/widgets.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+
+import '../../models/routing_options.dart';
+import '../../models/transitous/server_config.dart';
+import '../options/icon_controls.dart';
+import 'journey_segment.dart';
+import 'street_leg_section.dart';
+import 'transit_section.dart';
+import 'traveller_strip.dart';
+
+/// Which stage of the journey is expanded, if any.
+enum _Stage { toStation, transport, fromStation }
+
+/// The options for one search, laid out in the order the journey happens.
+///
+/// Sits between the origin and destination fields, so the three stages read
+/// as the journey rather than as a settings list: what gets you to the first
+/// stop, what you ride, and what gets you from the last one.
+class JourneySpine extends StatefulWidget {
+  const JourneySpine({
+    super.key,
+    required this.options,
+    required this.capabilities,
+    required this.onChanged,
+    required this.onAddViaStop,
+  });
+
+  final RoutingOptions options;
+
+  /// Bounds the budget sliders, so they cannot offer what the server clamps.
+  final ServerConfig capabilities;
+
+  final ValueChanged<RoutingOptions> onChanged;
+
+  /// Opens the stop picker; via stops need a search of their own.
+  final VoidCallback onAddViaStop;
+
+  @override
+  State<JourneySpine> createState() => _JourneySpineState();
+}
+
+class _JourneySpineState extends State<JourneySpine> {
+  final OptionTooltipController _tooltips = OptionTooltipController();
+
+  final Set<_Stage> _open = {};
+  bool _paceOpen = false;
+  bool _fromBudgetOpen = false;
+  bool _toBudgetOpen = false;
+  bool _modesOpen = false;
+  bool _changesOpen = false;
+
+  OptionAnnouncement? _announcement;
+  int _announcementId = 0;
+
+  @override
+  void dispose() {
+    _tooltips.dispose();
+    super.dispose();
+  }
+
+  /// Says what a tap just did, since an icon alone cannot.
+  void _announce(String text, {IconData? icon}) {
+    final id = ++_announcementId;
+    setState(() => _announcement = OptionAnnouncement(text, icon: icon));
+    Future.delayed(const Duration(milliseconds: 1900), () {
+      if (!mounted || id != _announcementId) return;
+      setState(() => _announcement = null);
+    });
+  }
+
+  /// Any change can move a control out from under the finger, and a tooltip
+  /// left behind would never be dismissed.
+  void _apply(RoutingOptions options) {
+    _tooltips.hide();
+    widget.onChanged(options);
+  }
+
+  void _toggleStage(_Stage stage) {
+    _tooltips.hide();
+    setState(() {
+      if (!_open.remove(stage)) _open.add(stage);
+    });
+  }
+
+  Duration get _mileCeiling => widget.capabilities.maxPrePostTransitTime;
+
+  @override
+  Widget build(BuildContext context) {
+    final options = widget.options;
+
+    return OptionOverlayHost(
+      controller: _tooltips,
+      announcement: _announcement,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TravellerStrip(
+            options: options,
+            tooltips: _tooltips,
+            paceOpen: _paceOpen,
+            onPacePressed: () {
+              _tooltips.hide();
+              setState(() => _paceOpen = !_paceOpen);
+            },
+            onChanged: (next) {
+              _apply(next);
+              if (next.wheelchairAccessibleOnly !=
+                  options.wheelchairAccessibleOnly) {
+                _announce(
+                  next.wheelchairAccessibleOnly
+                      ? 'Step-free only'
+                      : 'Step-free off',
+                  icon: LucideIcons.accessibility,
+                );
+              }
+            },
+          ),
+          const SizedBox(height: 16),
+          _buildStages(options),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStages(RoutingOptions options) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        JourneySegment(
+          icon: mileModeIcon(options.firstMileMode),
+          headline: 'To the station',
+          summary:
+              '${mileModeLabel(options.firstMileMode)} · '
+              '${budgetSummaryText(options.maxFirstMileTime)}',
+          isOpen: _open.contains(_Stage.toStation),
+          onToggle: () => _toggleStage(_Stage.toStation),
+          child: StreetLegSection(
+            mode: options.firstMileMode,
+            budget: options.maxFirstMileTime,
+            maxBudget: _mileCeiling,
+            tooltips: _tooltips,
+            budgetOpen: _fromBudgetOpen,
+            onBudgetPressed: () {
+              _tooltips.hide();
+              setState(() => _fromBudgetOpen = !_fromBudgetOpen);
+            },
+            onModeChanged: (mode) {
+              _apply(options.copyWith(firstMileMode: mode));
+              _announce(
+                '${mileModeLabel(mode)} to the station',
+                icon: mileModeIcon(mode),
+              );
+            },
+            onBudgetChanged: (budget) =>
+                _apply(options.copyWith(maxFirstMileTime: budget)),
+          ),
+        ),
+        const SizedBox(height: 20),
+        JourneySegment(
+          icon: LucideIcons.trainFront,
+          headline: 'Public transport',
+          summary:
+              '${options.transitSelection.summary()} · '
+              '${_changesText(options.maxTransfers)}',
+          isOpen: _open.contains(_Stage.transport),
+          onToggle: () => _toggleStage(_Stage.transport),
+          child: TransitSection(
+            options: options,
+            tooltips: _tooltips,
+            modesOpen: _modesOpen,
+            changesOpen: _changesOpen,
+            onModesPressed: () {
+              _tooltips.hide();
+              setState(() => _modesOpen = !_modesOpen);
+            },
+            onChangesPressed: () {
+              _tooltips.hide();
+              setState(() => _changesOpen = !_changesOpen);
+            },
+            onViaPressed: widget.onAddViaStop,
+            onChanged: (next) {
+              _apply(next);
+              _announceTransitChange(options, next);
+            },
+          ),
+        ),
+        const SizedBox(height: 20),
+        JourneySegment(
+          icon: mileModeIcon(options.lastMileMode),
+          headline: 'From the station',
+          summary:
+              '${mileModeLabel(options.lastMileMode)} · '
+              '${budgetSummaryText(options.maxLastMileTime)}',
+          isOpen: _open.contains(_Stage.fromStation),
+          onToggle: () => _toggleStage(_Stage.fromStation),
+          child: StreetLegSection(
+            mode: options.lastMileMode,
+            budget: options.maxLastMileTime,
+            maxBudget: _mileCeiling,
+            tooltips: _tooltips,
+            budgetOpen: _toBudgetOpen,
+            onBudgetPressed: () {
+              _tooltips.hide();
+              setState(() => _toBudgetOpen = !_toBudgetOpen);
+            },
+            onModeChanged: (mode) {
+              _apply(options.copyWith(lastMileMode: mode));
+              _announce(
+                '${mileModeLabel(mode)} from the station',
+                icon: mileModeIcon(mode),
+              );
+            },
+            onBudgetChanged: (budget) =>
+                _apply(options.copyWith(maxLastMileTime: budget)),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Names whichever transport-section control changed, so an icon-only tap
+  /// still says what it did.
+  void _announceTransitChange(RoutingOptions before, RoutingOptions after) {
+    if (after.requireBikeTransport != before.requireBikeTransport) {
+      _announce(
+        after.requireBikeTransport
+            ? 'Bike carried on board'
+            : 'Bike not carried',
+        icon: LucideIcons.bike,
+      );
+      return;
+    }
+    if (after.requireCarTransport != before.requireCarTransport) {
+      _announce(
+        after.requireCarTransport ? 'Car carried on board' : 'Car not carried',
+        icon: LucideIcons.car,
+      );
+      return;
+    }
+    if (after.noCompulsoryReservation != before.noCompulsoryReservation) {
+      _announce(
+        after.noCompulsoryReservation
+            ? 'Reservation-free only'
+            : 'Reservations allowed',
+        icon: LucideIcons.ticketX,
+      );
+      return;
+    }
+    if (after.maxTransfers != before.maxTransfers) {
+      _announce(
+        _changesText(
+          after.maxTransfers,
+        ).replaceRange(0, 1, _changesText(after.maxTransfers)[0].toUpperCase()),
+        icon: after.maxTransfers == null
+            ? LucideIcons.infinity
+            : LucideIcons.waypoints,
+      );
+      return;
+    }
+    if (after.transitSelection != before.transitSelection) {
+      _announce(after.transitSelection.summary());
+    }
+  }
+
+  static String _changesText(int? maxTransfers) {
+    if (maxTransfers == null) return 'unlimited changes';
+    if (maxTransfers == 0) return 'no changes';
+    return 'max $maxTransfers ${maxTransfers == 1 ? "change" : "changes"}';
+  }
+}
