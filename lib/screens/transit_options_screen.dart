@@ -18,7 +18,7 @@ import '../widgets/selectable_icon_card.dart';
 import 'transit_options/transit_options_backend.dart';
 import 'transit_options/transit_options_routing.dart';
 import 'transit_options/transit_options_via_stops.dart';
-import 'transit_options/transit_options_widgets.dart';
+import '../widgets/options/value_controls.dart';
 
 /// Groups the transit modes into the handful of categories worth toggling.
 ///

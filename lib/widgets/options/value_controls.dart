@@ -6,10 +6,10 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../theme/app_colors.dart';
 
-/// Controls shared by the Transit options cards.
+/// Value controls shared by the search screen and the defaults editor.
 ///
-/// Extracted from `transit_options_screen.dart` when it grew past a thousand
-/// lines, following the `map_screen/` split.
+/// They live here rather than beside either one, so neither has to import the
+/// other's folder to reuse a control.
 
 class QuickValueCard extends StatelessWidget {
   final String value;

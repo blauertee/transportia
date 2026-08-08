@@ -10,7 +10,7 @@ import '../../theme/app_colors.dart';
 import '../../utils/haptics.dart';
 import '../../widgets/custom_card.dart';
 import '../../widgets/section_title.dart';
-import 'transit_options_widgets.dart';
+import '../../widgets/options/value_controls.dart';
 
 /// Stops every journey should pass through.
 ///
