@@ -33,6 +33,10 @@ class PrefsKeys {
   static const String transitousHost = 'transitous_host';
   static const String transitousApiVersion = 'transitous_api_version';
 
+  /// All routing preferences, JSON-encoded. Supersedes the three keys below,
+  /// which are still read once to migrate existing settings.
+  static const String routingOptions = 'routing_options_v1';
+
   static const String transitWalkingSpeed = 'transit_walking_speed';
   static const String transitTransferBuffer = 'transit_transfer_buffer';
   static const String transitSelectedModes = 'transit_selected_modes';
