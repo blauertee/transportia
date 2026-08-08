@@ -10,8 +10,11 @@ import 'package:share_plus/share_plus.dart';
 import 'package:timelines_plus/timelines_plus.dart';
 
 import '../models/itinerary.dart';
+import '../models/saved_trip.dart';
+import '../models/time_selection.dart';
 import '../providers/theme_provider.dart';
-import '../services/trip_details_service.dart';
+import '../services/itinerary_refresh_service.dart';
+import '../services/transitous_geocode_service.dart';
 import '../theme/app_colors.dart';
 import '../utils/color_utils.dart';
 import '../utils/custom_page_route.dart';
@@ -23,8 +26,10 @@ import '../widgets/custom_app_bar.dart';
 import '../widgets/custom_card.dart';
 import '../widgets/info_chip.dart';
 import '../widgets/last_updated_footer.dart';
+import '../widgets/save_trip_button.dart';
 import '../widgets/stop_departures_sheet.dart';
 import 'connection_info_screen.dart';
+import 'itinerary_list_screen.dart';
 import 'itinerary_map_screen.dart';
 
 /// Opens the [StopDeparturesSheet] for a tapped stop. Passed down through
@@ -39,7 +44,25 @@ typedef OpenStopSheet =
 class ItineraryDetailScreen extends StatefulWidget {
   final Itinerary itinerary;
 
-  const ItineraryDetailScreen({super.key, required this.itinerary});
+  /// Set when this screen is showing a stored connection rather than a
+  /// result the user just searched for.
+  ///
+  /// A stored connection is stale by definition, so it is re-checked on
+  /// open and the screen says what that check found.
+  final SavedTrip? savedTrip;
+
+  /// The places the user searched for, so saving from here names the trip
+  /// the same way saving from the results list does.
+  final String? fromName;
+  final String? toName;
+
+  const ItineraryDetailScreen({
+    super.key,
+    required this.itinerary,
+    this.savedTrip,
+    this.fromName,
+    this.toName,
+  });
 
   @override
   State<ItineraryDetailScreen> createState() => _ItineraryDetailScreenState();
@@ -51,12 +74,23 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
   DateTime? _lastUpdated;
   bool _isRefreshing = false;
   Timer? _agoTicker;
+  ItineraryFreshness? _freshness;
 
   @override
   void initState() {
     super.initState();
     _itinerary = widget.itinerary;
-    _lastUpdated = DateTime.now();
+
+    if (widget.savedTrip == null) {
+      // A search result was fetched moments ago, so it is current.
+      _lastUpdated = DateTime.now();
+    } else {
+      // A saved trip has not been checked since it was stored. Say nothing
+      // about how fresh it is until a refresh comes back.
+      _lastUpdated = null;
+      unawaited(_refreshRealTimeInfo());
+    }
+
     _agoTicker = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() {});
     });
@@ -98,54 +132,118 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
   Future<void> _refreshRealTimeInfo() async {
     if (_isRefreshing) return;
 
-    final tripIds = _itinerary.legs
-        .map((leg) => leg.tripId)
-        .whereType<String>()
-        .where((id) => id.isNotEmpty)
-        .toSet();
-
-    if (tripIds.isEmpty) return;
-
     _isRefreshing = true;
-    final updates = <String, Leg>{};
-    await Future.wait(
-      tripIds.map((tripId) async {
-        try {
-          final details = await TripDetailsService.fetchTripDetails(
-            tripId: tripId,
-          );
-          if (details.legs.isNotEmpty) {
-            updates[tripId] = details.legs.first;
-          }
-        } catch (_) {}
-      }),
-    );
+    final result = await ItineraryRefreshService.refresh(_itinerary);
 
     if (!mounted) {
       _isRefreshing = false;
       return;
     }
 
-    if (updates.isNotEmpty) {
-      final newLegs = _itinerary.legs.map((leg) {
-        final fresh = leg.tripId != null ? updates[leg.tripId] : null;
-        return fresh != null ? leg.withRealTimeFrom(fresh) : leg;
-      }).toList();
-      setState(() {
-        _itinerary = _itinerary.withLegs(newLegs);
+    // Only move the timestamp when live data actually arrived, so a pull
+    // that reached nothing does not read as a successful refresh.
+    setState(() {
+      _freshness = result.freshness;
+      if (result.didRefresh) {
+        _itinerary = result.itinerary;
         _lastUpdated = DateTime.now();
-      });
-    } else {
-      setState(() => _lastUpdated = DateTime.now());
-    }
+      }
+    });
 
     _isRefreshing = false;
+  }
+
+  /// Re-plans the same journey, so the user has somewhere to go when the
+  /// stored connection no longer works.
+  void _findAlternatives(SavedTrip trip, {required DateTime departAt}) {
+    Navigator.of(context).push(
+      CustomPageRoute(
+        child: ItineraryListScreen(
+          fromLat: trip.fromLat,
+          fromLon: trip.fromLon,
+          toLat: trip.toLat,
+          toLon: trip.toLon,
+          fromSelection: TransitousLocationSuggestion(
+            id: 'saved-from-${trip.id}',
+            name: trip.fromName,
+            lat: trip.fromLat,
+            lon: trip.fromLon,
+            type: 'PLACE',
+          ),
+          toSelection: TransitousLocationSuggestion(
+            id: 'saved-to-${trip.id}',
+            name: trip.toName,
+            lat: trip.toLat,
+            lon: trip.toLon,
+            type: 'PLACE',
+          ),
+          timeSelection: TimeSelection(dateTime: departAt, isArriveBy: false),
+        ),
+      ),
+    );
+  }
+
+  /// The next time today or tomorrow that this trip's departure comes
+  /// round, for repeating a journey already taken.
+  DateTime _nextOccurrence(DateTime departure) {
+    final local = departure.toLocal();
+    final now = DateTime.now();
+    final today = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      local.hour,
+      local.minute,
+    );
+    return today.isAfter(now) ? today : today.add(const Duration(days: 1));
+  }
+
+  /// The one thing worth saying about a saved trip's current state, or null
+  /// when it is simply live and on time.
+  Widget? _savedTripNotice() {
+    final trip = widget.savedTrip;
+    if (trip == null) return null;
+
+    if (trip.isPast) {
+      return _SavedTripNotice(
+        icon: LucideIcons.history,
+        message: 'This trip has already happened.',
+        actionLabel: 'Search again',
+        onAction: () => _findAlternatives(
+          trip,
+          departAt: _nextOccurrence(trip.departureTime),
+        ),
+      );
+    }
+
+    final isCancelled =
+        _freshness == ItineraryFreshness.changed ||
+        _itinerary.legs.any((leg) => leg.cancelled);
+    if (isCancelled) {
+      return _SavedTripNotice(
+        icon: LucideIcons.triangleAlert,
+        message: 'This connection has changed.',
+        actionLabel: 'Find alternatives',
+        tint: AppColors.disrupted,
+        onAction: () => _findAlternatives(trip, departAt: trip.departureTime),
+      );
+    }
+
+    if (_freshness == ItineraryFreshness.scheduled) {
+      return _SavedTripNotice(
+        icon: LucideIcons.calendarClock,
+        message: "Scheduled times — live data isn't available yet.",
+      );
+    }
+
+    return null;
   }
 
   @override
   Widget build(BuildContext context) {
     context.watch<ThemeProvider>();
     final displayLegs = buildDisplayLegs(_itinerary.legs);
+    final savedTripNotice = _savedTripNotice();
 
     return Container(
       color: AppColors.white,
@@ -156,8 +254,14 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
             CustomAppBar(
               title: 'Itinerary Details',
               onBackButtonPressed: () => Navigator.of(context).pop(),
+              trailing: SaveTripButton(
+                itinerary: _itinerary,
+                fromName: widget.fromName ?? widget.savedTrip?.fromName,
+                toName: widget.toName ?? widget.savedTrip?.toName,
+              ),
             ),
             JourneyOverviewWidget(itinerary: _itinerary),
+            if (savedTripNotice != null) savedTripNotice,
             Expanded(
               child: Builder(
                 builder: (context) {
@@ -304,6 +408,75 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
         setState(() => _isSharing = false);
       }
     }
+  }
+}
+
+/// A single line about a saved trip's current state, with the one action
+/// that makes sense for it.
+class _SavedTripNotice extends StatelessWidget {
+  const _SavedTripNotice({
+    required this.icon,
+    required this.message,
+    this.actionLabel,
+    this.onAction,
+    this.tint,
+  });
+
+  final IconData icon;
+  final String message;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+  final Color? tint;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = tint ?? AppColors.accentOf(context);
+    final actionLabel = this.actionLabel;
+
+    return CustomCard.filled(
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      padding: const EdgeInsets.all(12),
+      backgroundColor: color.withValues(alpha: 0.1),
+      borderRadius: BorderRadius.circular(12),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppColors.black.withValues(alpha: 0.8),
+              ),
+            ),
+          ),
+          if (actionLabel != null && onAction != null) ...[
+            const SizedBox(width: 8),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onAction,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    actionLabel,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: color,
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  Icon(LucideIcons.chevronRight, size: 15, color: color),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 }
 

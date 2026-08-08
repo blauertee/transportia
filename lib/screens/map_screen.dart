@@ -19,15 +19,19 @@ import '../models/route_field_kind.dart';
 import '../models/itinerary.dart';
 import '../models/journey_stop.dart';
 import '../models/saved_place.dart';
+import '../models/saved_trip.dart';
 import '../models/stop_time.dart';
 import '../models/time_selection.dart';
 import '../models/trip_history_item.dart';
+import '../screens/itinerary_detail_screen.dart';
 import '../screens/itinerary_list_screen.dart';
 import '../screens/location_settings_screen.dart';
+import '../screens/saved_trips_screen.dart';
 import '../screens/timetables_screen.dart';
 import '../services/favorites_service.dart';
 import '../services/location_service.dart';
 import '../services/recent_trips_service.dart';
+import '../services/saved_trips_service.dart';
 import '../services/saved_places_service.dart';
 import '../services/stop_times_service.dart';
 import '../services/transitous_map_service.dart';
@@ -154,6 +158,7 @@ class _MapScreenState extends State<MapScreen>
   TimeSelection _timeSelection = TimeSelection.now();
   int _tripsRefreshKey = 0;
   List<TripHistoryItem> _recentTrips = [];
+  List<SavedTrip> _savedTrips = [];
   List<FavoritePlace> _favorites = [];
   bool _isSearching = false;
   bool _isMapReady = false;
@@ -301,6 +306,7 @@ class _MapScreenState extends State<MapScreen>
     _fromCtrl.addListener(_handleFromTextChanged);
     _toCtrl.addListener(_handleToTextChanged);
     unawaited(_loadRecentTrips());
+    unawaited(_loadSavedTrips());
     unawaited(FavoritesService.getFavorites());
   }
 
@@ -1939,6 +1945,9 @@ class _MapScreenState extends State<MapScreen>
                               timeSelection: _timeSelection,
                               recentTrips: _recentTrips,
                               onRecentTripTap: _onRecentTripTap,
+                              savedTrips: _savedTrips,
+                              onSavedTripTap: _onSavedTripTap,
+                              onSeeAllSavedTrips: _openSavedTrips,
                               tripsRefreshKey: _tripsRefreshKey,
                               favorites: _favorites,
                               onFavoriteTap: _onFavoriteTap,
@@ -2090,6 +2099,7 @@ class _MapScreenState extends State<MapScreen>
             _isSearching = false;
           });
           unawaited(_loadRecentTrips());
+          unawaited(_loadSavedTrips());
         });
 
     try {
@@ -4062,6 +4072,35 @@ class _MapScreenState extends State<MapScreen>
     setState(() {
       _recentTrips = trips;
     });
+  }
+
+  Future<void> _loadSavedTrips() async {
+    final trips = await SavedTripsService.getSavedTrips();
+    if (!mounted) return;
+    setState(() {
+      _savedTrips = trips;
+    });
+  }
+
+  void _onSavedTripTap(SavedTrip trip) {
+    Haptics.lightTick();
+    Navigator.of(context)
+        .push(
+          CustomPageRoute(
+            child: ItineraryDetailScreen(
+              itinerary: trip.itinerary,
+              savedTrip: trip,
+            ),
+          ),
+        )
+        .then((_) => unawaited(_loadSavedTrips()));
+  }
+
+  void _openSavedTrips() {
+    Haptics.lightTick();
+    Navigator.of(context)
+        .push(CustomPageRoute(child: const SavedTripsScreen()))
+        .then((_) => unawaited(_loadSavedTrips()));
   }
 
   void _onRecentTripTap(TripHistoryItem trip) {

@@ -4,10 +4,12 @@ import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/saved_place.dart';
+import '../models/saved_trip.dart';
 import '../models/trip_history_item.dart';
 import '../services/favorites_service.dart';
 import '../services/recent_trips_service.dart';
 import '../services/saved_places_service.dart';
+import '../services/saved_trips_service.dart';
 import '../theme/app_colors.dart';
 import '../utils/app_version.dart';
 import '../widgets/app_page_scaffold.dart';
@@ -49,6 +51,7 @@ class _DeveloperInfoScreenState extends State<DeveloperInfoScreen> {
       'debug_saved_places_timetable_count';
   static const String _cacheFavoritesKey = 'debug_favorites_count';
   static const String _cacheRecentTripsKey = 'debug_recent_trips_count';
+  static const String _cacheSavedTripsKey = 'debug_saved_trips_count';
 
   static const Set<String> _cacheAllowList = {
     _cacheLastOpenedKey,
@@ -56,6 +59,7 @@ class _DeveloperInfoScreenState extends State<DeveloperInfoScreen> {
     _cacheSavedTimetablePlacesKey,
     _cacheFavoritesKey,
     _cacheRecentTripsKey,
+    _cacheSavedTripsKey,
   };
 
   bool _isLoading = true;
@@ -64,6 +68,7 @@ class _DeveloperInfoScreenState extends State<DeveloperInfoScreen> {
   List<SavedPlace> _savedTimetablePlaces = [];
   List<FavoritePlace> _favorites = [];
   List<TripHistoryItem> _recentTrips = [];
+  List<SavedTrip> _savedTrips = [];
   Map<String, Object?> _storedPreferences = {};
   Map<String, Object?> _cachedPreferences = {};
 
@@ -86,6 +91,7 @@ class _DeveloperInfoScreenState extends State<DeveloperInfoScreen> {
       );
       final favorites = await FavoritesService.getFavorites();
       final recentTrips = await RecentTripsService.getRecentTrips();
+      final savedTrips = await SavedTripsService.getSavedTrips();
 
       final cache = await SharedPreferencesWithCache.create(
         cacheOptions: const SharedPreferencesWithCacheOptions(
@@ -103,6 +109,7 @@ class _DeveloperInfoScreenState extends State<DeveloperInfoScreen> {
       );
       await cache.setInt(_cacheFavoritesKey, favorites.length);
       await cache.setInt(_cacheRecentTripsKey, recentTrips.length);
+      await cache.setInt(_cacheSavedTripsKey, savedTrips.length);
 
       final cachedPrefs = <String, Object?>{};
       for (final key in cache.keys) {
@@ -115,6 +122,7 @@ class _DeveloperInfoScreenState extends State<DeveloperInfoScreen> {
         _savedTimetablePlaces = savedTimetablePlaces;
         _favorites = favorites;
         _recentTrips = recentTrips;
+        _savedTrips = savedTrips;
         _storedPreferences = storedPrefs;
         _cachedPreferences = cachedPrefs;
         _isLoading = false;
@@ -155,6 +163,7 @@ class _DeveloperInfoScreenState extends State<DeveloperInfoScreen> {
             'saved_timetable_places': _savedTimetablePlaces.length,
             'favorites': _favorites.length,
             'recent_trips': _recentTrips.length,
+            'saved_trips': _savedTrips.length,
           }),
         ),
         _sectionCard(
@@ -184,6 +193,12 @@ class _DeveloperInfoScreenState extends State<DeveloperInfoScreen> {
           child: _recentTrips.isEmpty
               ? _emptyLabel('No recent trips saved.')
               : _recentTripsList(_recentTrips),
+        ),
+        _sectionCard(
+          title: 'Saved Trips',
+          child: _savedTrips.isEmpty
+              ? _emptyLabel('No saved trips.')
+              : _savedTripsList(_savedTrips),
         ),
         _sectionCard(
           title: 'Cached Info',
@@ -378,6 +393,49 @@ class _DeveloperInfoScreenState extends State<DeveloperInfoScreen> {
           style: TextStyle(
             fontSize: 12,
             color: AppColors.black.withValues(alpha: 0.55),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _savedTripsList(List<SavedTrip> trips) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (int i = 0; i < trips.length; i++) ...[
+          _savedTripRow(trips[i]),
+          if (i != trips.length - 1) const SizedBox(height: 10),
+        ],
+      ],
+    );
+  }
+
+  Widget _savedTripRow(SavedTrip trip) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '${trip.fromName} \u2192 ${trip.toName}',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: AppColors.black,
+          ),
+        ),
+        Text(
+          '${trip.departureTime.toIso8601String()} '
+          '(saved ${trip.savedAt.toIso8601String()})',
+          style: TextStyle(
+            fontSize: 12,
+            color: AppColors.black.withValues(alpha: 0.55),
+          ),
+        ),
+        Text(
+          trip.id,
+          style: TextStyle(
+            fontSize: 11,
+            color: AppColors.black.withValues(alpha: 0.4),
           ),
         ),
       ],
