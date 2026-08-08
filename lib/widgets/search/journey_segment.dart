@@ -47,51 +47,53 @@ class JourneySegment extends StatelessWidget {
   Widget build(BuildContext context) {
     final accent = AppColors.accentOf(context);
 
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // The rail piece. Full accent while open, so the line itself says
-          // which stage you are editing.
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 3),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 160),
-              width: journeyRailWidth,
-              decoration: BoxDecoration(
-                color: isOpen ? accent : accent.withValues(alpha: 0.26),
-                borderRadius: BorderRadius.circular(999),
+    // The rail is stacked behind the content rather than laid beside it in a
+    // stretched Row: that would need an IntrinsicHeight, and the height of an
+    // expanding section is mid-animation exactly when it is asked for.
+    return Stack(
+      children: [
+        // Full accent while open, so the line itself says which stage you
+        // are editing.
+        Positioned(
+          left: 0,
+          top: 3,
+          bottom: 3,
+          width: journeyRailWidth,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            decoration: BoxDecoration(
+              color: isOpen ? accent : accent.withValues(alpha: 0.26),
+              borderRadius: BorderRadius.circular(999),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(left: journeyGutterWidth),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _SegmentHeader(
+                icon: icon,
+                headline: headline,
+                summary: summary,
+                isOpen: isOpen,
+                onToggle: onToggle,
               ),
-            ),
-          ),
-          const SizedBox(width: journeyGutterWidth - journeyRailWidth),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _SegmentHeader(
-                  icon: icon,
-                  headline: headline,
-                  summary: summary,
-                  isOpen: isOpen,
-                  onToggle: onToggle,
+              AnimatedCrossFade(
+                duration: const Duration(milliseconds: 180),
+                crossFadeState: isOpen
+                    ? CrossFadeState.showSecond
+                    : CrossFadeState.showFirst,
+                firstChild: const SizedBox(width: double.infinity),
+                secondChild: Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: child,
                 ),
-                AnimatedCrossFade(
-                  duration: const Duration(milliseconds: 180),
-                  crossFadeState: isOpen
-                      ? CrossFadeState.showSecond
-                      : CrossFadeState.showFirst,
-                  firstChild: const SizedBox(width: double.infinity),
-                  secondChild: Padding(
-                    padding: const EdgeInsets.only(top: 12),
-                    child: child,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

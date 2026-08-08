@@ -153,12 +153,19 @@ class _Bubble extends StatelessWidget {
               Icon(icon, size: 14, color: AppColors.white),
               const SizedBox(width: 7),
             ],
-            Text(
-              text,
-              style: TextStyle(
-                fontSize: compact ? 11.5 : 12.5,
-                fontWeight: FontWeight.w600,
-                color: AppColors.white,
+            // Bounded rather than flexible: a tooltip is positioned from one
+            // edge, so its row has no width to divide up. Naming a whole
+            // transport selection runs long either way, and wrapping beats
+            // spilling off the card.
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 230),
+              child: Text(
+                text,
+                style: TextStyle(
+                  fontSize: compact ? 11.5 : 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.white,
+                ),
               ),
             ),
           ],

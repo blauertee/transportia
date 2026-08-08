@@ -10,15 +10,20 @@ import '../options/icon_controls.dart';
 ///
 /// The labels say what you do rather than naming the enum: nobody asks for
 /// `CAR_PARKING`, they park and ride.
+///
+/// Covers every mode the defaults editor can store, so a mile arrives here
+/// already carrying a mode this row cannot show — a plain car would then
+/// light up nothing and be summarised as walking.
 const Map<TransitMode, ({IconData icon, String label})> mileModeChoices = {
   TransitMode.walk: (icon: LucideIcons.footprints, label: 'Walk'),
   TransitMode.bike: (icon: LucideIcons.bike, label: 'Bike'),
   TransitMode.rental: (icon: LucideIcons.scooter, label: 'Rental'),
+  TransitMode.car: (icon: LucideIcons.car, label: 'Car'),
   TransitMode.carParking: (
     icon: LucideIcons.squareParking,
     label: 'Park & ride',
   ),
-  TransitMode.carDropoff: (icon: LucideIcons.car, label: 'Drop-off'),
+  TransitMode.carDropoff: (icon: LucideIcons.carTaxiFront, label: 'Drop-off'),
 };
 
 IconData mileModeIcon(TransitMode mode) =>

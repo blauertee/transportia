@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -51,20 +53,25 @@ class _JourneySpineState extends State<JourneySpine> {
   bool _changesOpen = false;
 
   OptionAnnouncement? _announcement;
-  int _announcementId = 0;
+  Timer? _announcementTimer;
 
   @override
   void dispose() {
+    _announcementTimer?.cancel();
     _tooltips.dispose();
     super.dispose();
   }
 
   /// Says what a tap just did, since an icon alone cannot.
+  ///
+  /// Held as a timer rather than a delayed future so a quick second tap
+  /// replaces the first message instead of having it time out on top of the
+  /// new one, and so nothing is left running once the card is gone.
   void _announce(String text, {IconData? icon}) {
-    final id = ++_announcementId;
+    _announcementTimer?.cancel();
     setState(() => _announcement = OptionAnnouncement(text, icon: icon));
-    Future.delayed(const Duration(milliseconds: 1900), () {
-      if (!mounted || id != _announcementId) return;
+    _announcementTimer = Timer(const Duration(milliseconds: 1900), () {
+      if (!mounted) return;
       setState(() => _announcement = null);
     });
   }
