@@ -4,6 +4,13 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/haptics.dart';
 
+/// The rail itself.
+const double journeyRailWidth = 3;
+
+/// The gutter the rail shares with the origin and destination dots, so the
+/// line reads as one route from the first marker to the last.
+const double journeyGutterWidth = journeyRailWidth + 17;
+
 /// One stage of the journey, with its own stretch of the rail on the left.
 ///
 /// The three stages are separated by the rail breaking between them, by the
@@ -50,14 +57,14 @@ class JourneySegment extends StatelessWidget {
             padding: const EdgeInsets.symmetric(vertical: 3),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 160),
-              width: 3,
+              width: journeyRailWidth,
               decoration: BoxDecoration(
                 color: isOpen ? accent : accent.withValues(alpha: 0.26),
                 borderRadius: BorderRadius.circular(999),
               ),
             ),
           ),
-          const SizedBox(width: 17),
+          const SizedBox(width: journeyGutterWidth - journeyRailWidth),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

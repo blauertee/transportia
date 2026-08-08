@@ -4,8 +4,14 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../widgets/validation_toast.dart';
 import '../utils/haptics.dart';
 import '../theme/app_colors.dart';
+import 'search/journey_segment.dart';
 import 'skeletons/skeleton_shimmer.dart';
 
+/// The origin and destination of a search, stacked in travel order.
+///
+/// They read top to bottom rather than side by side because the search
+/// options sit *between* them: the journey's stages only mean anything in
+/// sequence, and a horizontal pair has no between to put them in.
 class RouteFieldBox extends StatefulWidget {
   const RouteFieldBox({
     super.key,
@@ -19,6 +25,7 @@ class RouteFieldBox extends StatefulWidget {
     required this.layerLink,
     this.fromLoading = false,
     this.toLoading = false,
+    this.middle,
   });
 
   final TextEditingController fromController;
@@ -31,6 +38,14 @@ class RouteFieldBox extends StatefulWidget {
   final LayerLink layerLink;
   final bool fromLoading;
   final bool toLoading;
+
+  /// Sits between the two fields, sharing their gutter so the rail continues
+  /// the line the two markers start and end.
+  ///
+  /// Callers drop it while a field has focus: the suggestions overlay hangs
+  /// off the bottom of this box, and it belongs under the field being typed
+  /// into rather than under everything the journey could be.
+  final Widget? middle;
 
   @override
   State<RouteFieldBox> createState() => _RouteFieldBoxState();
@@ -86,90 +101,45 @@ class _RouteFieldBoxState extends State<RouteFieldBox> {
           ],
         ),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Expanded(
+            _EndpointRow(
+              marker: _EndpointDot(color: widget.accentColor, filled: false),
+              trailing: _buildSwapButton(context),
               child: _InlineField(
                 controller: widget.fromController,
                 focusNode: widget.fromFocusNode,
                 hintText: 'From',
-                textAlign: TextAlign.left,
                 isFromField: true,
                 showMyLocationDefault: widget.showMyLocationDefault,
                 accentColor: widget.accentColor,
                 showLoading: widget.fromLoading,
               ),
             ),
-            SizedBox(
-              width: 44,
-              height: 36,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Container(
-                    width: 1,
-                    height: 28,
-                    color: AppColors.black.withValues(alpha: 0.1),
-                  ),
-                  GestureDetector(
-                    onTap: () {
-                      final fromText = widget.fromController.text;
-                      final toText = widget.toController.text;
-                      if (fromText.isEmpty && toText.isEmpty) {
-                        showValidationToast(
-                          context,
-                          "Supply at least one location to swap",
-                        );
-                        return;
-                      }
-                      final swapped = widget.onSwapRequested();
-                      if (!swapped) return;
-                      Haptics.mediumTick();
-                    },
-                    onTapDown: (_) => setState(() => _swapPressed = true),
-                    onTapUp: (_) => setState(() => _swapPressed = false),
-                    onTapCancel: () => setState(() => _swapPressed = false),
-                    child: AnimatedScale(
-                      duration: const Duration(milliseconds: 100),
-                      scale: _swapPressed ? 0.92 : 1.0,
-                      curve: Curves.easeOut,
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 100),
-                        width: 28,
-                        height: 28,
-                        decoration: BoxDecoration(
-                          color: _swapPressed
-                              ? AppColors.white.withValues(alpha: 0.92)
-                              : AppColors.white,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: AppColors.black.withValues(alpha: 0.1),
-                          ),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Color(0x14000000),
-                              blurRadius: 6,
-                              offset: Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Icon(
-                          LucideIcons.arrowLeftRight,
-                          size: 16,
-                          color: widget.accentColor,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+            if (widget.middle case final middle?) ...[
+              const SizedBox(height: 14),
+              middle,
+              const SizedBox(height: 14),
+            ] else
+              Padding(
+                padding: const EdgeInsets.only(
+                  left: journeyGutterWidth,
+                  top: 2,
+                  bottom: 2,
+                ),
+                child: Container(
+                  height: 1,
+                  color: AppColors.black.withValues(alpha: 0.08),
+                ),
               ),
-            ),
-            Expanded(
+            _EndpointRow(
+              marker: _EndpointDot(color: widget.accentColor, filled: true),
               child: _InlineField(
                 controller: widget.toController,
                 focusNode: widget.toFocusNode,
                 hintText: 'To',
-                textAlign: TextAlign.right,
                 isFromField: false,
                 showMyLocationDefault: false,
                 accentColor: widget.accentColor,
@@ -181,13 +151,129 @@ class _RouteFieldBoxState extends State<RouteFieldBox> {
       ),
     );
   }
+
+  Widget _buildSwapButton(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        final fromText = widget.fromController.text;
+        final toText = widget.toController.text;
+        if (fromText.isEmpty && toText.isEmpty) {
+          showValidationToast(context, "Supply at least one location to swap");
+          return;
+        }
+        final swapped = widget.onSwapRequested();
+        if (!swapped) return;
+        Haptics.mediumTick();
+      },
+      onTapDown: (_) => setState(() => _swapPressed = true),
+      onTapUp: (_) => setState(() => _swapPressed = false),
+      onTapCancel: () => setState(() => _swapPressed = false),
+      child: Semantics(
+        button: true,
+        label: 'Swap origin and destination',
+        child: AnimatedScale(
+          duration: const Duration(milliseconds: 100),
+          scale: _swapPressed ? 0.92 : 1.0,
+          curve: Curves.easeOut,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 100),
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: _swapPressed
+                  ? AppColors.white.withValues(alpha: 0.92)
+                  : AppColors.white,
+              shape: BoxShape.circle,
+              border: Border.all(color: AppColors.black.withValues(alpha: 0.1)),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x14000000),
+                  blurRadius: 6,
+                  offset: Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Icon(
+              LucideIcons.arrowUpDown,
+              size: 16,
+              color: widget.accentColor,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One endpoint: its marker in the shared gutter, its field, and whatever
+/// sits at the trailing edge.
+class _EndpointRow extends StatelessWidget {
+  const _EndpointRow({
+    required this.marker,
+    required this.child,
+    this.trailing,
+  });
+
+  final Widget marker;
+  final Widget child;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        SizedBox(
+          width: journeyGutterWidth,
+          child: Center(
+            // Onto the rail's centre line rather than the gutter's, so the
+            // markers and the rail sit on one straight line.
+            child: Transform.translate(
+              offset: const Offset(
+                -(journeyGutterWidth - journeyRailWidth) / 2,
+                0,
+              ),
+              child: marker,
+            ),
+          ),
+        ),
+        Expanded(child: child),
+        if (trailing case final trailing?) ...[
+          const SizedBox(width: 8),
+          trailing,
+        ],
+      ],
+    );
+  }
+}
+
+class _EndpointDot extends StatelessWidget {
+  const _EndpointDot({required this.color, required this.filled});
+
+  final Color color;
+
+  /// Hollow for where you start, solid for where you end — the convention
+  /// every map app already taught people.
+  final bool filled;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 9,
+      height: 9,
+      decoration: BoxDecoration(
+        color: filled ? color : AppColors.white,
+        shape: BoxShape.circle,
+        border: Border.all(color: color, width: 2),
+      ),
+    );
+  }
 }
 
 class _InlineField extends StatelessWidget {
   const _InlineField({
     required this.controller,
     required this.hintText,
-    required this.textAlign,
     required this.isFromField,
     required this.showMyLocationDefault,
     required this.accentColor,
@@ -197,7 +283,6 @@ class _InlineField extends StatelessWidget {
 
   final TextEditingController controller;
   final String hintText;
-  final TextAlign textAlign;
   final bool isFromField;
   final bool showMyLocationDefault;
   final Color accentColor;
@@ -218,9 +303,7 @@ class _InlineField extends StatelessWidget {
       tween: Tween<double>(begin: 0.0, end: wantsOverlay ? 1.0 : 0.0),
       builder: (context, overlayT, _) {
         return Stack(
-          alignment: textAlign == TextAlign.right
-              ? Alignment.centerRight
-              : Alignment.centerLeft,
+          alignment: Alignment.centerLeft,
           children: [
             CupertinoTextField(
               controller: controller,
@@ -238,7 +321,6 @@ class _InlineField extends StatelessWidget {
               ),
               style: TextStyle(color: AppColors.black, fontSize: 16),
               cursorColor: AppColors.accentOf(context),
-              textAlign: textAlign,
               decoration: null,
               padding: const EdgeInsets.symmetric(vertical: 8),
               maxLines: 1,
@@ -292,9 +374,7 @@ class _InlineField extends StatelessWidget {
                     ? const SizedBox.shrink()
                     : IgnorePointer(
                         child: Align(
-                          alignment: textAlign == TextAlign.right
-                              ? Alignment.centerRight
-                              : Alignment.centerLeft,
+                          alignment: Alignment.centerLeft,
                           child: SkeletonShimmer(
                             baseColor: const Color(0xFFE2E7EC),
                             highlightColor: const Color(0xFFF7F9FC),
