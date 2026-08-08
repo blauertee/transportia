@@ -37,7 +37,7 @@ class BackendProvider extends ChangeNotifier {
       _endpointVersions[endpoint.prefKey];
 
   static String _computeDefaultApiVersion(String host) =>
-      host.contains('transitous') ? 'v5' : 'v1';
+      host.contains('transitous') ? 'v6' : 'v1';
 
   static String _endpointPrefKey(String key) =>
       'transitous_api_version_endpoint_$key';

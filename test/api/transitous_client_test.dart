@@ -28,7 +28,7 @@ void main() {
       final uri = client.uriFor(TransitousEndpoint.plan, const {});
       expect(uri.scheme, 'https');
       expect(uri.host, 'api.transitous.org');
-      expect(uri.path, '/api/v5/plan');
+      expect(uri.path, '/api/v6/plan');
     });
 
     test('uses the fixed version for endpoints pinned below the main one', () {

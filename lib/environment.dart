@@ -19,7 +19,7 @@ class Environment {
       BackendProvider.instance?.host ?? BackendProvider.defaultHost;
 
   static String get _mainApiVersion =>
-      transitousHost.contains('transitous') ? 'v5' : 'v1';
+      transitousHost.contains('transitous') ? 'v6' : 'v1';
 
   /// API version segment for [endpoint], honouring any per-endpoint override.
   ///
