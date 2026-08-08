@@ -110,6 +110,40 @@ class TransitPlace {
       ? null
       : arrival!.difference(scheduledArrival!);
 
+  /// Merges the real-time fields of [fresh] onto this place.
+  ///
+  /// Identity and schedule stay with the original, because a refresh response
+  /// may name the place differently (or not at all) while still carrying the
+  /// live track, times and alerts.
+  TransitPlace mergeRealTime(TransitPlace fresh) => TransitPlace(
+    name: name,
+    lat: lat,
+    lon: lon,
+    stopId: stopId,
+    parentId: parentId,
+    importance: importance,
+    level: level,
+    tz: tz,
+    arrival: fresh.arrival ?? arrival,
+    departure: fresh.departure ?? departure,
+    scheduledArrival: scheduledArrival ?? fresh.scheduledArrival,
+    scheduledDeparture: scheduledDeparture ?? fresh.scheduledDeparture,
+    track: fresh.track ?? track,
+    scheduledTrack: scheduledTrack ?? fresh.scheduledTrack,
+    stopCode: stopCode,
+    description: description,
+    vertexType: vertexType,
+    pickupType: fresh.pickupType ?? pickupType,
+    dropoffType: fresh.dropoffType ?? dropoffType,
+    cancelled: fresh.cancelled,
+    alerts: fresh.alerts.isNotEmpty ? fresh.alerts : alerts,
+    flex: flex,
+    flexId: flexId,
+    flexStartPickupDropOffWindow: flexStartPickupDropOffWindow,
+    flexEndPickupDropOffWindow: flexEndPickupDropOffWindow,
+    modes: modes,
+  );
+
   factory TransitPlace.fromJson(Map<String, dynamic> json) {
     return TransitPlace(
       name: asString(json['name']) ?? '',

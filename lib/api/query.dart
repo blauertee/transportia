@@ -10,14 +10,21 @@ import '../utils/time_utils.dart';
 class Q {
   const Q._();
 
-  /// Coordinate for `/plan`, `/geocode` and `/map/*`: `lat,lon`.
+  /// Coordinate for every endpoint except the two named on
+  /// [latLonSemicolon]: `lat,lon`.
+  ///
+  /// Covers `/plan`, `/geocode`, `/map/*`, `/one-to-all` and `/rentals`.
   static String latLonComma(double lat, double lon) =>
       '${_coord(lat)},${_coord(lon)}';
 
-  /// Coordinate for `/one-to-many`, `/one-to-all` and `/rentals`: `lat;lon`.
+  /// Coordinate for `/one-to-many` and `/one-to-many-intermodal`: `lat;lon`.
   ///
-  /// These endpoints reject the comma form with
+  /// Only these two take the semicolon form; they reject the comma form with
   /// `"<value> is not a valid geo coordinate"`.
+  ///
+  /// Do not reach for this elsewhere. `/rentals` accepts semicolons without
+  /// complaint and then returns providers from the wrong part of the country,
+  /// so the mistake shows up as bad data rather than an error.
   static String latLonSemicolon(double lat, double lon) =>
       '${_coord(lat)};${_coord(lon)}';
 

@@ -13,18 +13,12 @@ Leg _leg({
   final start = DateTime.parse('2026-08-05T07:00:00Z');
   return Leg(
     mode: mode,
-    fromName: from,
-    toName: to,
+    from: TransitPlace(name: from, lat: 52.5, lon: 13.4, stopId: fromStopId),
+    to: TransitPlace(name: to, lat: 52.4, lon: 13.5, stopId: toStopId),
     startTime: start,
     endTime: start.add(const Duration(minutes: 10)),
     duration: 600,
     tripId: tripId,
-    fromStopId: fromStopId,
-    toStopId: toStopId,
-    fromLat: 52.5,
-    fromLon: 13.4,
-    toLat: 52.4,
-    toLon: 13.5,
   );
 }
 

@@ -114,16 +114,16 @@ void main() {
       // Simulate the refresh path: the transit leg comes back delayed.
       final freshTransit = Leg(
         mode: 'RAIL',
-        fromName: 'Hauptbahnhof',
-        toName: 'Airport',
+        from: const TransitPlace(
+          name: 'Hauptbahnhof',
+          lat: 52.525,
+          lon: 13.369,
+        ),
+        to: const TransitPlace(name: 'Airport', lat: 52.366, lon: 13.503),
         startTime: DateTime.parse('2026-08-05T07:19:00Z'),
         endTime: DateTime.parse('2026-08-05T07:34:00Z'),
         duration: 900,
         realTime: true,
-        fromLat: 52.525,
-        fromLon: 13.369,
-        toLat: 52.366,
-        toLon: 13.503,
       );
       final refreshed = original.withLegs([
         original.legs.first,

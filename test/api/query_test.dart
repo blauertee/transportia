@@ -3,14 +3,17 @@ import 'package:transportia/api/query.dart';
 
 void main() {
   group('coordinates', () {
-    // MOTIS is not self-consistent here: /plan, /geocode and /map/* take
-    // "lat,lon" while /one-to-many, /one-to-all and /rentals reject that form
-    // with "<value> is not a valid geo coordinate" and want "lat;lon".
-    test('comma form is used by plan, geocode and map endpoints', () {
+    // MOTIS is not self-consistent here. Everything takes "lat,lon" except
+    // /one-to-many and /one-to-many-intermodal, which reject it with
+    // "<value> is not a valid geo coordinate" and want "lat;lon".
+    //
+    // Getting this backwards is not always loud: /rentals accepts semicolons
+    // and answers with providers from the wrong region instead of erroring.
+    test('comma form is the default for every endpoint', () {
       expect(Q.latLonComma(52.52, 13.405), '52.520000,13.405000');
     });
 
-    test('semicolon form is used by reachability and rentals endpoints', () {
+    test('semicolon form is used only by the one-to-many endpoints', () {
       expect(Q.latLonSemicolon(52.52, 13.405), '52.520000;13.405000');
     });
 

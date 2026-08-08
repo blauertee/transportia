@@ -12,18 +12,14 @@ Leg _leg({
 }) {
   return Leg(
     mode: mode,
-    fromName: 'A',
-    toName: 'B',
+    from: const TransitPlace(name: 'A', lat: 52.5, lon: 13.4),
+    to: const TransitPlace(name: 'B', lat: 52.4, lon: 13.5),
     startTime: startTime,
     endTime: endTime,
     duration: endTime.difference(startTime).inSeconds,
     tripId: tripId,
     cancelled: cancelled,
     realTime: realTime,
-    fromLat: 52.5,
-    fromLon: 13.4,
-    toLat: 52.4,
-    toLon: 13.5,
   );
 }
 
