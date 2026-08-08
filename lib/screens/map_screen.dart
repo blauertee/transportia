@@ -3868,7 +3868,7 @@ class _MapScreenState extends State<MapScreen>
     if (_isQuickSettings) {
       _closeQuickSettings();
     }
-    widget.onTabChangeRequested?.call(2);
+    widget.onTabChangeRequested?.call(3);
   }
 
   Future<void> _loadStopTimesPreview(MapStop stop) async {
@@ -4098,6 +4098,10 @@ class _MapScreenState extends State<MapScreen>
 
   void _openSavedTrips() {
     Haptics.lightTick();
+    if (widget.onTabChangeRequested != null) {
+      widget.onTabChangeRequested!(2);
+      return;
+    }
     Navigator.of(context)
         .push(CustomPageRoute(child: const SavedTripsScreen()))
         .then((_) => unawaited(_loadSavedTrips()));

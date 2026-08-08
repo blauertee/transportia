@@ -67,9 +67,14 @@ class FloatingNavBar extends StatelessWidget {
                         onTap: () => onIndexChanged(1),
                       ),
                       _NavBarItem(
-                        icon: LucideIcons.user,
+                        icon: LucideIcons.bookmark,
                         isSelected: currentIndex == 2,
                         onTap: () => onIndexChanged(2),
+                      ),
+                      _NavBarItem(
+                        icon: LucideIcons.user,
+                        isSelected: currentIndex == 3,
+                        onTap: () => onIndexChanged(3),
                       ),
                     ],
                   ),
