@@ -8,6 +8,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../api/transitous_endpoint.dart';
 import '../constants/prefs_keys.dart';
 import '../environment.dart';
 import '../theme/app_colors.dart';
@@ -402,37 +403,14 @@ class _TransitOptionsScreenState extends State<TransitOptionsScreen> {
                     margin: EdgeInsets.zero,
                     child: Column(
                       children: [
-                        _EndpointVersionField(
-                          label: 'Plan',
-                          endpointKey: 'plan',
-                          defaultVersion: backendProvider.apiVersion,
-                        ),
-                        _EndpointVersionField(
-                          label: 'Trip',
-                          endpointKey: 'trip',
-                          defaultVersion: backendProvider.apiVersion,
-                        ),
-                        _EndpointVersionField(
-                          label: 'Stop times',
-                          endpointKey: 'stoptimes',
-                          defaultVersion: backendProvider.apiVersion,
-                        ),
-                        _EndpointVersionField(
-                          label: 'Map trips',
-                          endpointKey: 'mapTrips',
-                          defaultVersion: backendProvider.apiVersion,
-                        ),
-                        _EndpointVersionField(
-                          label: 'Map stops',
-                          endpointKey: 'mapStops',
-                          defaultVersion: backendProvider.mapStopsVersion,
-                        ),
-                        _EndpointVersionField(
-                          label: 'Geocode',
-                          endpointKey: 'geocode',
-                          defaultVersion: 'v1',
-                          isLast: true,
-                        ),
+                        for (final endpoint in TransitousEndpoint.values)
+                          _EndpointVersionField(
+                            endpoint: endpoint,
+                            defaultVersion: backendProvider.defaultVersionFor(
+                              endpoint,
+                            ),
+                            isLast: endpoint == TransitousEndpoint.values.last,
+                          ),
                       ],
                     ),
                   ),
@@ -691,17 +669,17 @@ IconData _categoryIcon(String label) {
 }
 
 class _EndpointVersionField extends StatefulWidget {
-  final String label;
-  final String endpointKey;
+  final TransitousEndpoint endpoint;
   final String defaultVersion;
   final bool isLast;
 
   const _EndpointVersionField({
-    required this.label,
-    required this.endpointKey,
+    required this.endpoint,
     required this.defaultVersion,
     this.isLast = false,
   });
+
+  String get label => endpoint.label;
 
   @override
   State<_EndpointVersionField> createState() => _EndpointVersionFieldState();
@@ -716,13 +694,13 @@ class _EndpointVersionFieldState extends State<_EndpointVersionField> {
     super.initState();
     final backend = context.read<BackendProvider>();
     _controller = TextEditingController(
-      text: backend.endpointVersionOverride(widget.endpointKey) ?? '',
+      text: backend.endpointVersionOverride(widget.endpoint) ?? '',
     );
     _focusNode = FocusNode();
     _focusNode.addListener(() {
       if (!_focusNode.hasFocus) {
         context.read<BackendProvider>().setEndpointVersion(
-          widget.endpointKey,
+          widget.endpoint,
           _controller.text,
         );
       }
@@ -733,7 +711,7 @@ class _EndpointVersionFieldState extends State<_EndpointVersionField> {
   void _sync() {
     if (!_focusNode.hasFocus) {
       final override = context.read<BackendProvider>().endpointVersionOverride(
-        widget.endpointKey,
+        widget.endpoint,
       );
       final newText = override ?? '';
       if (_controller.text != newText) _controller.text = newText;
@@ -752,7 +730,7 @@ class _EndpointVersionFieldState extends State<_EndpointVersionField> {
   Widget build(BuildContext context) {
     final accent = AppColors.accentOf(context);
     final backend = context.watch<BackendProvider>();
-    final isOverridden = backend.isEndpointOverridden(widget.endpointKey);
+    final isOverridden = backend.isEndpointOverridden(widget.endpoint);
 
     return Column(
       children: [
@@ -784,12 +762,12 @@ class _EndpointVersionFieldState extends State<_EndpointVersionField> {
                   autocorrect: false,
                   textInputAction: TextInputAction.done,
                   onSubmitted: (v) =>
-                      backend.setEndpointVersion(widget.endpointKey, v),
+                      backend.setEndpointVersion(widget.endpoint, v),
                 ),
               ),
               if (isOverridden)
                 GestureDetector(
-                  onTap: () => backend.resetEndpointVersion(widget.endpointKey),
+                  onTap: () => backend.resetEndpointVersion(widget.endpoint),
                   child: Padding(
                     padding: const EdgeInsets.only(left: 8),
                     child: Icon(
