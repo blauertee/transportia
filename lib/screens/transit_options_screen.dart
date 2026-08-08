@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../environment.dart';
 import '../models/routing_options.dart';
-import '../models/transitous/enums.dart';
+import '../models/transit_mode_group.dart';
 import '../models/transitous/server_config.dart';
 import '../providers/theme_provider.dart';
 import '../services/routing_options_service.dart';
@@ -18,52 +18,8 @@ import '../widgets/selectable_icon_card.dart';
 import 'transit_options/transit_options_backend.dart';
 import 'transit_options/transit_options_routing.dart';
 import 'transit_options/transit_options_via_stops.dart';
+import '../widgets/search/transit_section.dart';
 import '../widgets/options/value_controls.dart';
-
-/// Groups the transit modes into the handful of categories worth toggling.
-///
-/// A category is on when every mode in it is selected, so the underlying
-/// per-mode list stays exact while the UI stays short.
-class _ModeGroup {
-  const _ModeGroup(this.label, this.modes);
-
-  final String label;
-  final List<TransitMode> modes;
-}
-
-const List<_ModeGroup> _modeGroups = [
-  _ModeGroup('Trains', [
-    TransitMode.rail,
-    TransitMode.highspeedRail,
-    TransitMode.longDistance,
-    TransitMode.nightRail,
-    TransitMode.regionalFastRail,
-    TransitMode.regionalRail,
-  ]),
-  _ModeGroup('Metro', [TransitMode.metro, TransitMode.subway]),
-  _ModeGroup('Tram', [TransitMode.tram, TransitMode.suburban]),
-  _ModeGroup('Bus', [TransitMode.bus, TransitMode.coach, TransitMode.odm]),
-  _ModeGroup('Walking', [
-    TransitMode.walk,
-    TransitMode.bike,
-    TransitMode.rental,
-  ]),
-  _ModeGroup('Ferries', [TransitMode.ferry]),
-  _ModeGroup('Lifts', [
-    TransitMode.cableCar,
-    TransitMode.funicular,
-    TransitMode.aerialLift,
-    TransitMode.arealLift,
-  ]),
-  _ModeGroup('Flights', [TransitMode.airplane]),
-  _ModeGroup('Others', [TransitMode.transit, TransitMode.other]),
-];
-
-/// Every mode the categories cover. Selecting all of them means the same as
-/// selecting none, so the stored list is emptied in that case.
-final Set<TransitMode> _allGroupedModes = {
-  for (final group in _modeGroups) ...group.modes,
-};
 
 class TransitOptionsScreen extends StatefulWidget {
   const TransitOptionsScreen({super.key});
@@ -102,39 +58,19 @@ class _TransitOptionsScreenState extends State<TransitOptionsScreen> {
     RoutingOptionsService.save(options);
   }
 
-  /// Selected modes as a set, treating "none stored" as "all of them" so the
-  /// category toggles read correctly.
-  Set<TransitMode> get _selectedModes => _options.transitModes.isEmpty
-      ? {..._allGroupedModes}
-      : _options.transitModes.toSet();
+  /// The same grouping the search screen uses, so a default set here reads
+  /// back the way it was chosen rather than as a partly-lit row.
+  TransitSelection get _selection => _options.transitSelection;
 
-  bool _isGroupSelected(_ModeGroup group) =>
-      group.modes.every(_selectedModes.contains);
-
-  void _toggleGroup(_ModeGroup group) {
-    final selected = {..._selectedModes};
-    if (_isGroupSelected(group)) {
-      selected.removeAll(group.modes);
-    } else {
-      selected.addAll(group.modes);
-    }
-    _update(
-      _options.copyWith(
-        // Everything selected is the same as no restriction; storing the full
-        // list would pin the set to the modes this build knows about.
-        transitModes: selected.length >= _allGroupedModes.length
-            ? const []
-            : selected.toList(),
-      ),
-    );
-  }
+  void _applySelection(TransitSelection selection) =>
+      _update(_options.withTransitSelection(selection));
 
   @override
   Widget build(BuildContext context) {
     final accent = context.watch<ThemeProvider>().accentColor;
 
     return AppPageScaffold(
-      title: 'Transit options',
+      title: 'Default route options',
       scrollable: true,
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       body: Column(
@@ -143,7 +79,9 @@ class _TransitOptionsScreenState extends State<TransitOptionsScreen> {
           AppIconHeader(
             icon: LucideIcons.settings2,
             title: 'Tune your defaults',
-            subtitle: 'Improve the default routing settings.',
+            subtitle:
+                'What every new search starts from. To change one journey, '
+                'use the options on the search screen.',
             iconColor: accent,
             backgroundColor: accent.withValues(alpha: 0.12),
           ),
@@ -216,21 +154,36 @@ class _TransitOptionsScreenState extends State<TransitOptionsScreen> {
               spacing: spacing,
               runSpacing: spacing,
               children: [
-                for (final group in _modeGroups)
+                for (final group in TransitModeGroup.values)
                   SizedBox(
-                    width: group.label == 'Others'
-                        ? constraints.maxWidth
-                        : width,
+                    width: width,
                     child: SelectableIconCard(
                       label: group.label,
-                      icon: _categoryIcon(group.label),
-                      selected: _isGroupSelected(group),
-                      onTap: () => _toggleGroup(group),
+                      icon: transitGroupIcons[group]!,
+                      selected: _selection.has(group),
+                      onTap: () =>
+                          _applySelection(_selection.toggleGroup(group)),
                     ),
                   ),
               ],
             );
           },
+        ),
+        const SizedBox(height: 12),
+        // The rest of what the server can route. Rare enough that they sit
+        // below the four, common enough that hiding them entirely would make
+        // some journeys unplannable.
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final mode in TransitModeGroup.extras)
+              _ExtraModeTick(
+                label: TransitModeGroup.extraLabel(mode),
+                selected: _selection.extras.contains(mode),
+                onPressed: () => _applySelection(_selection.toggleExtra(mode)),
+              ),
+          ],
         ),
       ],
     );
@@ -379,27 +332,51 @@ class _TransitOptionsScreenState extends State<TransitOptionsScreen> {
   }
 }
 
-IconData _categoryIcon(String label) {
-  switch (label) {
-    case 'Trains':
-      return LucideIcons.trainFront;
-    case 'Metro':
-      return LucideIcons.trainFrontTunnel;
-    case 'Tram':
-      return LucideIcons.tramFront;
-    case 'Bus':
-      return LucideIcons.bus;
-    case 'Walking':
-      return LucideIcons.footprints;
-    case 'Ferries':
-      return LucideIcons.ship;
-    case 'Lifts':
-      return LucideIcons.cableCar;
-    case 'Flights':
-      return LucideIcons.planeTakeoff;
-    case 'Others':
-      return LucideIcons.sparkles;
-    default:
-      return LucideIcons.layers;
+/// One of the less common modes, as a tick rather than a card: a grid of
+/// eleven cards would bury the four that matter.
+class _ExtraModeTick extends StatelessWidget {
+  const _ExtraModeTick({
+    required this.label,
+    required this.selected,
+    required this.onPressed,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = AppColors.accentOf(context);
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onPressed,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: selected
+                ? accent.withValues(alpha: 0.13)
+                : const Color(0x00000000),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: selected
+                  ? accent
+                  : AppColors.black.withValues(alpha: 0.14),
+            ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              color: selected ? accent : AppColors.black,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

@@ -245,8 +245,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   SettingsTile(
                     icon: LucideIcons.settings2,
-                    title: 'Transit options',
-                    subtitle: 'Modes, walking speed & transfers',
+                    title: 'Default route options',
+                    subtitle: 'What every new search starts from',
                     onPressed: () {
                       Navigator.of(context).push(
                         CustomPageRoute(child: const TransitOptionsScreen()),
