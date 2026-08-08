@@ -5,6 +5,7 @@ import '../api/query.dart';
 import '../api/transitous_api_exception.dart';
 import '../models/itinerary.dart';
 import '../models/itinerary_response.dart';
+import '../models/routing_options.dart';
 import '../models/time_selection.dart';
 import 'routing_options_service.dart';
 
@@ -15,6 +16,7 @@ class RoutingService {
     required double toLat,
     required double toLon,
     TimeSelection? timeSelection,
+    RoutingOptions? options,
   }) async {
     final response = await findRoutesPaginated(
       fromLat: fromLat,
@@ -22,10 +24,14 @@ class RoutingService {
       toLat: toLat,
       toLon: toLon,
       timeSelection: timeSelection,
+      options: options,
     );
     return response.itineraries;
   }
 
+  /// [options] are the ones configured for this search. Falling back to the
+  /// stored defaults is for journeys nobody configured — a deep link, or a
+  /// second opinion on an itinerary opened from history.
   static Future<ItineraryResponse> findRoutesPaginated({
     required double fromLat,
     required double fromLon,
@@ -33,10 +39,11 @@ class RoutingService {
     required double toLon,
     TimeSelection? timeSelection,
     String? pageCursor,
+    RoutingOptions? options,
   }) async {
-    final options = await RoutingOptionsService.load();
+    final resolved = options ?? await RoutingOptionsService.load();
 
-    final params = options.toPlanParams(
+    final params = resolved.toPlanParams(
       fromPlace: Q.latLonComma(fromLat, fromLon),
       toPlace: Q.latLonComma(toLat, toLon),
       pageCursor: pageCursor,

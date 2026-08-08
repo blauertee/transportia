@@ -41,13 +41,19 @@ void main() {
 
   tearDown(() => TransitousClient.instance = original);
 
-  Future<Map<String, String>> plan({TimeSelection? timeSelection}) async {
+  Future<Map<String, String>> plan({
+    TimeSelection? timeSelection,
+    RoutingOptions? options,
+    String? pageCursor,
+  }) async {
     await RoutingService.findRoutesPaginated(
       fromLat: 52.52,
       fromLon: 13.405,
       toLat: 53.5511,
       toLon: 9.9937,
       timeSelection: timeSelection,
+      options: options,
+      pageCursor: pageCursor,
     );
     return lastRequest.queryParameters;
   }
@@ -208,5 +214,54 @@ void main() {
 
     expect(query.containsKey('time'), isFalse);
     expect(query.containsKey('arriveBy'), isFalse);
+  });
+
+  group('per-search options', () {
+    test('the options given win over the stored defaults', () async {
+      await RoutingOptionsService.save(
+        RoutingOptions.defaults.copyWith(maxTransfers: 4),
+      );
+
+      final query = await plan(
+        options: RoutingOptions.defaults.copyWith(
+          maxTransfers: 0,
+          firstMileMode: TransitMode.bike,
+          lastMileMode: TransitMode.bike,
+        ),
+      );
+
+      expect(query['maxTransfers'], '0');
+      expect(query['preTransitModes'], contains('BIKE'));
+      // Derived rather than asked for: a bike at both ends is travelling.
+      expect(query['requireBikeTransport'], 'true');
+    });
+
+    test(
+      'falls back to the stored defaults for an unconfigured journey',
+      () async {
+        await RoutingOptionsService.save(
+          RoutingOptions.defaults.copyWith(maxTransfers: 4),
+        );
+
+        // A deep link or a saved trip nobody configured a search for.
+        final query = await plan();
+
+        expect(query['maxTransfers'], '4');
+      },
+    );
+
+    test('a later page is the same search as the first', () async {
+      final options = RoutingOptions.defaults.copyWith(maxTransfers: 1);
+      await plan(options: options);
+
+      // The defaults change under it, as they would after Save as default.
+      await RoutingOptionsService.save(
+        RoutingOptions.defaults.copyWith(maxTransfers: 5),
+      );
+      final next = await plan(options: options, pageCursor: 'later|1');
+
+      expect(next['maxTransfers'], '1');
+      expect(next['pageCursor'], 'later|1');
+    });
   });
 }
