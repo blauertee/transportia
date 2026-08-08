@@ -4,6 +4,11 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:transportia/models/itinerary.dart';
 import 'package:transportia/models/stop_time.dart';
+import 'package:transportia/models/transitous/match.dart';
+import 'package:transportia/models/transitous/reachability.dart';
+import 'package:transportia/models/transitous/rentals_response.dart';
+import 'package:transportia/models/transitous/route_info.dart';
+import 'package:transportia/models/transitous/server_config.dart';
 
 /// Parses the real captures in `test/fixtures/transitous/`.
 ///
@@ -124,6 +129,132 @@ void main() {
       // /stop is the endpoint that reports which modes serve a stop.
       expect(place.modes, isNotEmpty);
       expect(place.modes, everyElement(isA<TransitMode>()));
+    });
+  });
+
+  group('geocode.json', () {
+    test('parses matches with their areas and tokens', () {
+      final matches = (_fixture('geocode.json') as List)
+          .map((m) => Match.fromJson(m as Map<String, dynamic>))
+          .toList();
+
+      expect(matches, isNotEmpty);
+      final match = matches.first;
+      expect(match.name, isNotEmpty);
+      expect(match.id, isNotEmpty);
+      expect(match.type, isNotNull);
+      expect(match.areas, isNotEmpty);
+      expect(match.tokens, isNotEmpty);
+      // The distinguishing area is what a suggestion row should show.
+      expect(match.displayArea, isNotNull);
+    });
+
+    test('reverse geocode results parse the same way', () {
+      final matches = (_fixture('reverse_geocode.json') as List)
+          .map((m) => Match.fromJson(m as Map<String, dynamic>))
+          .toList();
+      expect(matches, isNotEmpty);
+      expect(matches.first.lat, isNot(0.0));
+    });
+  });
+
+  group('map_initial.json', () {
+    test('parses the server capabilities that bound the routing options', () {
+      final view = InitialMapView.fromJson(
+        _fixture('map_initial.json') as Map<String, dynamic>,
+      );
+      final config = view.serverConfig;
+
+      expect(config.motisVersion, isNotEmpty);
+      expect(config.hasStreetRouting, isTrue);
+      expect(config.maxPrePostTransitTime, const Duration(seconds: 7200));
+      expect(config.maxDirectTime, const Duration(seconds: 21600));
+      expect(config.maxOneToManySize, greaterThan(0));
+    });
+  });
+
+  group('health.json', () {
+    test('parses the feed status', () {
+      final health = HealthStatus.fromJson(
+        _fixture('health.json') as Map<String, dynamic>,
+      );
+      expect(health.realtime, isTrue);
+      expect(health.gbfs, isTrue);
+    });
+  });
+
+  group('one_to_all.json', () {
+    test('parses reachable places', () {
+      final reachable = Reachable.fromJson(
+        _fixture('one_to_all.json') as Map<String, dynamic>,
+      );
+
+      expect(reachable.all, isNotEmpty);
+      final first = reachable.all.first;
+      expect(first.place.name, isNotEmpty);
+      expect(first.duration, greaterThan(Duration.zero));
+      expect(first.transfers, greaterThanOrEqualTo(0));
+    });
+  });
+
+  group('one_to_many.json', () {
+    test('parses durations and distances positionally', () {
+      final durations = StreetDuration.listFromJson(
+        _fixture('one_to_many.json'),
+      );
+
+      // The array is aligned with the requested coordinates, so length has to
+      // be preserved even for unreachable destinations.
+      expect(durations, hasLength(2));
+      expect(durations.first.isReachable, isTrue);
+      expect(durations.first.distance, isNotNull);
+    });
+
+    test('parses the intermodal variant', () {
+      final result = OneToManyIntermodal.fromJson(
+        _fixture('one_to_many_intermodal.json') as Map<String, dynamic>,
+      );
+      expect(result.streetDurations, isNotEmpty);
+      expect(result.transitDurations, isNotEmpty);
+      expect(result.transitDurations.first.first.transfers, 0);
+    });
+  });
+
+  group('rentals.json', () {
+    test('parses providers, stations, vehicles and zones', () {
+      final rentals = RentalsResponse.fromJson(
+        _fixture('rentals.json') as Map<String, dynamic>,
+      );
+
+      expect(rentals.providerGroups, isNotEmpty);
+      expect(rentals.providers, isNotEmpty);
+      expect(rentals.stations, isNotEmpty);
+      expect(rentals.vehicles, isNotEmpty);
+      expect(rentals.zones, isNotEmpty);
+
+      expect(rentals.providers.first.bbox, isNotNull);
+      expect(rentals.providers.first.vehicleTypes, isNotEmpty);
+      expect(rentals.stations.first.formFactors, isNotEmpty);
+      expect(rentals.zones.first.area, isNotEmpty);
+      expect(rentals.zones.first.rules, isNotEmpty);
+    });
+  });
+
+  group('map_routes.json', () {
+    test('parses routes and their shared polylines', () {
+      final response = MapRoutesResponse.fromJson(
+        _fixture('map_routes.json') as Map<String, dynamic>,
+      );
+
+      expect(response.routes, isNotEmpty);
+      expect(response.polylines, isNotEmpty);
+      expect(response.stops, isNotEmpty);
+
+      final route = response.routes.first;
+      expect(route.mode, isNotNull);
+      expect(route.transitRoutes, isNotEmpty);
+      expect(route.pathSource, isNotNull);
+      expect(response.polylines.first.routeIndexes, isNotEmpty);
     });
   });
 
