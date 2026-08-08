@@ -57,7 +57,7 @@ class FloatingNavBar extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
                       _NavBarItem(
-                        icon: LucideIcons.mapPinned,
+                        icon: LucideIcons.route,
                         isSelected: currentIndex == 0,
                         onTap: () => onIndexChanged(0),
                       ),
@@ -72,7 +72,7 @@ class FloatingNavBar extends StatelessWidget {
                         onTap: () => onIndexChanged(2),
                       ),
                       _NavBarItem(
-                        icon: LucideIcons.user,
+                        icon: LucideIcons.settings,
                         isSelected: currentIndex == 3,
                         onTap: () => onIndexChanged(3),
                       ),
