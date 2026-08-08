@@ -64,7 +64,7 @@ class TransitOptionsRequirementsCard extends StatelessWidget {
                 description: 'Only services that carry bicycles.',
                 value: options.requireBikeTransport,
                 onChanged: (value) =>
-                    onChanged(options.copyWith(requireBikeTransport: value)),
+                    onChanged(options.copyWith(bikeCarriageOverride: value)),
               ),
               OptionToggleRow(
                 icon: LucideIcons.car,
@@ -72,7 +72,7 @@ class TransitOptionsRequirementsCard extends StatelessWidget {
                 description: 'Only services that carry cars.',
                 value: options.requireCarTransport,
                 onChanged: (value) =>
-                    onChanged(options.copyWith(requireCarTransport: value)),
+                    onChanged(options.copyWith(carCarriageOverride: value)),
               ),
               OptionToggleRow(
                 icon: LucideIcons.ticketX,

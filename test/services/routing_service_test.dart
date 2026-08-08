@@ -124,8 +124,7 @@ void main() {
         const RoutingOptions(
           useRoutedTransfers: false,
           wheelchairAccessibleOnly: true,
-          requireBikeTransport: true,
-          requireCarTransport: true,
+
           noCompulsoryReservation: true,
           via: [
             ViaStopOption(
@@ -138,7 +137,7 @@ void main() {
           additionalTransferTime: Duration(minutes: 5),
           firstMileMode: TransitMode.bike,
           maxFirstMileTime: Duration(minutes: 20),
-          lastMileMode: TransitMode.walk,
+          lastMileMode: TransitMode.bike,
           maxLastMileTime: Duration(minutes: 10),
           directMode: TransitMode.bike,
           maxDirectTime: Duration(minutes: 45),
@@ -152,7 +151,6 @@ void main() {
       expect(query['useRoutedTransfers'], 'false');
       expect(query['pedestrianProfile'], 'WHEELCHAIR');
       expect(query['requireBikeTransport'], 'true');
-      expect(query['requireCarTransport'], 'true');
       expect(query['noCompulsoryReservation'], 'true');
       expect(query['via'], 'de-DELFI_de:11000:900100003');
       expect(query['viaMinimumStay'], '10');
@@ -160,7 +158,7 @@ void main() {
       expect(query['additionalTransferTime'], '5');
       expect(query['preTransitModes'], 'BIKE');
       expect(query['maxPreTransitTime'], '1200');
-      expect(query['postTransitModes'], 'WALK');
+      expect(query['postTransitModes'], 'BIKE');
       expect(query['maxPostTransitTime'], '600');
       expect(query['directModes'], 'BIKE');
       expect(query['maxDirectTime'], '2700');

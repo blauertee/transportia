@@ -22,7 +22,7 @@ void main() {
         transitModes: [TransitMode.bus, TransitMode.rail],
         useRoutedTransfers: false,
         wheelchairAccessibleOnly: true,
-        requireBikeTransport: true,
+        bikeCarriageOverride: true,
         noCompulsoryReservation: true,
         via: [
           ViaStopOption(

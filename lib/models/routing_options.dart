@@ -53,8 +53,8 @@ class RoutingOptions {
     this.transitModes = const [],
     this.useRoutedTransfers = true,
     this.wheelchairAccessibleOnly = false,
-    this.requireBikeTransport = false,
-    this.requireCarTransport = false,
+    this.bikeCarriageOverride,
+    this.carCarriageOverride,
     this.noCompulsoryReservation = false,
     this.via = const [],
     this.maxTransfers,
@@ -88,8 +88,43 @@ class RoutingOptions {
   /// Restrict street legs to step-free paths.
   final bool wheelchairAccessibleOnly;
 
-  final bool requireBikeTransport;
-  final bool requireCarTransport;
+  /// Whether to demand a service that carries bicycles.
+  ///
+  /// Null means "follow [bikeAtBothEnds]" — picking a bike at both ends says
+  /// the bike is travelling with you, so carriage follows without being asked
+  /// for. Non-null means the rider decided, and their choice holds until the
+  /// mile modes stop implying anything.
+  ///
+  /// Turning it off with a bike at both ends is a real request: the bike is
+  /// coming, but you would rather walk it onto a service that does not
+  /// advertise carriage.
+  final bool? bikeCarriageOverride;
+
+  /// Same rule for taking a car aboard, where carriage means motorail.
+  final bool? carCarriageOverride;
+
+  /// A bike is chosen for both the first and the last mile, so it travels
+  /// with the rider rather than being left at the origin station.
+  bool get bikeAtBothEnds =>
+      firstMileMode == TransitMode.bike && lastMileMode == TransitMode.bike;
+
+  bool get carAtBothEnds =>
+      firstMileMode == TransitMode.car && lastMileMode == TransitMode.car;
+
+  /// The value actually sent.
+  ///
+  /// Gated on the condition as well as the override: demanding a service that
+  /// carries bicycles while walking to the station asks for room for a bike
+  /// that is not coming. Copies clear a stale override, and this keeps a
+  /// restored one from forcing carriage with no control on screen to undo it.
+  bool get requireBikeTransport =>
+      bikeAtBothEnds && (bikeCarriageOverride ?? true);
+
+  bool get requireCarTransport =>
+      carAtBothEnds && (carCarriageOverride ?? true);
+
+  /// True when the rider set carriage by hand rather than inheriting it.
+  bool get bikeCarriageIsManual => bikeCarriageOverride != null;
 
   /// Exclude services that require a reservation.
   final bool noCompulsoryReservation;
@@ -136,8 +171,9 @@ class RoutingOptions {
     List<TransitMode>? transitModes,
     bool? useRoutedTransfers,
     bool? wheelchairAccessibleOnly,
-    bool? requireBikeTransport,
-    bool? requireCarTransport,
+    bool? bikeCarriageOverride,
+    bool? carCarriageOverride,
+    bool clearCarriageOverrides = false,
     bool? noCompulsoryReservation,
     List<ViaStopOption>? via,
     int? maxTransfers,
@@ -153,13 +189,24 @@ class RoutingOptions {
     double? cyclingSpeedKmh,
     ElevationCosts? elevationCosts,
   }) {
+    final nextFirst = firstMileMode ?? this.firstMileMode;
+    final nextLast = lastMileMode ?? this.lastMileMode;
+    final keepsBike =
+        nextFirst == TransitMode.bike && nextLast == TransitMode.bike;
+    final keepsCar =
+        nextFirst == TransitMode.car && nextLast == TransitMode.car;
+
     return RoutingOptions(
       transitModes: transitModes ?? this.transitModes,
       useRoutedTransfers: useRoutedTransfers ?? this.useRoutedTransfers,
       wheelchairAccessibleOnly:
           wheelchairAccessibleOnly ?? this.wheelchairAccessibleOnly,
-      requireBikeTransport: requireBikeTransport ?? this.requireBikeTransport,
-      requireCarTransport: requireCarTransport ?? this.requireCarTransport,
+      bikeCarriageOverride: clearCarriageOverrides || !keepsBike
+          ? null
+          : (bikeCarriageOverride ?? this.bikeCarriageOverride),
+      carCarriageOverride: clearCarriageOverrides || !keepsCar
+          ? null
+          : (carCarriageOverride ?? this.carCarriageOverride),
       noCompulsoryReservation:
           noCompulsoryReservation ?? this.noCompulsoryReservation,
       via: via ?? this.via,
@@ -238,8 +285,8 @@ class RoutingOptions {
     'transitModes': [for (final mode in transitModes) mode.wireName],
     'useRoutedTransfers': useRoutedTransfers,
     'wheelchairAccessibleOnly': wheelchairAccessibleOnly,
-    'requireBikeTransport': requireBikeTransport,
-    'requireCarTransport': requireCarTransport,
+    'bikeCarriageOverride': bikeCarriageOverride,
+    'carCarriageOverride': carCarriageOverride,
     'noCompulsoryReservation': noCompulsoryReservation,
     'via': [for (final stop in via) stop.toJson()],
     'maxTransfers': maxTransfers,
@@ -266,11 +313,14 @@ class RoutingOptions {
       wheelchairAccessibleOnly:
           json['wheelchairAccessibleOnly'] as bool? ??
           fallback.wheelchairAccessibleOnly,
-      requireBikeTransport:
-          json['requireBikeTransport'] as bool? ??
-          fallback.requireBikeTransport,
-      requireCarTransport:
-          json['requireCarTransport'] as bool? ?? fallback.requireCarTransport,
+      // Older stores wrote a plain flag; a true one is a decision worth
+      // keeping, a false one is indistinguishable from the default.
+      bikeCarriageOverride:
+          json['bikeCarriageOverride'] as bool? ??
+          (json['requireBikeTransport'] == true ? true : null),
+      carCarriageOverride:
+          json['carCarriageOverride'] as bool? ??
+          (json['requireCarTransport'] == true ? true : null),
       noCompulsoryReservation:
           json['noCompulsoryReservation'] as bool? ??
           fallback.noCompulsoryReservation,
