@@ -1,53 +1,69 @@
-import 'dart:async';
-import 'dart:math' as math;
-
-import 'package:transportia/providers/backend_provider.dart';
-import 'package:transportia/providers/theme_provider.dart';
-import 'package:flutter/cupertino.dart';
+import 'package:flutter/widgets.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
-import '../api/transitous_endpoint.dart';
-import '../constants/prefs_keys.dart';
 import '../environment.dart';
+import '../models/routing_options.dart';
+import '../models/transitous/enums.dart';
+import '../models/transitous/server_config.dart';
+import '../providers/theme_provider.dart';
+import '../services/routing_options_service.dart';
+import '../services/server_capabilities_service.dart';
 import '../theme/app_colors.dart';
 import '../widgets/app_icon_header.dart';
 import '../widgets/app_page_scaffold.dart';
 import '../widgets/custom_card.dart';
-import '../widgets/selectable_icon_card.dart';
 import '../widgets/section_title.dart';
+import '../widgets/selectable_icon_card.dart';
+import 'transit_options/transit_options_backend.dart';
+import 'transit_options/transit_options_routing.dart';
+import 'transit_options/transit_options_via_stops.dart';
+import 'transit_options/transit_options_widgets.dart';
 
-const List<String> _transitModeOptions = [
-  'WALK',
-  'BIKE',
-  'RENTAL',
-  'CAR',
-  'CAR_PARKING',
-  'CAR_DROPOFF',
-  'ODM',
-  'FLEX',
-  'TRANSIT',
-  'TRAM',
-  'SUBWAY',
-  'FERRY',
-  'AIRPLANE',
-  'SUBURBAN',
-  'BUS',
-  'COACH',
-  'RAIL',
-  'HIGHSPEED_RAIL',
-  'LONG_DISTANCE',
-  'NIGHT_RAIL',
-  'REGIONAL_FAST_RAIL',
-  'REGIONAL_RAIL',
-  'CABLE_CAR',
-  'FUNICULAR',
-  'AERIAL_LIFT',
-  'AREAL_LIFT',
-  'OTHER',
-  'METRO',
+/// Groups the transit modes into the handful of categories worth toggling.
+///
+/// A category is on when every mode in it is selected, so the underlying
+/// per-mode list stays exact while the UI stays short.
+class _ModeGroup {
+  const _ModeGroup(this.label, this.modes);
+
+  final String label;
+  final List<TransitMode> modes;
+}
+
+const List<_ModeGroup> _modeGroups = [
+  _ModeGroup('Trains', [
+    TransitMode.rail,
+    TransitMode.highspeedRail,
+    TransitMode.longDistance,
+    TransitMode.nightRail,
+    TransitMode.regionalFastRail,
+    TransitMode.regionalRail,
+  ]),
+  _ModeGroup('Metro', [TransitMode.metro, TransitMode.subway]),
+  _ModeGroup('Tram', [TransitMode.tram, TransitMode.suburban]),
+  _ModeGroup('Bus', [TransitMode.bus, TransitMode.coach, TransitMode.odm]),
+  _ModeGroup('Walking', [
+    TransitMode.walk,
+    TransitMode.bike,
+    TransitMode.rental,
+  ]),
+  _ModeGroup('Ferries', [TransitMode.ferry]),
+  _ModeGroup('Lifts', [
+    TransitMode.cableCar,
+    TransitMode.funicular,
+    TransitMode.aerialLift,
+    TransitMode.arealLift,
+  ]),
+  _ModeGroup('Flights', [TransitMode.airplane]),
+  _ModeGroup('Others', [TransitMode.transit, TransitMode.other]),
 ];
+
+/// Every mode the categories cover. Selecting all of them means the same as
+/// selecting none, so the stored list is emptied in that case.
+final Set<TransitMode> _allGroupedModes = {
+  for (final group in _modeGroups) ...group.modes,
+};
 
 class TransitOptionsScreen extends StatefulWidget {
   const TransitOptionsScreen({super.key});
@@ -57,123 +73,65 @@ class TransitOptionsScreen extends StatefulWidget {
 }
 
 class _TransitOptionsScreenState extends State<TransitOptionsScreen> {
-  final Set<String> _selectedModes = {..._transitModeOptions};
-  double _walkingSpeed = 4.8;
-  int _transferBuffer = 0;
-  bool _advancedExpanded = false;
-  bool _endpointVersionsExpanded = false;
-  late final TextEditingController _hostController;
-  late final FocusNode _hostFocusNode;
-  late final TextEditingController _versionController;
-  late final FocusNode _versionFocusNode;
+  RoutingOptions _options = RoutingOptions.defaults;
+  ServerConfig _capabilities = ServerConfig.fallback;
+  bool _loaded = false;
 
   @override
   void initState() {
     super.initState();
-    final backend = context.read<BackendProvider>();
-    _hostController = TextEditingController(text: backend.host);
-    _versionController = TextEditingController(text: backend.apiVersion);
-    _hostFocusNode = FocusNode();
-    _versionFocusNode = FocusNode();
-    _hostFocusNode.addListener(() {
-      if (!_hostFocusNode.hasFocus) {
-        context.read<BackendProvider>().setHost(_hostController.text);
-      }
-    });
-    _versionFocusNode.addListener(() {
-      if (!_versionFocusNode.hasFocus) {
-        context.read<BackendProvider>().setApiVersion(_versionController.text);
-      }
-    });
-    backend.addListener(_syncBackendControllers);
-    _loadSettings();
+    _load();
   }
 
-  void _syncBackendControllers() {
-    final backend = context.read<BackendProvider>();
-    if (!_hostFocusNode.hasFocus) _hostController.text = backend.host;
-    if (!_versionFocusNode.hasFocus)
-      _versionController.text = backend.apiVersion;
-  }
-
-  @override
-  void dispose() {
-    context.read<BackendProvider>().removeListener(_syncBackendControllers);
-    _hostController.dispose();
-    _hostFocusNode.dispose();
-    _versionController.dispose();
-    _versionFocusNode.dispose();
-    super.dispose();
-  }
-
-  Future<void> _loadSettings() async {
-    final prefs = SharedPreferencesAsync();
-    final speed = await prefs.getDouble(PrefsKeys.transitWalkingSpeed);
-    final buffer = await prefs.getInt(PrefsKeys.transitTransferBuffer);
-    final modes = await prefs.getStringList(PrefsKeys.transitSelectedModes);
+  Future<void> _load() async {
+    final options = await RoutingOptionsService.load();
+    // Falls back to the published Transitous limits when unavailable, so the
+    // controls stay usable offline.
+    final capabilities = await ServerCapabilitiesService.ensureLoaded();
     if (!mounted) return;
     setState(() {
-      if (speed != null) _walkingSpeed = speed;
-      if (buffer != null) _transferBuffer = buffer;
-      if (modes != null) {
-        _selectedModes
-          ..clear()
-          ..addAll(modes);
-      }
+      _options = options;
+      _capabilities = capabilities;
+      _loaded = true;
     });
   }
 
-  Future<void> _saveWalkingSpeed() async {
-    final prefs = SharedPreferencesAsync();
-    await prefs.setDouble(PrefsKeys.transitWalkingSpeed, _walkingSpeed);
+  void _update(RoutingOptions options) {
+    if (options == _options) return;
+    setState(() => _options = options);
+    RoutingOptionsService.save(options);
   }
 
-  Future<void> _saveTransferBuffer() async {
-    final prefs = SharedPreferencesAsync();
-    await prefs.setInt(PrefsKeys.transitTransferBuffer, _transferBuffer);
-  }
+  /// Selected modes as a set, treating "none stored" as "all of them" so the
+  /// category toggles read correctly.
+  Set<TransitMode> get _selectedModes => _options.transitModes.isEmpty
+      ? {..._allGroupedModes}
+      : _options.transitModes.toSet();
 
-  Future<void> _saveSelectedModes() async {
-    final prefs = SharedPreferencesAsync();
-    await prefs.setStringList(
-      PrefsKeys.transitSelectedModes,
-      _selectedModes.toList(),
+  bool _isGroupSelected(_ModeGroup group) =>
+      group.modes.every(_selectedModes.contains);
+
+  void _toggleGroup(_ModeGroup group) {
+    final selected = {..._selectedModes};
+    if (_isGroupSelected(group)) {
+      selected.removeAll(group.modes);
+    } else {
+      selected.addAll(group.modes);
+    }
+    _update(
+      _options.copyWith(
+        // Everything selected is the same as no restriction; storing the full
+        // list would pin the set to the modes this build knows about.
+        transitModes: selected.length >= _allGroupedModes.length
+            ? const []
+            : selected.toList(),
+      ),
     );
   }
 
-  static const double _walkingMin = 2.0;
-  static const double _walkingMax = 7.0;
-  static const double _walkingStep = 0.1;
-  static const int _transferMin = 0;
-  static const int _transferMax = 30;
-  static const List<_ModeGroup> _modeGroups = [
-    _ModeGroup('Trains', [
-      'RAIL',
-      'HIGHSPEED_RAIL',
-      'LONG_DISTANCE',
-      'NIGHT_RAIL',
-      'REGIONAL_FAST_RAIL',
-      'REGIONAL_RAIL',
-    ]),
-    _ModeGroup('Metro', ['METRO', 'SUBWAY']),
-    _ModeGroup('Tram', ['TRAM', 'SUBURBAN']),
-    _ModeGroup('Bus', ['BUS', 'COACH', 'ODM']),
-    _ModeGroup('Walking', ['WALK', 'BIKE', 'RENTAL']),
-    _ModeGroup('Ferries', ['FERRY']),
-    _ModeGroup('Lifts', [
-      'CABLE_CAR',
-      'FUNICULAR',
-      'AERIAL_LIFT',
-      'AREAL_LIFT',
-    ]),
-    _ModeGroup('Flights', ['AIRPLANE']),
-    _ModeGroup('Others', ['TRANSIT', 'OTHER']),
-  ];
-
   @override
   Widget build(BuildContext context) {
-    final themeProvider = context.watch<ThemeProvider>();
-    final selectedAccentColor = themeProvider.accentColor;
+    final accent = context.watch<ThemeProvider>().accentColor;
 
     return AppPageScaffold(
       title: 'Transit options',
@@ -186,18 +144,49 @@ class _TransitOptionsScreenState extends State<TransitOptionsScreen> {
             icon: LucideIcons.settings2,
             title: 'Tune your defaults',
             subtitle: 'Improve the default routing settings.',
-            iconColor: selectedAccentColor,
-            backgroundColor: selectedAccentColor.withValues(alpha: 0.12),
+            iconColor: accent,
+            backgroundColor: accent.withValues(alpha: 0.12),
           ),
           const SizedBox(height: 28),
-          _buildModesCard(context),
-          const SizedBox(height: 28),
-          _buildWalkingCard(context),
-          const SizedBox(height: 28),
-          _buildTransferCard(context),
-          if (Environment.showBackendSettings) ...[
+          // Everything below reads _options, so waiting avoids showing
+          // defaults for a frame and writing them back on the first tap.
+          if (!_loaded)
+            const SizedBox(height: 200)
+          else ...[
+            _buildModesCard(context),
             const SizedBox(height: 28),
-            _buildAdvancedCard(context),
+            TransitOptionsRequirementsCard(
+              options: _options,
+              capabilities: _capabilities,
+              onChanged: _update,
+            ),
+            const SizedBox(height: 28),
+            TransitOptionsViaStopsCard(options: _options, onChanged: _update),
+            const SizedBox(height: 28),
+            TransitOptionsTransferLimitCard(
+              options: _options,
+              onChanged: _update,
+            ),
+            const SizedBox(height: 28),
+            _buildTransferBufferCard(context),
+            const SizedBox(height: 28),
+            TransitOptionsStreetLegsCard(
+              options: _options,
+              capabilities: _capabilities,
+              onChanged: _update,
+            ),
+            const SizedBox(height: 28),
+            _buildWalkingCard(context),
+            const SizedBox(height: 28),
+            TransitOptionsTerrainCard(
+              options: _options,
+              capabilities: _capabilities,
+              onChanged: _update,
+            ),
+            if (Environment.showBackendSettings) ...[
+              const SizedBox(height: 28),
+              const TransitOptionsBackendCard(),
+            ],
           ],
           const SizedBox(height: 16),
         ],
@@ -205,233 +194,14 @@ class _TransitOptionsScreenState extends State<TransitOptionsScreen> {
     );
   }
 
-  Widget _buildAdvancedCard(BuildContext context) {
-    final accent = AppColors.accentOf(context);
-    final backendProvider = context.watch<BackendProvider>();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () => setState(() => _advancedExpanded = !_advancedExpanded),
-          child: Row(
-            children: [
-              const SectionTitle(text: 'Advanced'),
-              const Spacer(),
-              AnimatedRotation(
-                turns: _advancedExpanded ? 0.5 : 0.0,
-                duration: const Duration(milliseconds: 200),
-                child: Icon(
-                  LucideIcons.chevronDown,
-                  size: 18,
-                  color: AppColors.black.withValues(alpha: 0.4),
-                ),
-              ),
-            ],
-          ),
-        ),
-        AnimatedCrossFade(
-          duration: const Duration(milliseconds: 200),
-          crossFadeState: _advancedExpanded
-              ? CrossFadeState.showSecond
-              : CrossFadeState.showFirst,
-          firstChild: const SizedBox.shrink(),
-          secondChild: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 12),
-              Text(
-                'Backend API host',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: AppColors.black.withValues(alpha: 0.6),
-                ),
-              ),
-              const SizedBox(height: 8),
-              CustomCard(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 4,
-                ),
-                margin: const EdgeInsets.all(0),
-                child: Row(
-                  children: [
-                    Icon(LucideIcons.server, size: 16, color: accent),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: CupertinoTextField.borderless(
-                        controller: _hostController,
-                        focusNode: _hostFocusNode,
-                        placeholder: BackendProvider.defaultHost,
-                        style: TextStyle(fontSize: 15, color: AppColors.black),
-                        placeholderStyle: TextStyle(
-                          fontSize: 15,
-                          color: AppColors.black.withValues(alpha: 0.3),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        autocorrect: false,
-                        keyboardType: TextInputType.url,
-                        textInputAction: TextInputAction.done,
-                        onSubmitted: (value) => backendProvider.setHost(value),
-                      ),
-                    ),
-                    if (backendProvider.isCustomHost)
-                      GestureDetector(
-                        onTap: () => backendProvider.resetHost(),
-                        child: Padding(
-                          padding: const EdgeInsets.only(left: 8),
-                          child: Icon(
-                            LucideIcons.rotateCcw,
-                            size: 16,
-                            color: AppColors.black.withValues(alpha: 0.35),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Hostname only, without https:// or trailing slash.',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: AppColors.black.withValues(alpha: 0.4),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'API version',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: AppColors.black.withValues(alpha: 0.6),
-                ),
-              ),
-              const SizedBox(height: 8),
-              CustomCard(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 4,
-                ),
-                margin: const EdgeInsets.all(0),
-                child: Row(
-                  children: [
-                    Icon(LucideIcons.layers, size: 16, color: accent),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: CupertinoTextField.borderless(
-                        controller: _versionController,
-                        focusNode: _versionFocusNode,
-                        placeholder: backendProvider.apiVersion,
-                        style: TextStyle(fontSize: 15, color: AppColors.black),
-                        placeholderStyle: TextStyle(
-                          fontSize: 15,
-                          color: AppColors.black.withValues(alpha: 0.3),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        autocorrect: false,
-                        textInputAction: TextInputAction.done,
-                        onSubmitted: (value) =>
-                            backendProvider.setApiVersion(value),
-                      ),
-                    ),
-                    if (backendProvider.isCustomApiVersion)
-                      GestureDetector(
-                        onTap: () => backendProvider.resetApiVersion(),
-                        child: Padding(
-                          padding: const EdgeInsets.only(left: 8),
-                          child: Icon(
-                            LucideIcons.rotateCcw,
-                            size: 16,
-                            color: AppColors.black.withValues(alpha: 0.35),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Affects routing, stop times and map trips. Map stops and geocode stay on v1 unless overridden below. Auto: v5 for transitous hosts, v1 otherwise.',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: AppColors.black.withValues(alpha: 0.4),
-                ),
-              ),
-              const SizedBox(height: 16),
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => setState(
-                  () => _endpointVersionsExpanded = !_endpointVersionsExpanded,
-                ),
-                child: Row(
-                  children: [
-                    Text(
-                      'Per-endpoint versions',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.black.withValues(alpha: 0.7),
-                      ),
-                    ),
-                    const Spacer(),
-                    AnimatedRotation(
-                      turns: _endpointVersionsExpanded ? 0.5 : 0.0,
-                      duration: const Duration(milliseconds: 200),
-                      child: Icon(
-                        LucideIcons.chevronDown,
-                        size: 16,
-                        color: AppColors.black.withValues(alpha: 0.35),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              AnimatedCrossFade(
-                duration: const Duration(milliseconds: 200),
-                crossFadeState: _endpointVersionsExpanded
-                    ? CrossFadeState.showSecond
-                    : CrossFadeState.showFirst,
-                firstChild: const SizedBox.shrink(),
-                secondChild: Padding(
-                  padding: const EdgeInsets.only(top: 10),
-                  child: CustomCard(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
-                    ),
-                    margin: EdgeInsets.zero,
-                    child: Column(
-                      children: [
-                        for (final endpoint in TransitousEndpoint.values)
-                          _EndpointVersionField(
-                            endpoint: endpoint,
-                            defaultVersion: backendProvider.defaultVersionFor(
-                              endpoint,
-                            ),
-                            isLast: endpoint == TransitousEndpoint.values.last,
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _buildModesCard(BuildContext context) {
-    final subtitle = 'Select those you wish to use.';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SectionTitle(text: 'Transit modes'),
         const SizedBox(height: 12),
         Text(
-          subtitle,
+          'Select those you wish to use.',
           style: TextStyle(
             fontSize: 14,
             color: AppColors.black.withValues(alpha: 0.6),
@@ -441,22 +211,21 @@ class _TransitOptionsScreenState extends State<TransitOptionsScreen> {
         LayoutBuilder(
           builder: (context, constraints) {
             const spacing = 12.0;
-            final double width = (constraints.maxWidth - spacing) / 2;
-            final totalWidth = constraints.maxWidth;
+            final width = (constraints.maxWidth - spacing) / 2;
             return Wrap(
               spacing: spacing,
               runSpacing: spacing,
               children: [
                 for (final group in _modeGroups)
                   SizedBox(
-                    width: group.label == 'Others' ? totalWidth : width,
+                    width: group.label == 'Others'
+                        ? constraints.maxWidth
+                        : width,
                     child: SelectableIconCard(
                       label: group.label,
                       icon: _categoryIcon(group.label),
-                      selected: _isGroupFullySelected(group),
-                      onTap: () {
-                        setState(() => _toggleGroupModes(group));
-                      },
+                      selected: _isGroupSelected(group),
+                      onTap: () => _toggleGroup(group),
                     ),
                   ),
               ],
@@ -475,10 +244,9 @@ class _TransitOptionsScreenState extends State<TransitOptionsScreen> {
       children: [
         const SectionTitle(text: 'Walking pace'),
         const SizedBox(height: 12),
-
         CustomCard(
           padding: const EdgeInsets.all(16),
-          margin: const EdgeInsets.all(0),
+          margin: EdgeInsets.zero,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -487,7 +255,7 @@ class _TransitOptionsScreenState extends State<TransitOptionsScreen> {
                   Icon(LucideIcons.timer, size: 18, color: accent),
                   const SizedBox(width: 8),
                   Text(
-                    '${_walkingSpeed.toStringAsFixed(1)} km/h',
+                    '${_options.walkingSpeedKmh.toStringAsFixed(1)} km/h',
                     style: TextStyle(
                       fontSize: 17,
                       fontWeight: FontWeight.w700,
@@ -499,35 +267,35 @@ class _TransitOptionsScreenState extends State<TransitOptionsScreen> {
               const SizedBox(height: 8),
               Row(
                 children: [
-                  for (int i = 0; i < presets.length; i++) ...[
+                  for (var i = 0; i < presets.length; i++) ...[
                     if (i > 0) const SizedBox(width: 12),
                     Expanded(
-                      child: _QuickValueCard(
+                      child: QuickValueCard(
                         value: '${presets[i].toStringAsFixed(1)} km/h',
-                        selected: (_walkingSpeed - presets[i]).abs() < 0.05,
-                        onTap: () {
-                          setState(() => _walkingSpeed = presets[i]);
-                          _saveWalkingSpeed();
-                        },
+                        selected:
+                            (_options.walkingSpeedKmh - presets[i]).abs() <
+                            0.05,
+                        onTap: () => _update(
+                          _options.copyWith(walkingSpeedKmh: presets[i]),
+                        ),
                       ),
                     ),
                   ],
                 ],
               ),
               const SizedBox(height: 16),
-              _StepperSelector(
-                value: _walkingSpeed,
-                minValue: _walkingMin,
-                maxValue: _walkingMax,
-                step: _walkingStep,
+              StepperSelector(
+                value: _options.walkingSpeedKmh,
+                minValue: 2.0,
+                maxValue: 7.0,
+                step: 0.1,
                 label: 'km/h',
-                displayBuilder: (val) => val.toStringAsFixed(1),
-                onChanged: (val) {
-                  setState(() {
-                    _walkingSpeed = double.parse(val.toStringAsFixed(1));
-                  });
-                  _saveWalkingSpeed();
-                },
+                displayBuilder: (value) => value.toStringAsFixed(1),
+                onChanged: (value) => _update(
+                  _options.copyWith(
+                    walkingSpeedKmh: double.parse(value.toStringAsFixed(1)),
+                  ),
+                ),
               ),
             ],
           ),
@@ -536,18 +304,17 @@ class _TransitOptionsScreenState extends State<TransitOptionsScreen> {
     );
   }
 
-  Widget _buildTransferCard(BuildContext context) {
-    final presets = [0, 3, 5, 10];
+  Widget _buildTransferBufferCard(BuildContext context) {
+    const presets = [0, 3, 5, 10];
+    final minutes = _options.additionalTransferTime.inMinutes;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SectionTitle(text: 'Transfers'),
+        const SectionTitle(text: 'Transfer buffer'),
         const SizedBox(height: 12),
-
         CustomCard(
           padding: const EdgeInsets.all(16),
-          margin: const EdgeInsets.all(0),
-
+          margin: EdgeInsets.zero,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -560,9 +327,7 @@ class _TransitOptionsScreenState extends State<TransitOptionsScreen> {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    _transferBuffer == 0
-                        ? 'No extra time'
-                        : '${_transferBuffer} minute buffer',
+                    minutes == 0 ? 'No extra time' : '$minutes minute buffer',
                     style: TextStyle(
                       fontSize: 17,
                       fontWeight: FontWeight.w700,
@@ -571,36 +336,40 @@ class _TransitOptionsScreenState extends State<TransitOptionsScreen> {
                   ),
                 ],
               ),
-              SizedBox(height: 8),
+              const SizedBox(height: 8),
               Row(
                 children: [
-                  for (int i = 0; i < presets.length; i++) ...[
+                  for (var i = 0; i < presets.length; i++) ...[
                     if (i > 0) const SizedBox(width: 12),
                     Expanded(
-                      child: _QuickValueCard(
+                      child: QuickValueCard(
                         value: '${presets[i]} min',
-                        selected: _transferBuffer == presets[i],
-                        onTap: () {
-                          setState(() => _transferBuffer = presets[i]);
-                          _saveTransferBuffer();
-                        },
+                        selected: minutes == presets[i],
+                        onTap: () => _update(
+                          _options.copyWith(
+                            additionalTransferTime: Duration(
+                              minutes: presets[i],
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ],
                 ],
               ),
               const SizedBox(height: 16),
-              _StepperSelector(
-                value: _transferBuffer.toDouble(),
-                minValue: _transferMin.toDouble(),
-                maxValue: _transferMax.toDouble(),
+              StepperSelector(
+                value: minutes.toDouble(),
+                minValue: 0,
+                maxValue: 30,
                 step: 1,
                 label: 'min',
-                displayBuilder: (val) => val.round().toString(),
-                onChanged: (val) {
-                  setState(() => _transferBuffer = val.round());
-                  _saveTransferBuffer();
-                },
+                displayBuilder: (value) => value.round().toString(),
+                onChanged: (value) => _update(
+                  _options.copyWith(
+                    additionalTransferTime: Duration(minutes: value.round()),
+                  ),
+                ),
               ),
             ],
           ),
@@ -608,39 +377,6 @@ class _TransitOptionsScreenState extends State<TransitOptionsScreen> {
       ],
     );
   }
-
-  bool _isGroupFullySelected(_ModeGroup group) {
-    for (final mode in group.modes) {
-      if (!_selectedModes.contains(mode)) return false;
-    }
-    return true;
-  }
-
-  void _toggleGroupModes(_ModeGroup group) {
-    final fullySelected = _isGroupFullySelected(group);
-    if (fullySelected) {
-      final removable = _selectedModes.length - group.modes.length;
-      if (removable <= 0) return;
-      for (final mode in group.modes) {
-        if (_selectedModes.length > 1) {
-          _selectedModes.remove(mode);
-        }
-      }
-      if (_selectedModes.isEmpty) {
-        _selectedModes.add(group.modes.first);
-      }
-    } else {
-      _selectedModes.addAll(group.modes);
-    }
-    _saveSelectedModes();
-  }
-}
-
-class _ModeGroup {
-  final String label;
-  final List<String> modes;
-
-  const _ModeGroup(this.label, this.modes);
 }
 
 IconData _categoryIcon(String label) {
@@ -648,11 +384,11 @@ IconData _categoryIcon(String label) {
     case 'Trains':
       return LucideIcons.trainFront;
     case 'Metro':
-      return LucideIcons.squareArrowDown;
+      return LucideIcons.trainFrontTunnel;
     case 'Tram':
       return LucideIcons.tramFront;
     case 'Bus':
-      return LucideIcons.busFront;
+      return LucideIcons.bus;
     case 'Walking':
       return LucideIcons.footprints;
     case 'Ferries':
@@ -665,375 +401,5 @@ IconData _categoryIcon(String label) {
       return LucideIcons.sparkles;
     default:
       return LucideIcons.layers;
-  }
-}
-
-class _EndpointVersionField extends StatefulWidget {
-  final TransitousEndpoint endpoint;
-  final String defaultVersion;
-  final bool isLast;
-
-  const _EndpointVersionField({
-    required this.endpoint,
-    required this.defaultVersion,
-    this.isLast = false,
-  });
-
-  String get label => endpoint.label;
-
-  @override
-  State<_EndpointVersionField> createState() => _EndpointVersionFieldState();
-}
-
-class _EndpointVersionFieldState extends State<_EndpointVersionField> {
-  late final TextEditingController _controller;
-  late final FocusNode _focusNode;
-
-  @override
-  void initState() {
-    super.initState();
-    final backend = context.read<BackendProvider>();
-    _controller = TextEditingController(
-      text: backend.endpointVersionOverride(widget.endpoint) ?? '',
-    );
-    _focusNode = FocusNode();
-    _focusNode.addListener(() {
-      if (!_focusNode.hasFocus) {
-        context.read<BackendProvider>().setEndpointVersion(
-          widget.endpoint,
-          _controller.text,
-        );
-      }
-    });
-    backend.addListener(_sync);
-  }
-
-  void _sync() {
-    if (!_focusNode.hasFocus) {
-      final override = context.read<BackendProvider>().endpointVersionOverride(
-        widget.endpoint,
-      );
-      final newText = override ?? '';
-      if (_controller.text != newText) _controller.text = newText;
-    }
-  }
-
-  @override
-  void dispose() {
-    context.read<BackendProvider>().removeListener(_sync);
-    _controller.dispose();
-    _focusNode.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = AppColors.accentOf(context);
-    final backend = context.watch<BackendProvider>();
-    final isOverridden = backend.isEndpointOverridden(widget.endpoint);
-
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 88,
-                child: Text(
-                  widget.label,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: AppColors.black.withValues(alpha: 0.65),
-                  ),
-                ),
-              ),
-              Expanded(
-                child: CupertinoTextField.borderless(
-                  controller: _controller,
-                  focusNode: _focusNode,
-                  placeholder: widget.defaultVersion,
-                  style: TextStyle(fontSize: 14, color: AppColors.black),
-                  placeholderStyle: TextStyle(
-                    fontSize: 14,
-                    color: AppColors.black.withValues(alpha: 0.3),
-                  ),
-                  padding: EdgeInsets.zero,
-                  autocorrect: false,
-                  textInputAction: TextInputAction.done,
-                  onSubmitted: (v) =>
-                      backend.setEndpointVersion(widget.endpoint, v),
-                ),
-              ),
-              if (isOverridden)
-                GestureDetector(
-                  onTap: () => backend.resetEndpointVersion(widget.endpoint),
-                  child: Padding(
-                    padding: const EdgeInsets.only(left: 8),
-                    child: Icon(
-                      LucideIcons.rotateCcw,
-                      size: 14,
-                      color: accent.withValues(alpha: 0.6),
-                    ),
-                  ),
-                )
-              else
-                const SizedBox(width: 22),
-            ],
-          ),
-        ),
-        if (!widget.isLast)
-          Container(
-            height: 0.5,
-            color: AppColors.black.withValues(alpha: 0.08),
-          ),
-      ],
-    );
-  }
-}
-
-class _QuickValueCard extends StatelessWidget {
-  final String value;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _QuickValueCard({
-    required this.value,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = AppColors.accentOf(context);
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(vertical: 18),
-        decoration: BoxDecoration(
-          color: selected ? accent.withValues(alpha: 0.12) : AppColors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: selected ? accent : const Color(0x14000000),
-          ),
-        ),
-        child: Center(
-          child: Text(
-            value,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w400,
-              color: selected ? accent : AppColors.black,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _StepperSelector extends StatefulWidget {
-  final double value;
-  final double minValue;
-  final double maxValue;
-  final double step;
-  final String label;
-  final String Function(double) displayBuilder;
-  final ValueChanged<double> onChanged;
-
-  const _StepperSelector({
-    required this.value,
-    required this.minValue,
-    required this.maxValue,
-    required this.step,
-    required this.label,
-    required this.displayBuilder,
-    required this.onChanged,
-  });
-
-  @override
-  State<_StepperSelector> createState() => _StepperSelectorState();
-}
-
-class _StepperSelectorState extends State<_StepperSelector> {
-  double _dragOffset = 0;
-  Timer? _repeatTimer;
-  int _holdDirection = 0;
-
-  bool get _canIncrement => widget.value < widget.maxValue - widget.step / 2;
-
-  bool get _canDecrement => widget.value > widget.minValue + widget.step / 2;
-
-  int get _stepDecimals {
-    final stepString = widget.step.toString();
-    if (stepString.contains('.')) {
-      return stepString.split('.').last.length;
-    }
-    return 0;
-  }
-
-  double _normalize(double value) {
-    final decimals = _stepDecimals;
-    if (decimals == 0) return value.roundToDouble();
-    final factor = math.pow(10, decimals).toDouble();
-    return (value * factor).round() / factor;
-  }
-
-  void _change(double delta) {
-    double newValue = widget.value + delta;
-    newValue = newValue.clamp(widget.minValue, widget.maxValue);
-    newValue = _normalize(newValue);
-    if ((newValue - widget.value).abs() >= 0.0001) {
-      widget.onChanged(newValue);
-    }
-  }
-
-  void _startHold(int direction) {
-    if ((direction > 0 && !_canIncrement) ||
-        (direction < 0 && !_canDecrement)) {
-      return;
-    }
-    if (_holdDirection == direction) return;
-    _holdDirection = direction;
-    _change(direction * widget.step);
-    _repeatTimer?.cancel();
-    _repeatTimer = Timer(const Duration(milliseconds: 420), () {
-      _repeatTimer = Timer.periodic(const Duration(milliseconds: 90), (_) {
-        if ((_holdDirection > 0 && !_canIncrement) ||
-            (_holdDirection < 0 && !_canDecrement)) {
-          _stopHold();
-        } else {
-          _change(_holdDirection * widget.step);
-        }
-      });
-    });
-  }
-
-  void _stopHold() {
-    _holdDirection = 0;
-    _repeatTimer?.cancel();
-    _repeatTimer = null;
-  }
-
-  void _handleDragStart(DragStartDetails details) {
-    _dragOffset = 0;
-    _stopHold();
-  }
-
-  void _handleDragUpdate(DragUpdateDetails details) {
-    _dragOffset += details.delta.dx;
-    if (_dragOffset >= 14) {
-      _startHold(1);
-      _dragOffset = 0;
-    } else if (_dragOffset <= -14) {
-      _startHold(-1);
-      _dragOffset = 0;
-    }
-  }
-
-  void _handleDragEnd(DragEndDetails details) {
-    _dragOffset = 0;
-    _stopHold();
-  }
-
-  @override
-  void dispose() {
-    _repeatTimer?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = AppColors.accentOf(context);
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onHorizontalDragStart: _handleDragStart,
-      onHorizontalDragUpdate: _handleDragUpdate,
-      onHorizontalDragEnd: _handleDragEnd,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: const Color(0x0F000000),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0x11000000)),
-        ),
-        child: Row(
-          children: [
-            _StepperArrow(
-              icon: LucideIcons.chevronLeft,
-              enabled: _canDecrement,
-              color: accent,
-              onTapDown: () => _startHold(-1),
-              onTapUp: _stopHold,
-            ),
-            Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    widget.displayBuilder(widget.value),
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.black,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    widget.label,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppColors.black.withValues(alpha: 0.5),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            _StepperArrow(
-              icon: LucideIcons.chevronRight,
-              enabled: _canIncrement,
-              color: accent,
-              onTapDown: () => _startHold(1),
-              onTapUp: _stopHold,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _StepperArrow extends StatelessWidget {
-  final IconData icon;
-  final bool enabled;
-  final Color color;
-  final VoidCallback onTapDown;
-  final VoidCallback onTapUp;
-
-  const _StepperArrow({
-    required this.icon,
-    required this.enabled,
-    required this.color,
-    required this.onTapDown,
-    required this.onTapUp,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapDown: enabled ? (_) => onTapDown() : null,
-      onTapUp: (_) => onTapUp(),
-      onTapCancel: onTapUp,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-        child: Icon(
-          icon,
-          size: 20,
-          color: enabled ? color : color.withValues(alpha: 0.25),
-        ),
-      ),
-    );
   }
 }

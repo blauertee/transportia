@@ -1,4 +1,6 @@
+import '../api/endpoints/trip_endpoint.dart';
 import '../models/itinerary.dart';
+import '../models/transitous/itinerary_id.dart';
 import 'trip_details_service.dart';
 
 /// How much the app actually knows about an itinerary's current state after
@@ -45,6 +47,10 @@ class ItineraryRefreshResult {
 typedef TripDetailsFetcher =
     Future<Itinerary> Function({required String tripId});
 
+/// Signature of the whole-itinerary refresh, so tests can supply their own
+/// result without going over the network.
+typedef ItineraryFetcher = Future<Itinerary> Function(Itinerary itinerary);
+
 /// Re-fetches real-time data for the transit legs of an itinerary.
 ///
 /// An itinerary is a snapshot of what the planner returned. Delays, track
@@ -53,8 +59,12 @@ typedef TripDetailsFetcher =
 class ItineraryRefreshService {
   const ItineraryRefreshService._();
 
-  /// Looks up every distinct `tripId` in [itinerary] and merges the fresh
-  /// real-time fields back into the matching legs.
+  /// Re-checks [itinerary] against current real-time data.
+  ///
+  /// Prefers `/refresh-itinerary`, which re-plans the whole journey in one
+  /// request. Falls back to a `/trip` lookup per distinct trip when that is
+  /// unavailable — for an itinerary restored from an older saved trip, or
+  /// when the endpoint fails.
   ///
   /// The returned itinerary is [itinerary] itself when nothing could be
   /// refreshed; read [ItineraryRefreshResult.freshness] to tell the cases
@@ -62,21 +72,81 @@ class ItineraryRefreshService {
   static Future<ItineraryRefreshResult> refresh(
     Itinerary itinerary, {
     TripDetailsFetcher? fetchTripDetails,
+    ItineraryFetcher? fetchItinerary,
   }) async {
-    final fetch = fetchTripDetails ?? TripDetailsService.fetchTripDetails;
-
-    final tripIds = itinerary.legs
-        .map((leg) => leg.tripId)
-        .whereType<String>()
-        .where((id) => id.isNotEmpty)
-        .toSet();
-
-    if (tripIds.isEmpty) {
+    if (!_hasTransitLegs(itinerary)) {
       return ItineraryRefreshResult(
         itinerary: itinerary,
         freshness: ItineraryFreshness.notRefreshable,
       );
     }
+
+    // The single-request path. Only skipped when a caller has pinned the
+    // per-trip fetcher, which is how the older tests drive this.
+    if (fetchTripDetails == null) {
+      final refreshed = await _refreshWhole(
+        itinerary,
+        fetchItinerary ?? _refreshViaApi,
+      );
+      if (refreshed != null) return refreshed;
+    }
+
+    return _refreshPerTrip(
+      itinerary,
+      fetchTripDetails ?? TripDetailsService.fetchTripDetails,
+    );
+  }
+
+  static bool _hasTransitLegs(Itinerary itinerary) =>
+      itinerary.legs.any((leg) => leg.tripId != null && leg.tripId!.isNotEmpty);
+
+  /// Refreshes the itinerary in one request, or returns null so the caller
+  /// falls back to the per-trip path.
+  static Future<ItineraryRefreshResult?> _refreshWhole(
+    Itinerary itinerary,
+    ItineraryFetcher fetch,
+  ) async {
+    final Itinerary fresh;
+    try {
+      fresh = await fetch(itinerary);
+    } catch (_) {
+      return null;
+    }
+    if (fresh.legs.length != itinerary.legs.length) {
+      // The server re-planned rather than refreshed, so the legs no longer
+      // line up with what is on screen. Fall back rather than swap the
+      // journey out from under the user.
+      return null;
+    }
+
+    return ItineraryRefreshResult(
+      itinerary: fresh,
+      freshness: fresh.legs.any((leg) => leg.cancelled)
+          ? ItineraryFreshness.changed
+          : ItineraryFreshness.live,
+    );
+  }
+
+  static Future<Itinerary> _refreshViaApi(Itinerary itinerary) {
+    final id = itinerary.id;
+    // A saved trip parsed from a snapshot taken before the app read `id`
+    // still has its legs, which is enough to rebuild the structured form.
+    return id != null && id.isNotEmpty
+        ? TripEndpoint.refreshItinerary(itineraryId: id)
+        : TripEndpoint.refreshItineraryById(
+            id: ItineraryId.fromItinerary(itinerary),
+          );
+  }
+
+  static Future<ItineraryRefreshResult> _refreshPerTrip(
+    Itinerary itinerary,
+    TripDetailsFetcher fetch,
+  ) async {
+    final tripIds = itinerary.legs
+        .map((leg) => leg.tripId)
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toSet();
 
     final updates = <String, Leg>{};
     await Future.wait(

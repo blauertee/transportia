@@ -176,4 +176,128 @@ void main() {
       expect(result.itinerary.legs.last.realTime, isFalse);
     });
   });
+
+  group('the single-request refresh path', () {
+    final itinerary = _itinerary([
+      _leg(
+        mode: 'RAIL',
+        tripId: 'trip-1',
+        startTime: _depart,
+        endTime: _arrive,
+      ),
+    ]);
+
+    test(
+      'uses the whole-itinerary refresh rather than per-trip lookups',
+      () async {
+        var itineraryFetches = 0;
+        final result = await ItineraryRefreshService.refresh(
+          itinerary,
+          fetchItinerary: (source) async {
+            itineraryFetches++;
+            return _itinerary([
+              _leg(
+                mode: 'RAIL',
+                tripId: 'trip-1',
+                startTime: _depart.add(const Duration(minutes: 4)),
+                endTime: _arrive.add(const Duration(minutes: 4)),
+                realTime: true,
+              ),
+            ]);
+          },
+        );
+
+        expect(itineraryFetches, 1);
+        expect(result.freshness, ItineraryFreshness.live);
+        expect(result.didRefresh, isTrue);
+        expect(
+          result.itinerary.legs.single.startTime,
+          _depart.add(const Duration(minutes: 4)),
+        );
+      },
+    );
+
+    test('reports changed when the refreshed journey is cancelled', () async {
+      final result = await ItineraryRefreshService.refresh(
+        itinerary,
+        fetchItinerary: (source) async => _itinerary([
+          _leg(
+            mode: 'RAIL',
+            tripId: 'trip-1',
+            startTime: _depart,
+            endTime: _arrive,
+            cancelled: true,
+            realTime: true,
+          ),
+        ]),
+      );
+
+      expect(result.freshness, ItineraryFreshness.changed);
+    });
+
+    test('falls back to per-trip lookups when the refresh fails', () async {
+      var tripFetches = 0;
+      final result = await ItineraryRefreshService.refresh(
+        itinerary,
+        fetchItinerary: (source) async => throw StateError('endpoint down'),
+        fetchTripDetails: ({required String tripId}) async {
+          tripFetches++;
+          return _itinerary([
+            _leg(
+              mode: 'RAIL',
+              tripId: tripId,
+              startTime: _depart.add(const Duration(minutes: 2)),
+              endTime: _arrive.add(const Duration(minutes: 2)),
+              realTime: true,
+            ),
+          ]);
+        },
+      );
+
+      expect(tripFetches, 1);
+      expect(result.freshness, ItineraryFreshness.live);
+    });
+
+    test('falls back when the server re-plans instead of refreshing', () async {
+      // A different number of legs means the journey on screen no longer
+      // matches; swapping it out silently would be worse than not refreshing.
+      var tripFetches = 0;
+      await ItineraryRefreshService.refresh(
+        itinerary,
+        fetchItinerary: (source) async => _itinerary([
+          _leg(
+            mode: 'WALK',
+            startTime: _depart,
+            endTime: _depart.add(const Duration(minutes: 5)),
+          ),
+          _leg(
+            mode: 'RAIL',
+            tripId: 'trip-9',
+            startTime: _depart.add(const Duration(minutes: 5)),
+            endTime: _arrive,
+          ),
+        ]),
+        fetchTripDetails: ({required String tripId}) async {
+          tripFetches++;
+          throw StateError('no data');
+        },
+      );
+
+      expect(tripFetches, 1);
+    });
+
+    test('still skips everything for a walk-only itinerary', () async {
+      final walkOnly = _itinerary([
+        _leg(mode: 'WALK', startTime: _depart, endTime: _arrive),
+      ]);
+
+      final result = await ItineraryRefreshService.refresh(
+        walkOnly,
+        fetchItinerary: (source) async =>
+            fail('should not refresh a walk-only itinerary'),
+      );
+
+      expect(result.freshness, ItineraryFreshness.notRefreshable);
+    });
+  });
 }

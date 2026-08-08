@@ -3,12 +3,13 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 import 'package:transportia/api/transitous_client.dart';
-import 'package:transportia/constants/prefs_keys.dart';
+import 'package:transportia/models/routing_options.dart';
 import 'package:transportia/models/time_selection.dart';
+import 'package:transportia/models/transitous/enums.dart';
+import 'package:transportia/services/routing_options_service.dart';
 import 'package:transportia/services/routing_service.dart';
 
 /// Captures the request RoutingService makes, without a network.
@@ -35,6 +36,7 @@ void main() {
         InMemorySharedPreferencesAsync.empty();
     original = TransitousClient.instance;
     TransitousClient.instance = _capturingClient();
+    RoutingOptionsService.invalidate();
   });
 
   tearDown(() => TransitousClient.instance = original);
@@ -68,7 +70,7 @@ void main() {
     expect(query['useRoutedTransfers'], 'true');
   });
 
-  test('omits the stored options that are unset', () async {
+  test('omits the options left at their default', () async {
     final query = await plan();
     expect(query.containsKey('pedestrianSpeed'), isFalse);
     expect(query.containsKey('additionalTransferTime'), isFalse);
@@ -76,42 +78,109 @@ void main() {
     expect(query.containsKey('time'), isFalse);
   });
 
-  test('converts the stored walking speed from km/h to m/s', () async {
-    final prefs = SharedPreferencesAsync();
-    await prefs.setDouble(PrefsKeys.transitWalkingSpeed, 5.4);
+  test('converts the walking speed from km/h to m/s', () async {
+    await RoutingOptionsService.save(
+      const RoutingOptions(walkingSpeedKmh: 5.4),
+    );
 
     final query = await plan();
     expect(double.parse(query['pedestrianSpeed']!), closeTo(1.5, 0.0001));
   });
 
+  test('leaves the speeds out when they match the server default', () async {
+    // Restating a default would pin it if the server ever changed it.
+    await RoutingOptionsService.save(RoutingOptions.defaults);
+
+    final query = await plan();
+    expect(query.containsKey('pedestrianSpeed'), isFalse);
+    expect(query.containsKey('cyclingSpeed'), isFalse);
+  });
+
   test('sends the transfer buffer in minutes', () async {
-    final prefs = SharedPreferencesAsync();
-    await prefs.setInt(PrefsKeys.transitTransferBuffer, 7);
+    await RoutingOptionsService.save(
+      const RoutingOptions(additionalTransferTime: Duration(minutes: 7)),
+    );
 
     expect((await plan())['additionalTransferTime'], '7');
   });
 
   test('drops a zero transfer buffer rather than sending it', () async {
-    final prefs = SharedPreferencesAsync();
-    await prefs.setInt(PrefsKeys.transitTransferBuffer, 0);
+    await RoutingOptionsService.save(RoutingOptions.defaults);
 
     expect((await plan()).containsKey('additionalTransferTime'), isFalse);
   });
 
-  test(
-    'sends the selected modes, skipping ones this build cannot map',
-    () async {
-      final prefs = SharedPreferencesAsync();
-      await prefs.setStringList(PrefsKeys.transitSelectedModes, const [
-        'BUS',
-        'RAIL',
-        // A mode saved by a future build, or removed upstream.
-        'TELEPORT',
-      ]);
+  test('sends the selected modes', () async {
+    await RoutingOptionsService.save(
+      const RoutingOptions(transitModes: [TransitMode.bus, TransitMode.rail]),
+    );
 
-      expect((await plan())['transitModes'], 'BUS,RAIL');
-    },
-  );
+    expect((await plan())['transitModes'], 'BUS,RAIL');
+  });
+
+  group('the options behind the Transitous options panel', () {
+    test('all of them reach the plan request', () async {
+      await RoutingOptionsService.save(
+        const RoutingOptions(
+          useRoutedTransfers: false,
+          wheelchairAccessibleOnly: true,
+          requireBikeTransport: true,
+          requireCarTransport: true,
+          noCompulsoryReservation: true,
+          via: [
+            ViaStopOption(
+              stopId: 'de-DELFI_de:11000:900100003',
+              name: 'Alexanderplatz',
+              minimumStay: Duration(minutes: 10),
+            ),
+          ],
+          maxTransfers: 3,
+          additionalTransferTime: Duration(minutes: 5),
+          firstMileMode: TransitMode.bike,
+          maxFirstMileTime: Duration(minutes: 20),
+          lastMileMode: TransitMode.walk,
+          maxLastMileTime: Duration(minutes: 10),
+          directMode: TransitMode.bike,
+          maxDirectTime: Duration(minutes: 45),
+          walkingSpeedKmh: 5.4,
+          cyclingSpeedKmh: 18.0,
+          elevationCosts: ElevationCosts.high,
+        ),
+      );
+
+      final query = await plan();
+      expect(query['useRoutedTransfers'], 'false');
+      expect(query['pedestrianProfile'], 'WHEELCHAIR');
+      expect(query['requireBikeTransport'], 'true');
+      expect(query['requireCarTransport'], 'true');
+      expect(query['noCompulsoryReservation'], 'true');
+      expect(query['via'], 'de-DELFI_de:11000:900100003');
+      expect(query['viaMinimumStay'], '10');
+      expect(query['maxTransfers'], '3');
+      expect(query['additionalTransferTime'], '5');
+      expect(query['preTransitModes'], 'BIKE');
+      expect(query['maxPreTransitTime'], '1200');
+      expect(query['postTransitModes'], 'WALK');
+      expect(query['maxPostTransitTime'], '600');
+      expect(query['directModes'], 'BIKE');
+      expect(query['maxDirectTime'], '2700');
+      expect(query['elevationCosts'], 'HIGH');
+      expect(double.parse(query['cyclingSpeed']!), closeTo(5.0, 0.01));
+    });
+
+    test('options left off are absent rather than sent as false', () async {
+      await RoutingOptionsService.save(RoutingOptions.defaults);
+
+      final query = await plan();
+      expect(query.containsKey('pedestrianProfile'), isFalse);
+      expect(query.containsKey('requireBikeTransport'), isFalse);
+      expect(query.containsKey('requireCarTransport'), isFalse);
+      expect(query.containsKey('noCompulsoryReservation'), isFalse);
+      expect(query.containsKey('elevationCosts'), isFalse);
+      expect(query.containsKey('via'), isFalse);
+      expect(query.containsKey('maxTransfers'), isFalse);
+    });
+  });
 
   test('sends the chosen departure time', () async {
     final query = await plan(
