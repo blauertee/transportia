@@ -12,11 +12,15 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
   /// button.
   final Widget? trailing;
 
+  /// False for a screen presented as a tab, which has nothing to go back to.
+  final bool showBack;
+
   const CustomAppBar({
     super.key,
     required this.title,
     this.onBackButtonPressed,
     this.trailing,
+    this.showBack = true,
   });
 
   @override
@@ -29,34 +33,35 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
         child: Stack(
           alignment: Alignment.center,
           children: [
-            Align(
-              alignment: Alignment.centerLeft,
-              child: PressableHighlight(
-                onPressed:
-                    onBackButtonPressed ?? () => Navigator.of(context).pop(),
-                borderRadius: BorderRadius.circular(22),
-                enableHaptics: false,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      LucideIcons.chevronLeft,
-                      size: 20,
-                      color: AppColors.accentOf(context),
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Back',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
+            if (showBack)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: PressableHighlight(
+                  onPressed:
+                      onBackButtonPressed ?? () => Navigator.of(context).pop(),
+                  borderRadius: BorderRadius.circular(22),
+                  enableHaptics: false,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        LucideIcons.chevronLeft,
+                        size: 20,
                         color: AppColors.accentOf(context),
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 4),
+                      Text(
+                        'Back',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                          color: AppColors.accentOf(context),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
             Center(
               child: Text(
                 title,
