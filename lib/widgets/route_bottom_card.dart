@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import '../models/routing_options.dart';
 import '../models/saved_trip.dart';
 import '../models/time_selection.dart';
+import '../models/transitous/server_config.dart';
 import '../models/trip_history_item.dart';
 import '../services/favorites_service.dart';
 import '../services/transitous_geocode_service.dart';
@@ -11,6 +15,8 @@ import '../utils/favorite_icons.dart';
 import 'saved_trip_card.dart';
 import 'buttons/pill_button.dart';
 import 'buttons/primary_button.dart';
+import 'search/journey_spine.dart';
+import 'search/save_default_row.dart';
 import 'skeletons/skeleton_shimmer.dart';
 
 class BottomCard extends StatefulWidget {
@@ -29,6 +35,13 @@ class BottomCard extends StatefulWidget {
     required this.showMyLocationDefault,
     required this.onUnfocus,
     required this.onSwapRequested,
+    required this.options,
+    required this.storedOptions,
+    required this.capabilities,
+    required this.onOptionsChanged,
+    required this.onResetOptions,
+    required this.onSaveOptionsAsDefault,
+    required this.onAddViaStop,
     required this.routeFieldLink,
     required this.fromLoading,
     required this.toLoading,
@@ -64,6 +77,21 @@ class BottomCard extends StatefulWidget {
   final bool showMyLocationDefault;
   final VoidCallback onUnfocus;
   final bool Function() onSwapRequested;
+
+  /// The options for the next search, which last only for it.
+  final RoutingOptions options;
+
+  /// What a new search starts from, so the card can say when this one differs.
+  final RoutingOptions storedOptions;
+
+  /// Bounds the budget sliders to what the connected server will honour.
+  final ServerConfig capabilities;
+
+  final ValueChanged<RoutingOptions> onOptionsChanged;
+  final VoidCallback onResetOptions;
+  final VoidCallback onSaveOptionsAsDefault;
+  final VoidCallback onAddViaStop;
+
   final LayerLink routeFieldLink;
   final bool fromLoading;
   final bool toLoading;
@@ -90,6 +118,70 @@ class BottomCard extends StatefulWidget {
 }
 
 class _BottomCardState extends State<BottomCard> {
+  /// Holds the row open just long enough to confirm the save, since saving
+  /// makes the difference it was reporting disappear.
+  bool _savedAsDefault = false;
+  Timer? _savedTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    // Focus decides whether the stages or the suggestions get the room, so
+    // it has to reach build rather than only the tap handlers.
+    widget.fromFocusNode.addListener(_onFocusChanged);
+    widget.toFocusNode.addListener(_onFocusChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant BottomCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.fromFocusNode != widget.fromFocusNode) {
+      oldWidget.fromFocusNode.removeListener(_onFocusChanged);
+      widget.fromFocusNode.addListener(_onFocusChanged);
+    }
+    if (oldWidget.toFocusNode != widget.toFocusNode) {
+      oldWidget.toFocusNode.removeListener(_onFocusChanged);
+      widget.toFocusNode.addListener(_onFocusChanged);
+    }
+    // A further edit is a new difference from the stored defaults, so the
+    // confirmation stops applying to it.
+    if (oldWidget.options != widget.options) {
+      _savedTimer?.cancel();
+      _savedAsDefault = false;
+    }
+  }
+
+  @override
+  void dispose() {
+    _savedTimer?.cancel();
+    widget.fromFocusNode.removeListener(_onFocusChanged);
+    widget.toFocusNode.removeListener(_onFocusChanged);
+    super.dispose();
+  }
+
+  void _onFocusChanged() {
+    if (mounted) setState(() {});
+  }
+
+  /// The journey stages, unless something else needs the room.
+  ///
+  /// Collapsed, the card is a search box. Typing in a field replaces the
+  /// stages with the suggestions overlay, which hangs off the bottom of the
+  /// route fields — it belongs under the field being typed into rather than
+  /// under everything the journey could be.
+  Widget? _buildSpine() {
+    if (widget.isCollapsed) return null;
+    if (widget.fromFocusNode.hasFocus || widget.toFocusNode.hasFocus) {
+      return null;
+    }
+    return JourneySpine(
+      options: widget.options,
+      capabilities: widget.capabilities,
+      onChanged: widget.onOptionsChanged,
+      onAddViaStop: widget.onAddViaStop,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -207,10 +299,35 @@ class _BottomCardState extends State<BottomCard> {
                           layerLink: widget.routeFieldLink,
                           fromLoading: widget.fromLoading,
                           toLoading: widget.toLoading,
+                          middle: _buildSpine(),
                         ),
                       ),
                     ),
                   ),
+
+                  if (!widget.isCollapsed &&
+                      (widget.options != widget.storedOptions ||
+                          _savedAsDefault))
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                      child: SaveDefaultRow(
+                        saved: _savedAsDefault,
+                        onReset: widget.onResetOptions,
+                        onSaveAsDefault: () {
+                          widget.onSaveOptionsAsDefault();
+                          setState(() => _savedAsDefault = true);
+                          _savedTimer?.cancel();
+                          _savedTimer = Timer(
+                            const Duration(milliseconds: 1800),
+                            () {
+                              if (mounted) {
+                                setState(() => _savedAsDefault = false);
+                              }
+                            },
+                          );
+                        },
+                      ),
+                    ),
 
                   if (!widget.isCollapsed)
                     Padding(

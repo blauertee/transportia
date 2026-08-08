@@ -4,7 +4,9 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 import 'package:transportia/models/itinerary.dart';
+import 'package:transportia/models/routing_options.dart';
 import 'package:transportia/models/saved_trip.dart';
+import 'package:transportia/models/transitous/server_config.dart';
 import 'package:transportia/models/time_selection.dart';
 import 'package:transportia/providers/theme_provider.dart';
 import 'package:transportia/widgets/route_bottom_card.dart';
@@ -35,13 +37,20 @@ Future<void> _pumpCard(
   addTearDown(fromFocus.dispose);
   addTearDown(toFocus.dispose);
 
+  // The card carries the journey options now, so the lists below them sit
+  // past the default 600px surface.
+  tester.view.physicalSize = const Size(800, 1800);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+
   await tester.pumpWidget(
     ChangeNotifierProvider<ThemeProvider>(
       create: (_) => ThemeProvider(),
       child: Directionality(
         textDirection: TextDirection.ltr,
         child: MediaQuery(
-          data: const MediaQueryData(size: Size(400, 900)),
+          data: const MediaQueryData(size: Size(800, 1800)),
           child: BottomCard(
             isCollapsed: false,
             collapseProgress: 0,
@@ -56,6 +65,13 @@ Future<void> _pumpCard(
             showMyLocationDefault: true,
             onUnfocus: () {},
             onSwapRequested: () => true,
+            options: RoutingOptions.defaults,
+            storedOptions: RoutingOptions.defaults,
+            capabilities: ServerConfig.fallback,
+            onOptionsChanged: (_) {},
+            onResetOptions: () {},
+            onSaveOptionsAsDefault: () {},
+            onAddViaStop: () {},
             routeFieldLink: LayerLink(),
             fromLoading: false,
             toLoading: false,

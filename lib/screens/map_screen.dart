@@ -16,6 +16,8 @@ import '../animations/curves.dart';
 import '../constants/prefs_keys.dart';
 import '../providers/theme_provider.dart';
 import '../models/route_field_kind.dart';
+import '../models/routing_options.dart';
+import '../models/transitous/server_config.dart';
 import '../models/itinerary.dart';
 import '../models/journey_stop.dart';
 import '../models/saved_place.dart';
@@ -28,11 +30,14 @@ import '../screens/itinerary_list_screen.dart';
 import '../screens/location_settings_screen.dart';
 import '../screens/saved_trips_screen.dart';
 import '../screens/timetables_screen.dart';
+import '../screens/via_stops_screen.dart';
 import '../services/favorites_service.dart';
 import '../services/location_service.dart';
 import '../services/recent_trips_service.dart';
+import '../services/routing_options_service.dart';
 import '../services/saved_trips_service.dart';
 import '../services/saved_places_service.dart';
+import '../services/server_capabilities_service.dart';
 import '../services/stop_times_service.dart';
 import '../services/transitous_map_service.dart';
 import '../services/transitous_geocode_service.dart';
@@ -156,6 +161,14 @@ class _MapScreenState extends State<MapScreen>
   bool _isLongPressClosing = false;
   bool _suppressTimeSelectionReopen = false;
   TimeSelection _timeSelection = TimeSelection.now();
+
+  /// Options for the next search only. Seeded from the stored defaults and
+  /// never written back unless the user asks for it: whether you have a bike
+  /// today should not rewrite what every future search does.
+  RoutingOptions _options = RoutingOptions.defaults;
+  RoutingOptions _storedOptions = RoutingOptions.defaults;
+  bool _optionsTouched = false;
+  ServerConfig _capabilities = ServerCapabilitiesService.capabilities.value;
   int _tripsRefreshKey = 0;
   List<TripHistoryItem> _recentTrips = [];
   List<SavedTrip> _savedTrips = [];
@@ -248,6 +261,7 @@ class _MapScreenState extends State<MapScreen>
     unawaited(_initStartup());
     FavoritesService.favoritesListenable.addListener(_onFavoritesChanged);
     _favorites = FavoritesService.favoritesListenable.value;
+    ServerCapabilitiesService.capabilities.addListener(_onCapabilitiesChanged);
     _snapCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 220),
@@ -311,6 +325,8 @@ class _MapScreenState extends State<MapScreen>
   }
 
   Future<void> _initStartup() async {
+    unawaited(_loadRoutingOptions());
+    unawaited(ServerCapabilitiesService.ensureLoaded());
     await _loadShowStopsPreference();
     await _loadQuickSettingsPreferences();
     await _loadSavedSearchPlaces();
@@ -321,6 +337,58 @@ class _MapScreenState extends State<MapScreen>
     } else {
       _maybeAttachActivateListener();
     }
+  }
+
+  void _onCapabilitiesChanged() {
+    if (!mounted) return;
+    setState(
+      () => _capabilities = ServerCapabilitiesService.capabilities.value,
+    );
+  }
+
+  /// Seeds this search from the stored defaults, unless the user has already
+  /// changed something — the slower read must not undo their edit.
+  Future<void> _loadRoutingOptions() async {
+    final stored = await RoutingOptionsService.load();
+    if (!mounted) return;
+    setState(() {
+      _storedOptions = stored;
+      if (!_optionsTouched) _options = stored;
+    });
+  }
+
+  /// Via stops need a search of their own, so they get a screen.
+  Future<void> _openViaStopPicker() async {
+    _unfocusInputs();
+    final updated = await Navigator.of(context).push<RoutingOptions>(
+      CustomPageRoute(child: ViaStopsScreen(options: _options)),
+    );
+    if (!mounted || updated == null || updated == _options) return;
+    _onOptionsChanged(updated);
+  }
+
+  void _onOptionsChanged(RoutingOptions options) {
+    setState(() {
+      _options = options;
+      _optionsTouched = true;
+    });
+  }
+
+  void _resetOptions() {
+    setState(() {
+      _options = _storedOptions;
+      _optionsTouched = false;
+    });
+  }
+
+  Future<void> _saveOptionsAsDefault() async {
+    final options = _options;
+    await RoutingOptionsService.save(options);
+    if (!mounted) return;
+    setState(() {
+      _storedOptions = options;
+      _optionsTouched = false;
+    });
   }
 
   @override
@@ -337,6 +405,9 @@ class _MapScreenState extends State<MapScreen>
   @override
   void dispose() {
     FavoritesService.favoritesListenable.removeListener(_onFavoritesChanged);
+    ServerCapabilitiesService.capabilities.removeListener(
+      _onCapabilitiesChanged,
+    );
     _posSub?.cancel();
     _fromCtrl.removeListener(_handleFromTextChanged);
     _toCtrl.removeListener(_handleToTextChanged);
@@ -1926,6 +1997,14 @@ class _MapScreenState extends State<MapScreen>
                               showMyLocationDefault: _hasLocationPermission,
                               onUnfocus: _unfocusInputs,
                               onSwapRequested: _handleSwapRequested,
+                              options: _options,
+                              storedOptions: _storedOptions,
+                              capabilities: _capabilities,
+                              onOptionsChanged: _onOptionsChanged,
+                              onResetOptions: _resetOptions,
+                              onSaveOptionsAsDefault: () =>
+                                  unawaited(_saveOptionsAsDefault()),
+                              onAddViaStop: _openViaStopPicker,
                               routeFieldLink: _routeFieldLink,
                               fromLoading: _isReverseGeocodeLoading(
                                 RouteFieldKind.from,
@@ -2087,6 +2166,7 @@ class _MapScreenState extends State<MapScreen>
               toLat: toLat,
               toLon: toLon,
               timeSelection: timeSelection,
+              options: _options,
               fromSelection: resolvedFrom,
               toSelection: resolvedTo,
             ),
