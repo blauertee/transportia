@@ -1716,17 +1716,23 @@ class _MapScreenState extends State<MapScreen>
             0.0,
             collapsedTop,
           ));
+          // The card's top stop: everything but the strip the clock and the
+          // battery live in. Only the search card goes this far — the trip
+          // and quick-settings cards have a fixed amount to show.
+          final double fullTop = _isTripFocus || _isQuickSettings
+              ? expandedTop
+              : math.min(MediaQuery.paddingOf(context).top, expandedTop);
           _lastComputedCollapsedTop = collapsedTop;
           _lastComputedExpandedTop = expandedTop;
           _lastBottomBarHeight = bottomBarHeight;
 
           _sheetTop ??= expandedTop;
           if (_isBottomBarResizeAnimating) {
-            if (_sheetTop! < expandedTop) {
-              _sheetTop = expandedTop;
+            if (_sheetTop! < fullTop) {
+              _sheetTop = fullTop;
             }
           } else {
-            _sheetTop = ((_sheetTop!).clamp(expandedTop, collapsedTop));
+            _sheetTop = ((_sheetTop!).clamp(fullTop, collapsedTop));
           }
           final bool collapsed = ((_sheetTop! - collapsedTop).abs() < 1.0);
           if (collapsed != _isSheetCollapsed) {
@@ -1742,6 +1748,13 @@ class _MapScreenState extends State<MapScreen>
               : ((_sheetTop! - expandedTop) / denom).clamp(0.0, 1.0);
 
           widget.onCollapseProgressChanged?.call(progress);
+
+          // A second signal for the stretch above the usual expanded stop, so
+          // every threshold keyed to `progress` keeps landing where it did.
+          final fullDenom = (expandedTop - fullTop);
+          final fullProgress = fullDenom <= 0.0
+              ? 0.0
+              : ((expandedTop - _sheetTop!) / fullDenom).clamp(0.0, 1.0);
 
           final overlayWidth = math.max(0.0, constraints.maxWidth - 24);
           final showOverlay = _activeSuggestionField != null;
@@ -1962,34 +1975,21 @@ class _MapScreenState extends State<MapScreen>
                                 _animateTo(target, collapsedTop);
                                 _stopDragRumble();
                               },
-                              onDragStart: () {
-                                _unfocusInputs();
-                                _snapCtrl.stop();
-                                _startDragRumble();
-                              },
-                              onDragUpdate: (dy) {
-                                final newTop = (_sheetTop! + dy).clamp(
-                                  expandedTop,
-                                  collapsedTop,
-                                );
-                                setState(() => _sheetTop = newTop);
-                              },
-                              onDragEnd: (velocityDy) {
-                                final mid = (collapsedTop + expandedTop) / 2;
-                                const vThresh = 700.0;
-                                double target;
-                                if (velocityDy.abs() > vThresh) {
-                                  target = velocityDy > 0
-                                      ? collapsedTop
-                                      : expandedTop;
-                                } else {
-                                  target = (_sheetTop! > mid)
-                                      ? collapsedTop
-                                      : expandedTop;
-                                }
-                                _animateTo(target, collapsedTop);
-                                _stopDragRumble();
-                              },
+                              onDragStart: _onSheetDragStart,
+                              onDragUpdate: (dy) =>
+                                  _onSheetDragUpdate(dy, fullTop, collapsedTop),
+                              onDragEnd: (velocityDy) => _onSheetDragEnd(
+                                velocityDy,
+                                fullTop,
+                                expandedTop,
+                                collapsedTop,
+                              ),
+                              // The body scrolls only once the card has taken
+                              // all the room it can; below that, dragging it
+                              // moves the card. One gesture, two jobs, and no
+                              // arena to fight over.
+                              canScrollBody: (_sheetTop! - fullTop).abs() < 1.0,
+                              fullProgress: fullProgress,
                               fromCtrl: _fromCtrl,
                               toCtrl: _toCtrl,
                               fromFocusNode: _fromFocus,
@@ -2257,6 +2257,60 @@ class _MapScreenState extends State<MapScreen>
   double? _lastBottomBarHeight;
   bool _isBottomBarResizeAnimating = false;
   bool _skipAutoCenterOnSnap = false;
+
+  /// Where a drag should settle, given the stops this card has.
+  ///
+  /// A flick past the velocity threshold moves one stop in that direction, so
+  /// a hard swipe from the middle does not skip the end; anything gentler
+  /// settles on whichever stop is nearest.
+  double _snapStopFor(double velocityDy, List<double> stops) {
+    const vThresh = 700.0;
+    final sorted = [...stops]..sort();
+    final current = _sheetTop ?? sorted.first;
+
+    if (velocityDy.abs() > vThresh) {
+      if (velocityDy > 0) {
+        for (final stop in sorted) {
+          if (stop > current + 1) return stop;
+        }
+        return sorted.last;
+      }
+      for (final stop in sorted.reversed) {
+        if (stop < current - 1) return stop;
+      }
+      return sorted.first;
+    }
+
+    var best = sorted.first;
+    for (final stop in sorted) {
+      if ((stop - current).abs() < (best - current).abs()) best = stop;
+    }
+    return best;
+  }
+
+  void _onSheetDragStart() {
+    _unfocusInputs();
+    _snapCtrl.stop();
+    _startDragRumble();
+  }
+
+  void _onSheetDragUpdate(double dy, double topStop, double collapsedTop) {
+    setState(() => _sheetTop = (_sheetTop! + dy).clamp(topStop, collapsedTop));
+  }
+
+  void _onSheetDragEnd(
+    double velocityDy,
+    double fullTop,
+    double expandedTop,
+    double collapsedTop,
+  ) {
+    _animateTo(
+      _snapStopFor(velocityDy, [fullTop, expandedTop, collapsedTop]),
+      collapsedTop,
+    );
+    _stopDragRumble();
+  }
+
   void _animateTo(double target, double collapsedTop) {
     final begin = _sheetTop ?? target;
     _snapAnim = Tween<double>(begin: begin, end: target).animate(

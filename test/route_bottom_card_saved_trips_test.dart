@@ -72,6 +72,8 @@ Future<void> _pumpCard(
             onResetOptions: () {},
             onSaveOptionsAsDefault: () {},
             onAddViaStop: () {},
+            canScrollBody: true,
+            fullProgress: 0,
             routeFieldLink: LayerLink(),
             fromLoading: false,
             toLoading: false,

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../models/routing_options.dart';
 import '../models/saved_trip.dart';
@@ -42,6 +43,8 @@ class BottomCard extends StatefulWidget {
     required this.onResetOptions,
     required this.onSaveOptionsAsDefault,
     required this.onAddViaStop,
+    required this.canScrollBody,
+    required this.fullProgress,
     required this.routeFieldLink,
     required this.fromLoading,
     required this.toLoading,
@@ -91,6 +94,18 @@ class BottomCard extends StatefulWidget {
   final VoidCallback onResetOptions;
   final VoidCallback onSaveOptionsAsDefault;
   final VoidCallback onAddViaStop;
+
+  /// True once the card has taken all the room it can, and so the only thing
+  /// left for a drag to do is scroll.
+  ///
+  /// Below that a drag on the body raises the card instead, which is how a
+  /// sheet is expected to behave and avoids two drag recognizers contending
+  /// for the same gesture.
+  final bool canScrollBody;
+
+  /// How far past its usual stop the card has been pulled: 0 at the stop the
+  /// map still shows a quarter of, 1 with only the status strip left.
+  final double fullProgress;
 
   final LayerLink routeFieldLink;
   final bool fromLoading;
@@ -153,6 +168,7 @@ class _BottomCardState extends State<BottomCard> {
 
   @override
   void dispose() {
+    _scroll.dispose();
     _savedTimer?.cancel();
     widget.fromFocusNode.removeListener(_onFocusChanged);
     widget.toFocusNode.removeListener(_onFocusChanged);
@@ -161,6 +177,31 @@ class _BottomCardState extends State<BottomCard> {
 
   void _onFocusChanged() {
     if (mounted) setState(() {});
+  }
+
+  final ScrollController _scroll = ScrollController();
+
+  /// True while a downward drag at the top of the list is lowering the card
+  /// rather than scrolling, so the release knows to snap.
+  bool _pullingDown = false;
+
+  /// At the top of the list, a downward drag has nothing left to scroll, so
+  /// it hands the card back down instead of dead-ending in an overscroll.
+  bool _onScrollNotification(ScrollNotification notification) {
+    if (!widget.canScrollBody) return false;
+    if (notification is OverscrollNotification && notification.overscroll < 0) {
+      if (!_pullingDown) {
+        _pullingDown = true;
+        widget.onDragStart();
+      }
+      widget.onDragUpdate(-notification.overscroll);
+      return true;
+    }
+    if (notification is ScrollEndNotification && _pullingDown) {
+      _pullingDown = false;
+      widget.onDragEnd(0);
+    }
+    return false;
   }
 
   /// The journey stages, unless something else needs the room.
@@ -182,12 +223,83 @@ class _BottomCardState extends State<BottomCard> {
     );
   }
 
+  /// Everything between the handle and the action bar, as one scroll.
+  ///
+  /// The fields, the journey stages and the trip lists share a single
+  /// scrollable so that expanding a stage pushes the rest down rather than
+  /// stranding it: collapsing a section to reach the one below it is the
+  /// wrong way round.
+  Widget _buildScrollableBody(
+    BuildContext context, {
+    required List<Widget> above,
+    required List<Widget> below,
+  }) {
+    final Widget scroller = NotificationListener<ScrollNotification>(
+      onNotification: _onScrollNotification,
+      child: SingleChildScrollView(
+        controller: _scroll,
+        physics: widget.canScrollBody
+            ? const ClampingScrollPhysics()
+            : const NeverScrollableScrollPhysics(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ...above,
+            if (!widget.isCollapsed) ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: below,
+                ),
+              ),
+              // Clears the pinned action bar's shadow.
+              const SizedBox(height: 12),
+            ],
+          ],
+        ),
+      ),
+    );
+
+    if (widget.canScrollBody) return scroller;
+
+    // Not yet at the top stop, so a drag on the body raises the card. The
+    // recognizer is only installed in that state, which keeps it out of the
+    // arena once the list is the thing that should be moving.
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onVerticalDragStart: (_) => widget.onDragStart(),
+      onVerticalDragUpdate: (d) => widget.onDragUpdate(d.delta.dy),
+      onVerticalDragEnd: (d) => widget.onDragEnd(d.velocity.pixelsPerSecond.dy),
+      child: scroller,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    // The rounded top is what makes the card read as sitting over the map.
+    // Once there is no map left beside it, the curve has nothing to sit over.
+    final radius = 16.0 * (1 - widget.fullProgress);
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      // The app asks for light status-bar icons against the map. Against a
+      // white card at the top of the screen they would be invisible.
+      value: widget.fullProgress > 0.5
+          ? SystemUiOverlayStyle.dark.copyWith(
+              statusBarColor: const Color(0x00000000),
+            )
+          : SystemUiOverlayStyle.light.copyWith(
+              statusBarColor: const Color(0x00000000),
+            ),
+      child: _buildCard(context, radius),
+    );
+  }
+
+  Widget _buildCard(BuildContext context, double radius) {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.white,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(radius)),
         boxShadow: const [
           BoxShadow(
             color: Color(0x1A000000),
@@ -212,7 +324,9 @@ class _BottomCardState extends State<BottomCard> {
             widget.onUnfocus();
           },
           child: SafeArea(
-            top: false,
+            // Honoured only once the card actually reaches the strip, so the
+            // handle does not sit under the clock.
+            top: widget.fullProgress > 0.5,
             child: SizedBox.expand(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -242,92 +356,185 @@ class _BottomCardState extends State<BottomCard> {
                     ),
                   ),
 
-                  Builder(
-                    builder: (context) {
-                      final fadeStart = 0.5;
-                      final t =
-                          ((widget.collapseProgress - fadeStart) /
-                                  (1 - fadeStart))
-                              .clamp(0.0, 1.0);
-                      final opacity = 1.0 - Curves.easeOut.transform(t);
-                      return GestureDetector(
-                        behavior: HitTestBehavior.translucent,
-                        onTap: widget.onUnfocus,
-                        child: ClipRect(
-                          child: Align(
-                            alignment: Alignment.topCenter,
-                            heightFactor: opacity,
-                            child: Opacity(
-                              opacity: opacity,
-                              child: Padding(
-                                padding: EdgeInsets.fromLTRB(12, 0, 12, 8),
+                  Expanded(
+                    child: _buildScrollableBody(
+                      context,
+                      above: [
+                        Builder(
+                          builder: (context) {
+                            final fadeStart = 0.5;
+                            final t =
+                                ((widget.collapseProgress - fadeStart) /
+                                        (1 - fadeStart))
+                                    .clamp(0.0, 1.0);
+                            final opacity = 1.0 - Curves.easeOut.transform(t);
+                            return GestureDetector(
+                              behavior: HitTestBehavior.translucent,
+                              onTap: widget.onUnfocus,
+                              child: ClipRect(
                                 child: Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: Text(
-                                    'Where to?',
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w700,
-                                      color: AppColors.black,
+                                  alignment: Alignment.topCenter,
+                                  heightFactor: opacity,
+                                  child: Opacity(
+                                    opacity: opacity,
+                                    child: Padding(
+                                      padding: EdgeInsets.fromLTRB(
+                                        12,
+                                        0,
+                                        12,
+                                        8,
+                                      ),
+                                      child: Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: Text(
+                                          'Where to?',
+                                          style: TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.w700,
+                                            color: AppColors.black,
+                                          ),
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ),
                               ),
+                            );
+                          },
+                        ),
+
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                          child: Listener(
+                            onPointerDown: (_) {},
+                            behavior: HitTestBehavior.opaque,
+                            child: GestureDetector(
+                              onTap: () {},
+                              behavior: HitTestBehavior.opaque,
+                              child: RouteFieldBox(
+                                fromController: widget.fromCtrl,
+                                toController: widget.toCtrl,
+                                fromFocusNode: widget.fromFocusNode,
+                                toFocusNode: widget.toFocusNode,
+                                showMyLocationDefault:
+                                    widget.showMyLocationDefault,
+                                accentColor: AppColors.accentOf(context),
+                                onSwapRequested: widget.onSwapRequested,
+                                layerLink: widget.routeFieldLink,
+                                fromLoading: widget.fromLoading,
+                                toLoading: widget.toLoading,
+                                middle: _buildSpine(),
+                              ),
                             ),
                           ),
                         ),
-                      );
-                    },
-                  ),
 
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                    child: Listener(
-                      onPointerDown: (_) {},
-                      behavior: HitTestBehavior.opaque,
-                      child: GestureDetector(
-                        onTap: () {},
-                        behavior: HitTestBehavior.opaque,
-                        child: RouteFieldBox(
-                          fromController: widget.fromCtrl,
-                          toController: widget.toCtrl,
-                          fromFocusNode: widget.fromFocusNode,
-                          toFocusNode: widget.toFocusNode,
-                          showMyLocationDefault: widget.showMyLocationDefault,
-                          accentColor: AppColors.accentOf(context),
-                          onSwapRequested: widget.onSwapRequested,
-                          layerLink: widget.routeFieldLink,
-                          fromLoading: widget.fromLoading,
-                          toLoading: widget.toLoading,
-                          middle: _buildSpine(),
+                        if (!widget.isCollapsed &&
+                            (widget.options != widget.storedOptions ||
+                                _savedAsDefault))
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                            child: SaveDefaultRow(
+                              saved: _savedAsDefault,
+                              onReset: widget.onResetOptions,
+                              onSaveAsDefault: () {
+                                widget.onSaveOptionsAsDefault();
+                                setState(() => _savedAsDefault = true);
+                                _savedTimer?.cancel();
+                                _savedTimer = Timer(
+                                  const Duration(milliseconds: 1800),
+                                  () {
+                                    if (mounted) {
+                                      setState(() => _savedAsDefault = false);
+                                    }
+                                  },
+                                );
+                              },
+                            ),
+                          ),
+                      ],
+                      below: [
+                        Padding(
+                          padding: const EdgeInsets.only(top: 16),
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.translucent,
+                            onTap: widget.onUnfocus,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Favourites',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.black,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                if (widget.favorites.isEmpty)
+                                  const _FavoritesEmptyMessage()
+                                else
+                                  _FavoritesQuickActions(
+                                    favorites: widget.favorites,
+                                    onFavoriteTap: widget.onFavoriteTap,
+                                    hasLocationPermission:
+                                        widget.hasLocationPermission,
+                                  ),
+                              ],
+                            ),
+                          ),
                         ),
-                      ),
+                        if (widget.savedTrips.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 16),
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.translucent,
+                              onTap: widget.onUnfocus,
+                              child: _SavedTripsSection(
+                                savedTrips: widget.savedTrips,
+                                onSavedTripTap: widget.onSavedTripTap,
+                                onSeeAll: widget.onSeeAllSavedTrips,
+                              ),
+                            ),
+                          ),
+                        if (widget.recentTrips.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 16),
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.translucent,
+                              onTap: widget.onUnfocus,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Recent trips',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.black,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  ...widget.recentTrips.map(
+                                    (trip) => Padding(
+                                      padding: const EdgeInsets.only(
+                                        bottom: 16,
+                                      ),
+                                      child: _RecentTripTile(
+                                        trip: trip,
+                                        onTap: () =>
+                                            widget.onRecentTripTap(trip),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        const SizedBox(height: 96),
+                      ],
                     ),
                   ),
-
-                  if (!widget.isCollapsed &&
-                      (widget.options != widget.storedOptions ||
-                          _savedAsDefault))
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-                      child: SaveDefaultRow(
-                        saved: _savedAsDefault,
-                        onReset: widget.onResetOptions,
-                        onSaveAsDefault: () {
-                          widget.onSaveOptionsAsDefault();
-                          setState(() => _savedAsDefault = true);
-                          _savedTimer?.cancel();
-                          _savedTimer = Timer(
-                            const Duration(milliseconds: 1800),
-                            () {
-                              if (mounted) {
-                                setState(() => _savedAsDefault = false);
-                              }
-                            },
-                          );
-                        },
-                      ),
-                    ),
 
                   if (!widget.isCollapsed)
                     Padding(
@@ -407,100 +614,6 @@ class _BottomCardState extends State<BottomCard> {
                             ),
                           );
                         },
-                      ),
-                    ),
-
-                  if (!widget.isCollapsed)
-                    Expanded(
-                      child: SingleChildScrollView(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.only(top: 16),
-                                child: GestureDetector(
-                                  behavior: HitTestBehavior.translucent,
-                                  onTap: widget.onUnfocus,
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Favourites',
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w700,
-                                          color: AppColors.black,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 12),
-                                      if (widget.favorites.isEmpty)
-                                        const _FavoritesEmptyMessage()
-                                      else
-                                        _FavoritesQuickActions(
-                                          favorites: widget.favorites,
-                                          onFavoriteTap: widget.onFavoriteTap,
-                                          hasLocationPermission:
-                                              widget.hasLocationPermission,
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                              if (widget.savedTrips.isNotEmpty)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 16),
-                                  child: GestureDetector(
-                                    behavior: HitTestBehavior.translucent,
-                                    onTap: widget.onUnfocus,
-                                    child: _SavedTripsSection(
-                                      savedTrips: widget.savedTrips,
-                                      onSavedTripTap: widget.onSavedTripTap,
-                                      onSeeAll: widget.onSeeAllSavedTrips,
-                                    ),
-                                  ),
-                                ),
-                              if (widget.recentTrips.isNotEmpty)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 16),
-                                  child: GestureDetector(
-                                    behavior: HitTestBehavior.translucent,
-                                    onTap: widget.onUnfocus,
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          'Recent trips',
-                                          style: TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w700,
-                                            color: AppColors.black,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 12),
-                                        ...widget.recentTrips.map(
-                                          (trip) => Padding(
-                                            padding: const EdgeInsets.only(
-                                              bottom: 16,
-                                            ),
-                                            child: _RecentTripTile(
-                                              trip: trip,
-                                              onTap: () =>
-                                                  widget.onRecentTripTap(trip),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              const SizedBox(height: 96),
-                            ],
-                          ),
-                        ),
                       ),
                     ),
                 ],
