@@ -1,3 +1,4 @@
+import '../api/endpoints/trip_endpoint.dart';
 import '../api/params/plan_params.dart';
 import 'transit_mode_group.dart';
 import 'transitous/enums.dart';
@@ -327,6 +328,42 @@ class RoutingOptions {
           : elevationCosts,
     );
   }
+
+  /// The same journey, re-checked against current real-time data.
+  ///
+  /// `/refresh-itinerary` re-plans rather than merely re-times, so it takes
+  /// most of `/plan`'s knobs — and omitting them does not mean "keep what the
+  /// search asked for", it means "use the server's defaults". That is how a
+  /// refreshed walking leg comes back as a straight line: without
+  /// `useRoutedTransfers` and the pedestrian settings, the street legs are no
+  /// longer routed over the network and arrive with no geometry at all.
+  ///
+  /// `requireDisplayNameMatch` is the other half: it makes the server refuse
+  /// to substitute a different journey, rather than handing back a re-plan
+  /// that happens to have the same number of legs.
+  RefreshItineraryOptions toRefreshParams() => RefreshItineraryOptions(
+    requireDisplayNameMatch: true,
+    detailedTransfers: true,
+    detailedLegs: true,
+    withFares: true,
+    useRoutedTransfers: useRoutedTransfers,
+    pedestrianProfile: wheelchairAccessibleOnly
+        ? PedestrianProfile.wheelchair
+        : null,
+    requireBikeTransport: requireBikeTransport ? true : null,
+    requireCarTransport: requireCarTransport ? true : null,
+    noCompulsoryReservation: noCompulsoryReservation ? true : null,
+    transitModes: transitModes,
+    preTransitModes: firstMileModes,
+    maxPreTransitTime: maxFirstMileTime,
+    postTransitModes: lastMileModes,
+    maxPostTransitTime: maxLastMileTime,
+    pedestrianSpeed: _msFrom(walkingSpeedKmh, _defaultWalkingSpeedKmh),
+    cyclingSpeed: _msFrom(cyclingSpeedKmh, _defaultCyclingSpeedKmh),
+    elevationCosts: elevationCosts == ElevationCosts.none
+        ? null
+        : elevationCosts,
+  );
 
   /// Form-factor filter for whichever leg asks, or none when any vehicle
   /// will do.

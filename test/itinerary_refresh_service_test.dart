@@ -9,6 +9,7 @@ Leg _leg({
   required DateTime endTime,
   bool cancelled = false,
   bool realTime = false,
+  String? geometry,
 }) {
   return Leg(
     mode: mode,
@@ -20,6 +21,9 @@ Leg _leg({
     tripId: tripId,
     cancelled: cancelled,
     realTime: realTime,
+    legGeometry: geometry == null
+        ? null
+        : EncodedPolyline(points: geometry, precision: 6, length: 2),
   );
 }
 
@@ -299,5 +303,135 @@ void main() {
 
       expect(result.freshness, ItineraryFreshness.notRefreshable);
     });
+  });
+
+  group('a refresh must not quietly become a different journey', () {
+    test(
+      'keeps the planned geometry when the refresh answers without it',
+      () async {
+        // A street leg with no geometry is drawn as a straight line from origin
+        // to station, which is not where anybody walks.
+        final stored = _itinerary([
+          _leg(
+            mode: 'WALK',
+            startTime: _depart,
+            endTime: _depart.add(const Duration(minutes: 4)),
+            geometry: 'srufHi~mpA',
+          ),
+          _leg(
+            mode: 'SUBWAY',
+            tripId: 'trip-1',
+            startTime: _depart.add(const Duration(minutes: 4)),
+            endTime: _arrive,
+          ),
+        ]);
+
+        final result = await ItineraryRefreshService.refresh(
+          stored,
+          fetchItinerary: (_) async => _itinerary([
+            _leg(
+              mode: 'WALK',
+              startTime: _depart.add(const Duration(minutes: 1)),
+              endTime: _depart.add(const Duration(minutes: 5)),
+            ),
+            _leg(
+              mode: 'SUBWAY',
+              tripId: 'trip-1',
+              startTime: _depart.add(const Duration(minutes: 5)),
+              endTime: _arrive,
+              realTime: true,
+            ),
+          ]),
+        );
+
+        expect(result.itinerary.legs.first.legGeometry?.points, 'srufHi~mpA');
+        // And it is still a refresh: the new times came through.
+        expect(
+          result.itinerary.legs.first.startTime,
+          _depart.add(const Duration(minutes: 1)),
+        );
+        expect(result.freshness, ItineraryFreshness.live);
+      },
+    );
+
+    test('rejects a re-plan that happens to have the same leg count', () async {
+      // Walk legs carry no tripId for the server to pin them by, so they are
+      // exactly the ones it is free to replace — and a substituted journey
+      // would surface as "this connection has changed".
+      final stored = _itinerary([
+        _leg(
+          mode: 'SUBWAY',
+          tripId: 'trip-1',
+          startTime: _depart,
+          endTime: _arrive,
+        ),
+      ]);
+
+      final result = await ItineraryRefreshService.refresh(
+        stored,
+        fetchItinerary: (_) async => _itinerary([
+          _leg(
+            mode: 'BUS',
+            tripId: 'trip-9',
+            startTime: _depart,
+            endTime: _arrive,
+            cancelled: true,
+          ),
+        ]),
+        fetchTripDetails: ({required String tripId}) async => _itinerary([
+          _leg(
+            mode: 'SUBWAY',
+            tripId: 'trip-1',
+            startTime: _depart,
+            endTime: _arrive,
+          ),
+        ]),
+      );
+
+      expect(result.itinerary.legs.single.mode, 'SUBWAY');
+      expect(result.freshness, isNot(ItineraryFreshness.changed));
+    });
+  });
+
+  group('the per-trip fallback', () {
+    test(
+      'merges the leg for the trip it asked about, not the first one',
+      () async {
+        // A /trip response that leads with a walk would otherwise lend its
+        // times and its cancellation to every transit leg.
+        final stored = _itinerary([
+          _leg(
+            mode: 'SUBWAY',
+            tripId: 'trip-1',
+            startTime: _depart,
+            endTime: _arrive,
+          ),
+        ]);
+
+        final result = await ItineraryRefreshService.refresh(
+          stored,
+          fetchTripDetails: ({required String tripId}) async => _itinerary([
+            _leg(
+              mode: 'WALK',
+              startTime: _depart.subtract(const Duration(minutes: 9)),
+              endTime: _depart,
+              cancelled: true,
+            ),
+            _leg(
+              mode: 'SUBWAY',
+              tripId: 'trip-1',
+              startTime: _depart.add(const Duration(minutes: 2)),
+              endTime: _arrive,
+              realTime: true,
+            ),
+          ]),
+        );
+
+        final leg = result.itinerary.legs.single;
+        expect(leg.cancelled, isFalse, reason: 'the walk leg is not this trip');
+        expect(leg.startTime, _depart.add(const Duration(minutes: 2)));
+        expect(result.freshness, ItineraryFreshness.live);
+      },
+    );
   });
 }

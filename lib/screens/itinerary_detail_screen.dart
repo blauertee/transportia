@@ -14,6 +14,7 @@ import '../models/saved_trip.dart';
 import '../models/time_selection.dart';
 import '../providers/theme_provider.dart';
 import '../services/itinerary_refresh_service.dart';
+import '../services/routing_options_service.dart';
 import '../services/transitous_geocode_service.dart';
 import '../theme/app_colors.dart';
 import '../utils/color_utils.dart';
@@ -133,7 +134,13 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
     if (_isRefreshing) return;
 
     _isRefreshing = true;
-    final result = await ItineraryRefreshService.refresh(_itinerary);
+    // The refresh re-plans, so it needs the settings the journey was planned
+    // under; without them the server answers with its own defaults and the
+    // street legs come back unrouted.
+    final result = await ItineraryRefreshService.refresh(
+      _itinerary,
+      options: await RoutingOptionsService.load(),
+    );
 
     if (!mounted) {
       _isRefreshing = false;

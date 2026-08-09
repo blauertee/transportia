@@ -61,6 +61,13 @@ Map<String, dynamic> planItineraryJson({
         'endTime': at(accessWalk),
         'duration': accessWalk.inSeconds,
         'distance': 420.0,
+        // Real walk legs come back with the street path they were routed
+        // over; a fixture without one cannot catch that path being lost.
+        'legGeometry': {
+          'points': 'ohu_Iumq_@?kBhA?',
+          'precision': 6,
+          'length': 4,
+        },
         'from': {'name': 'START', 'lat': 52.520, 'lon': 13.405},
         'to': {'name': fromStop, 'lat': 52.525, 'lon': 13.369},
       },
@@ -72,6 +79,7 @@ Map<String, dynamic> planItineraryJson({
         'endTime': at(egressWalk),
         'duration': 180,
         'distance': 210.0,
+        'legGeometry': {'points': 'ktm_Ic}s_@k@?', 'precision': 6, 'length': 3},
         'from': {'name': toStop, 'lat': 52.366, 'lon': 13.503},
         'to': {'name': 'END', 'lat': 52.362, 'lon': 13.510},
       },

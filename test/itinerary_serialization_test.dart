@@ -105,6 +105,10 @@ void main() {
         expect(b.fromTrack, a.fromTrack);
         expect(b.realTime, a.realTime);
         expect(b.intermediateStops.length, a.intermediateStops.length);
+        // The street path a leg was routed over. Losing it draws a walk as a
+        // straight line from origin to station.
+        expect(b.legGeometry?.points, a.legGeometry?.points);
+        expect(b.legGeometry?.precision, a.legGeometry?.precision);
       }
     });
 
