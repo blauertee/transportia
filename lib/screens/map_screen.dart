@@ -21,14 +21,11 @@ import '../models/transitous/server_config.dart';
 import '../models/itinerary.dart';
 import '../models/journey_stop.dart';
 import '../models/saved_place.dart';
-import '../models/saved_trip.dart';
 import '../models/stop_time.dart';
 import '../models/time_selection.dart';
 import '../models/trip_history_item.dart';
-import '../screens/itinerary_detail_screen.dart';
 import '../screens/itinerary_list_screen.dart';
 import '../screens/location_settings_screen.dart';
-import '../screens/saved_trips_screen.dart';
 import '../screens/timetables_screen.dart';
 import '../screens/location_search_screen.dart';
 import '../screens/via_stops_screen.dart';
@@ -36,7 +33,6 @@ import '../services/favorites_service.dart';
 import '../services/location_service.dart';
 import '../services/recent_trips_service.dart';
 import '../services/routing_options_service.dart';
-import '../services/saved_trips_service.dart';
 import '../services/saved_places_service.dart';
 import '../services/server_capabilities_service.dart';
 import '../services/stop_times_service.dart';
@@ -167,7 +163,6 @@ class _MapScreenState extends State<MapScreen>
   ServerConfig _capabilities = ServerCapabilitiesService.capabilities.value;
   int _tripsRefreshKey = 0;
   List<TripHistoryItem> _recentTrips = [];
-  List<SavedTrip> _savedTrips = [];
   List<FavoritePlace> _favorites = [];
   bool _isSearching = false;
   bool _isMapReady = false;
@@ -316,7 +311,6 @@ class _MapScreenState extends State<MapScreen>
     _fromCtrl.addListener(_handleFromTextChanged);
     _toCtrl.addListener(_handleToTextChanged);
     unawaited(_loadRecentTrips());
-    unawaited(_loadSavedTrips());
     unawaited(FavoritesService.getFavorites());
   }
 
@@ -1711,23 +1705,17 @@ class _MapScreenState extends State<MapScreen>
             0.0,
             collapsedTop,
           ));
-          // The card's top stop: everything but the strip the clock and the
-          // battery live in. Only the search card goes this far — the trip
-          // and quick-settings cards have a fixed amount to show.
-          final double fullTop = _isTripFocus || _isQuickSettings
-              ? expandedTop
-              : math.min(MediaQuery.paddingOf(context).top, expandedTop);
           _lastComputedCollapsedTop = collapsedTop;
           _lastComputedExpandedTop = expandedTop;
           _lastBottomBarHeight = bottomBarHeight;
 
           _sheetTop ??= expandedTop;
           if (_isBottomBarResizeAnimating) {
-            if (_sheetTop! < fullTop) {
-              _sheetTop = fullTop;
+            if (_sheetTop! < expandedTop) {
+              _sheetTop = expandedTop;
             }
           } else {
-            _sheetTop = ((_sheetTop!).clamp(fullTop, collapsedTop));
+            _sheetTop = ((_sheetTop!).clamp(expandedTop, collapsedTop));
           }
           final bool collapsed = ((_sheetTop! - collapsedTop).abs() < 1.0);
           if (collapsed != _isSheetCollapsed) {
@@ -1743,13 +1731,6 @@ class _MapScreenState extends State<MapScreen>
               : ((_sheetTop! - expandedTop) / denom).clamp(0.0, 1.0);
 
           widget.onCollapseProgressChanged?.call(progress);
-
-          // A second signal for the stretch above the usual expanded stop, so
-          // every threshold keyed to `progress` keeps landing where it did.
-          final fullDenom = (expandedTop - fullTop);
-          final fullProgress = fullDenom <= 0.0
-              ? 0.0
-              : ((expandedTop - _sheetTop!) / fullDenom).clamp(0.0, 1.0);
 
           final showLongPressOverlay =
               _longPressLatLng != null || _isLongPressClosing;
@@ -1969,20 +1950,16 @@ class _MapScreenState extends State<MapScreen>
                                 _stopDragRumble();
                               },
                               onDragStart: _onSheetDragStart,
-                              onDragUpdate: (dy) =>
-                                  _onSheetDragUpdate(dy, fullTop, collapsedTop),
-                              onDragEnd: (velocityDy) => _onSheetDragEnd(
-                                velocityDy,
-                                fullTop,
+                              onDragUpdate: (dy) => _onSheetDragUpdate(
+                                dy,
                                 expandedTop,
                                 collapsedTop,
                               ),
-                              // The body scrolls only once the card has taken
-                              // all the room it can; below that, dragging it
-                              // moves the card. One gesture, two jobs, and no
-                              // arena to fight over.
-                              canScrollBody: (_sheetTop! - fullTop).abs() < 1.0,
-                              fullProgress: fullProgress,
+                              onDragEnd: (velocityDy) => _onSheetDragEnd(
+                                velocityDy,
+                                expandedTop,
+                                collapsedTop,
+                              ),
                               fromCtrl: _fromCtrl,
                               toCtrl: _toCtrl,
                               fromFocusNode: _fromFocus,
@@ -1998,6 +1975,7 @@ class _MapScreenState extends State<MapScreen>
                               onSaveOptionsAsDefault: () =>
                                   unawaited(_saveOptionsAsDefault()),
                               onAddViaStop: _openViaStopPicker,
+                              onShowMap: _collapseSheetToMap,
                               onFromPressed: () => unawaited(
                                 _openLocationSearch(RouteFieldKind.from),
                               ),
@@ -2029,9 +2007,6 @@ class _MapScreenState extends State<MapScreen>
                               timeSelection: _timeSelection,
                               recentTrips: _recentTrips,
                               onRecentTripTap: _onRecentTripTap,
-                              savedTrips: _savedTrips,
-                              onSavedTripTap: _onSavedTripTap,
-                              onSeeAllSavedTrips: _openSavedTrips,
                               tripsRefreshKey: _tripsRefreshKey,
                               favorites: _favorites,
                               onFavoriteTap: _onFavoriteTap,
@@ -2141,7 +2116,6 @@ class _MapScreenState extends State<MapScreen>
             _isSearching = false;
           });
           unawaited(_loadRecentTrips());
-          unawaited(_loadSavedTrips());
         });
 
     try {
@@ -2262,12 +2236,11 @@ class _MapScreenState extends State<MapScreen>
 
   void _onSheetDragEnd(
     double velocityDy,
-    double fullTop,
     double expandedTop,
     double collapsedTop,
   ) {
     _animateTo(
-      _snapStopFor(velocityDy, [fullTop, expandedTop, collapsedTop]),
+      _snapStopFor(velocityDy, [expandedTop, collapsedTop]),
       collapsedTop,
     );
     _stopDragRumble();
@@ -2384,6 +2357,14 @@ class _MapScreenState extends State<MapScreen>
     if (_lastUserLatLng != null) return _lastUserLatLng;
     if (_startCam.target != _initCam.target) return _startCam.target;
     return null;
+  }
+
+  /// Drops the card to its search-bar height, which is the map made visible.
+  void _collapseSheetToMap() {
+    _unfocusInputs();
+    final collapsedTop = _lastComputedCollapsedTop;
+    if (collapsedTop == null) return;
+    _animateTo(collapsedTop, collapsedTop);
   }
 
   bool _isFavourite(TransitousLocationSuggestion? selection) =>
@@ -4116,39 +4097,6 @@ class _MapScreenState extends State<MapScreen>
     setState(() {
       _recentTrips = trips;
     });
-  }
-
-  Future<void> _loadSavedTrips() async {
-    final trips = await SavedTripsService.getSavedTrips();
-    if (!mounted) return;
-    setState(() {
-      _savedTrips = trips;
-    });
-  }
-
-  void _onSavedTripTap(SavedTrip trip) {
-    Haptics.lightTick();
-    Navigator.of(context)
-        .push(
-          CustomPageRoute(
-            child: ItineraryDetailScreen(
-              itinerary: trip.itinerary,
-              savedTrip: trip,
-            ),
-          ),
-        )
-        .then((_) => unawaited(_loadSavedTrips()));
-  }
-
-  void _openSavedTrips() {
-    Haptics.lightTick();
-    if (widget.onTabChangeRequested != null) {
-      widget.onTabChangeRequested!(2);
-      return;
-    }
-    Navigator.of(context)
-        .push(CustomPageRoute(child: const SavedTripsScreen()))
-        .then((_) => unawaited(_loadSavedTrips()));
   }
 
   void _onRecentTripTap(TripHistoryItem trip) {

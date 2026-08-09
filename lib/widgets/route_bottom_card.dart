@@ -1,11 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/rendering.dart';
-import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../models/routing_options.dart';
-import '../models/saved_trip.dart';
 import '../models/time_selection.dart';
 import '../models/transitous/server_config.dart';
 import '../models/trip_history_item.dart';
@@ -13,7 +10,6 @@ import '../services/favorites_service.dart';
 import '../services/transitous_geocode_service.dart';
 import '../widgets/route_field_box.dart';
 import '../theme/app_colors.dart';
-import 'saved_trip_card.dart';
 import 'buttons/pill_button.dart';
 import 'floating_nav_bar.dart';
 import 'buttons/primary_button.dart';
@@ -44,14 +40,13 @@ class BottomCard extends StatefulWidget {
     required this.onResetOptions,
     required this.onSaveOptionsAsDefault,
     required this.onAddViaStop,
+    required this.onShowMap,
     required this.onFromPressed,
     required this.onToPressed,
     required this.isFromFavourite,
     required this.isToFavourite,
     required this.onToggleFromFavourite,
     required this.onToggleToFavourite,
-    required this.canScrollBody,
-    required this.fullProgress,
     required this.routeFieldLink,
     required this.fromLoading,
     required this.toLoading,
@@ -65,9 +60,6 @@ class BottomCard extends StatefulWidget {
     required this.timeSelection,
     required this.recentTrips,
     required this.onRecentTripTap,
-    required this.savedTrips,
-    required this.onSavedTripTap,
-    required this.onSeeAllSavedTrips,
     required this.favorites,
     required this.onFavoriteTap,
     required this.hasLocationPermission,
@@ -102,6 +94,9 @@ class BottomCard extends StatefulWidget {
   final VoidCallback onSaveOptionsAsDefault;
   final VoidCallback onAddViaStop;
 
+  /// Collapses the card so the map is visible.
+  final VoidCallback onShowMap;
+
   /// Opens the place picker for one end or the other.
   final VoidCallback onFromPressed;
   final VoidCallback onToPressed;
@@ -110,18 +105,6 @@ class BottomCard extends StatefulWidget {
   final bool isToFavourite;
   final VoidCallback onToggleFromFavourite;
   final VoidCallback onToggleToFavourite;
-
-  /// True once the card has taken all the room it can, and so the only thing
-  /// left for a drag to do is scroll.
-  ///
-  /// Below that a drag on the body raises the card instead, which is how a
-  /// sheet is expected to behave and avoids two drag recognizers contending
-  /// for the same gesture.
-  final bool canScrollBody;
-
-  /// How far past its usual stop the card has been pulled: 0 at the stop the
-  /// map still shows a quarter of, 1 with only the status strip left.
-  final double fullProgress;
 
   final LayerLink routeFieldLink;
   final bool fromLoading;
@@ -136,9 +119,6 @@ class BottomCard extends StatefulWidget {
   final TimeSelection timeSelection;
   final List<TripHistoryItem> recentTrips;
   final ValueChanged<TripHistoryItem> onRecentTripTap;
-  final List<SavedTrip> savedTrips;
-  final ValueChanged<SavedTrip> onSavedTripTap;
-  final VoidCallback onSeeAllSavedTrips;
   final List<FavoritePlace> favorites;
   final ValueChanged<FavoritePlace> onFavoriteTap;
   final bool hasLocationPermission;
@@ -184,12 +164,6 @@ class _BottomCardState extends State<BottomCard> {
 
   @override
   void dispose() {
-    // A card torn down mid-drag would otherwise leave the rumble running.
-    if (_gestureMovesSheet != null) {
-      _gestureMovesSheet = null;
-      _pullingDown = false;
-      widget.onDragEnd(0);
-    }
     _scroll.dispose();
     _savedTimer?.cancel();
     widget.fromFocusNode.removeListener(_onFocusChanged);
@@ -202,64 +176,6 @@ class _BottomCardState extends State<BottomCard> {
   }
 
   final ScrollController _scroll = ScrollController();
-
-  /// Which job the body is doing for the gesture in flight, latched at its
-  /// start. Null between gestures.
-  ///
-  /// The gesture moves the card, and so changes [BottomCard.canScrollBody]
-  /// underneath itself. Reading that live swapped the scroll physics and
-  /// unmounted the drag recognizer mid-drag — and a recognizer disposed after
-  /// it has been accepted reports neither an end nor a cancel, so whatever
-  /// the start turned on was left running with nothing to turn it off.
-  bool? _gestureMovesSheet;
-
-  /// True while a downward drag at the top of the list is lowering the card
-  /// rather than scrolling, so the release knows to snap.
-  bool _pullingDown = false;
-
-  bool get _bodyMovesSheet => _gestureMovesSheet ?? !widget.canScrollBody;
-
-  void _beginBodyGesture() {
-    if (_gestureMovesSheet != null) return;
-    setState(() => _gestureMovesSheet = !widget.canScrollBody);
-    widget.onDragStart();
-  }
-
-  /// Idempotent, because an end and a cancel can both arrive for one gesture,
-  /// and because the callers below have no way to know which they are.
-  void _endBodyGesture(double velocityDy) {
-    if (_gestureMovesSheet == null) return;
-    setState(() => _gestureMovesSheet = null);
-    _pullingDown = false;
-    widget.onDragEnd(velocityDy);
-  }
-
-  /// At the top of the list, a downward drag has nothing left to scroll, so
-  /// it hands the card back down instead of dead-ending in an overscroll.
-  bool _onScrollNotification(ScrollNotification notification) {
-    // Endings are handled first and unguarded. A pull-down lowers the card,
-    // which is the point of it — so anything gated on the card still being
-    // at the top would miss the end of the very gesture that moved it.
-    if (_pullingDown &&
-        (notification is ScrollEndNotification ||
-            (notification is UserScrollNotification &&
-                notification.direction == ScrollDirection.idle))) {
-      _endBodyGesture(0);
-      return false;
-    }
-
-    if (!_bodyMovesSheet &&
-        notification is OverscrollNotification &&
-        notification.overscroll < 0) {
-      if (!_pullingDown) {
-        _pullingDown = true;
-        _beginBodyGesture();
-      }
-      widget.onDragUpdate(-notification.overscroll);
-      return true;
-    }
-    return false;
-  }
 
   /// The journey stages. Collapsed, the card is just a search box.
   Widget? _buildSpine() {
@@ -283,75 +199,34 @@ class _BottomCardState extends State<BottomCard> {
     required List<Widget> above,
     required List<Widget> below,
   }) {
-    final Widget scroller = NotificationListener<ScrollNotification>(
-      onNotification: _onScrollNotification,
-      child: SingleChildScrollView(
-        controller: _scroll,
-        physics: _bodyMovesSheet
-            ? const NeverScrollableScrollPhysics()
-            : const ClampingScrollPhysics(),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            ...above,
-            if (!widget.isCollapsed) ...[
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: below,
-                ),
+    return SingleChildScrollView(
+      controller: _scroll,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ...above,
+          if (!widget.isCollapsed) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: below,
               ),
-              // Clears the pinned action bar's shadow.
-              const SizedBox(height: 12),
-            ],
+            ),
+            // Clears the pinned action bar's shadow.
+            const SizedBox(height: 12),
           ],
-        ),
+        ],
       ),
-    );
-
-    if (!_bodyMovesSheet) return scroller;
-
-    // Not yet at the top stop, so a drag on the body raises the card. The
-    // recognizer is only installed in that state, which keeps it out of the
-    // arena once the list is the thing that should be moving — and stays
-    // installed for the rest of a gesture that reaches the stop, so its end
-    // has something left to report to.
-    return GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onVerticalDragStart: (_) => _beginBodyGesture(),
-      onVerticalDragUpdate: (d) => widget.onDragUpdate(d.delta.dy),
-      onVerticalDragEnd: (d) => _endBodyGesture(d.velocity.pixelsPerSecond.dy),
-      onVerticalDragCancel: () => _endBodyGesture(0),
-      child: scroller,
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    // The rounded top is what makes the card read as sitting over the map.
-    // Once there is no map left beside it, the curve has nothing to sit over.
-    final radius = 16.0 * (1 - widget.fullProgress);
-
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      // The app asks for light status-bar icons against the map. Against a
-      // white card at the top of the screen they would be invisible.
-      value: widget.fullProgress > 0.5
-          ? SystemUiOverlayStyle.dark.copyWith(
-              statusBarColor: const Color(0x00000000),
-            )
-          : SystemUiOverlayStyle.light.copyWith(
-              statusBarColor: const Color(0x00000000),
-            ),
-      child: _buildCard(context, radius),
-    );
-  }
-
-  Widget _buildCard(BuildContext context, double radius) {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(radius)),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
         boxShadow: const [
           BoxShadow(
             color: Color(0x1A000000),
@@ -376,9 +251,7 @@ class _BottomCardState extends State<BottomCard> {
             widget.onUnfocus();
           },
           child: SafeArea(
-            // Honoured only once the card actually reaches the strip, so the
-            // handle does not sit under the clock.
-            top: widget.fullProgress > 0.5,
+            top: false,
             child: SizedBox.expand(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -520,53 +393,36 @@ class _BottomCardState extends State<BottomCard> {
                           ),
                       ],
                       below: [
-                        if (widget.savedTrips.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 16),
-                            child: GestureDetector(
-                              behavior: HitTestBehavior.translucent,
-                              onTap: widget.onUnfocus,
-                              child: _SavedTripsSection(
-                                savedTrips: widget.savedTrips,
-                                onSavedTripTap: widget.onSavedTripTap,
-                                onSeeAll: widget.onSeeAllSavedTrips,
-                              ),
-                            ),
-                          ),
-                        if (widget.recentTrips.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 16),
-                            child: GestureDetector(
-                              behavior: HitTestBehavior.translucent,
-                              onTap: widget.onUnfocus,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Recent trips',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w700,
-                                      color: AppColors.black,
+                        Padding(
+                          padding: const EdgeInsets.only(top: 16),
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.translucent,
+                            onTap: widget.onUnfocus,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Recent trips',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.black,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                ...widget.recentTrips.map(
+                                  (trip) => Padding(
+                                    padding: const EdgeInsets.only(bottom: 16),
+                                    child: _RecentTripTile(
+                                      trip: trip,
+                                      onTap: () => widget.onRecentTripTap(trip),
                                     ),
                                   ),
-                                  const SizedBox(height: 12),
-                                  ...widget.recentTrips.map(
-                                    (trip) => Padding(
-                                      padding: const EdgeInsets.only(
-                                        bottom: 16,
-                                      ),
-                                      child: _RecentTripTile(
-                                        trip: trip,
-                                        onTap: () =>
-                                            widget.onRecentTripTap(trip),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
                           ),
+                        ),
                         const SizedBox(height: 8),
                       ],
                     ),
@@ -630,6 +486,26 @@ class _BottomCardState extends State<BottomCard> {
                                       ),
                                     ),
                                   ),
+                                  const SizedBox(width: 10),
+                                  // The card covers most of the map, and its
+                                  // handle is not an obvious way to say "let
+                                  // me see it".
+                                  GestureDetector(
+                                    onTap: () {},
+                                    behavior: HitTestBehavior.opaque,
+                                    child: PillButton(
+                                      onTap: widget.onShowMap,
+                                      child: Semantics(
+                                        button: true,
+                                        label: 'Show the map',
+                                        child: Icon(
+                                          LucideIcons.map,
+                                          size: 16,
+                                          color: AppColors.black,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
                                   const Spacer(),
                                   GestureDetector(
                                     onTap: () {},
@@ -665,85 +541,6 @@ class _BottomCardState extends State<BottomCard> {
           ),
         ),
       ),
-    );
-  }
-}
-
-/// The next few kept connections, shown above Recent trips because a trip
-/// the user chose to keep outranks one they merely searched for.
-///
-/// Deliberately capped: this is a shortcut on the way to searching, not the
-/// full list, which lives one tap away behind "See all".
-class _SavedTripsSection extends StatelessWidget {
-  const _SavedTripsSection({
-    required this.savedTrips,
-    required this.onSavedTripTap,
-    required this.onSeeAll,
-  });
-
-  static const int _maxShown = 3;
-
-  final List<SavedTrip> savedTrips;
-  final ValueChanged<SavedTrip> onSavedTripTap;
-  final VoidCallback onSeeAll;
-
-  @override
-  Widget build(BuildContext context) {
-    // Anything already finished belongs in the history on the full screen,
-    // not in the way of planning the next journey.
-    final upcoming = savedTrips.where((trip) => !trip.isPast).toList();
-    if (upcoming.isEmpty) return const SizedBox.shrink();
-
-    final shown = upcoming.take(_maxShown).toList();
-    final hiddenCount = upcoming.length - shown.length;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Text(
-              'Saved trips',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: AppColors.black,
-              ),
-            ),
-            const Spacer(),
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: onSeeAll,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    hiddenCount > 0 ? 'See all ($hiddenCount more)' : 'See all',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.accentOf(context),
-                    ),
-                  ),
-                  const SizedBox(width: 2),
-                  Icon(
-                    LucideIcons.chevronRight,
-                    size: 16,
-                    color: AppColors.accentOf(context),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        for (final trip in shown)
-          SavedTripCard(
-            trip: trip,
-            margin: const EdgeInsets.symmetric(vertical: 4),
-            onTap: () => onSavedTripTap(trip),
-          ),
-      ],
     );
   }
 }
