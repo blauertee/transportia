@@ -14,6 +14,7 @@ import '../models/saved_trip.dart';
 import '../models/time_selection.dart';
 import '../providers/theme_provider.dart';
 import '../services/itinerary_refresh_service.dart';
+import '../utils/haptics.dart';
 import '../services/routing_options_service.dart';
 import '../services/transitous_geocode_service.dart';
 import '../theme/app_colors.dart';
@@ -127,6 +128,24 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
       transitionBuilder: (context, animation, _, child) {
         return FadeTransition(opacity: animation, child: child);
       },
+    );
+  }
+
+  /// Opens the journey map on one leg.
+  ///
+  /// Walking, cycling and changing are the legs whose shape is the whole
+  /// question — which side of the station, which exit, how far — and the
+  /// answer is on the map rather than in the row. Transit legs keep their tap
+  /// for expanding the stops they call at.
+  void _showLegOnMap(int displayLegIndex) {
+    Haptics.lightTick();
+    Navigator.of(context).push(
+      CustomPageRoute(
+        child: ItineraryMapScreen(
+          itinerary: _itinerary,
+          initialLegIndex: displayLegIndex,
+        ),
+      ),
     );
   }
 
@@ -328,17 +347,19 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
 
                             if (index >= legsInsertIndex &&
                                 index < legsEndIndex) {
-                              final entry =
-                                  displayLegs[index - legsInsertIndex];
+                              final legIndex = index - legsInsertIndex;
+                              final entry = displayLegs[legIndex];
                               if (entry.isTransfer) {
                                 return TransferLegCard(
                                   leg: entry.leg,
                                   openStopSheet: _openStopSheet,
+                                  onShowOnMap: () => _showLegOnMap(legIndex),
                                 );
                               }
                               return LegDetailsWidget(
                                 leg: entry.leg,
                                 openStopSheet: _openStopSheet,
+                                onShowOnMap: () => _showLegOnMap(legIndex),
                               );
                             }
 
@@ -809,10 +830,14 @@ class LegDetailsWidget extends StatefulWidget {
   final Leg leg;
   final OpenStopSheet openStopSheet;
 
+  /// Used by street legs, whose row cannot show which way they actually go.
+  final VoidCallback? onShowOnMap;
+
   const LegDetailsWidget({
     super.key,
     required this.leg,
     required this.openStopSheet,
+    this.onShowOnMap,
   });
 
   @override
@@ -832,8 +857,10 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
     final arrivalDelay = _arrivalDelay;
 
     return GestureDetector(
+      // A street leg has no stops to unfold, so its tap is free for the map;
+      // a transit leg's tap already unfolds the stops it calls at.
       onTap: isWalkLeg
-          ? null
+          ? widget.onShowOnMap
           : () {
               setState(() {
                 _isExpanded = !_isExpanded;
@@ -1364,14 +1391,22 @@ class TransferLegCard extends StatelessWidget {
   final Leg leg;
   final OpenStopSheet openStopSheet;
 
+  /// A change is a walk between platforms; where it goes is the question.
+  final VoidCallback? onShowOnMap;
+
   const TransferLegCard({
     super.key,
     required this.leg,
     required this.openStopSheet,
+    this.onShowOnMap,
   });
 
   @override
   Widget build(BuildContext context) {
+    return GestureDetector(onTap: onShowOnMap, child: _buildCard(context));
+  }
+
+  Widget _buildCard(BuildContext context) {
     return CustomCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

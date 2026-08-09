@@ -16,6 +16,24 @@ import '../widgets/app_page_scaffold.dart';
 import '../widgets/edit_favorite_overlay.dart';
 import 'favourites_map_screen.dart';
 
+/// What the app calls the rider's current position.
+///
+/// The origin field leaves itself empty for this and resolves the position at
+/// search time, so the trip is planned from where you are when you press
+/// Search rather than where you were when you picked.
+const String myLocationName = 'My Location';
+
+/// The answer the picker returns for it — recognised by id, so a place that
+/// happens to share the name is not mistaken for it.
+final TransitousLocationSuggestion myLocationSuggestion =
+    TransitousLocationSuggestion(
+      id: 'my-location',
+      name: myLocationName,
+      lat: 0,
+      lon: 0,
+      type: 'PLACE',
+    );
+
 /// Picks a place, full screen.
 ///
 /// A screen rather than a dropdown under the field: the list has favourites,
@@ -30,6 +48,7 @@ class LocationSearchScreen extends StatefulWidget {
     this.placeBias,
     this.type,
     this.showFavourites = true,
+    this.showMyLocation = false,
   });
 
   /// Names what is being picked: "Origin", "Destination", "Stop".
@@ -47,6 +66,15 @@ class LocationSearchScreen extends StatefulWidget {
   final String? type;
 
   final bool showFavourites;
+
+  /// Offers where the rider is standing as the first answer.
+  ///
+  /// Only for a route endpoint: a coordinate is not a stop, so a timetable
+  /// search has nothing to do with one. The caller passes this rather than
+  /// the screen asking, because the caller already knows whether location is
+  /// permitted — offering a row that cannot answer would be worse than not
+  /// offering it.
+  final bool showMyLocation;
 
   @override
   State<LocationSearchScreen> createState() => _LocationSearchScreenState();
@@ -192,6 +220,12 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
 
   void _pick(TransitousLocationSuggestion suggestion) {
     Haptics.lightTick();
+    // Where you are is not a place you searched for, so it does not belong
+    // in the list of places you did.
+    if (suggestion.id == myLocationSuggestion.id) {
+      Navigator.of(context).pop(suggestion);
+      return;
+    }
     unawaited(
       SavedPlacesService.savePlaces(
         bucket: widget.bucket,
@@ -341,6 +375,15 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
       return ListView(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
         children: [
+          if (widget.showMyLocation) ...[
+            _ResultRow(
+              icon: LucideIcons.locateFixed,
+              title: myLocationName,
+              subtitle: 'Where you are now',
+              onTap: () => _pick(myLocationSuggestion),
+            ),
+            const SizedBox(height: 8),
+          ],
           if (widget.showFavourites) ...[
             _sectionHeading('Favourites'),
             if (_favourites.isEmpty)

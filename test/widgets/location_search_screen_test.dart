@@ -27,7 +27,7 @@ Future<void> _keep(List<FavoritePlace> favourites) async {
   }
 }
 
-Future<void> _pump(WidgetTester tester) async {
+Future<void> _pump(WidgetTester tester, {bool showMyLocation = false}) async {
   tester.view.physicalSize = const Size(420, 1000);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
@@ -48,9 +48,10 @@ Future<void> _pump(WidgetTester tester) async {
       supportedLocales: const [Locale('en', 'US')],
       onGenerateRoute: (settings) => PageRouteBuilder<void>(
         settings: settings,
-        pageBuilder: (_, _, _) => const LocationSearchScreen(
+        pageBuilder: (_, _, _) => LocationSearchScreen(
           title: 'Destination',
           bucket: SavedPlacesBucket.search,
+          showMyLocation: showMyLocation,
         ),
       ),
     ),
@@ -143,5 +144,24 @@ void main() {
     expect(stored.label, 'Home');
     expect(stored.name, 'Hauptbahnhof');
     expect(stored.displayName, 'Home');
+  });
+
+  testWidgets('My Location leads the list when it can answer', (tester) async {
+    // Where you are is the commonest origin, and it is the one answer the
+    // list can give without a search.
+    await _keep([_favourite(id: 'a', name: 'Hauptbahnhof')]);
+    await _pump(tester, showMyLocation: true);
+
+    expect(find.text(myLocationName), findsOneWidget);
+
+    final myLocation = tester.getRect(find.text(myLocationName));
+    final favourite = tester.getRect(find.text('Hauptbahnhof'));
+    expect(myLocation.top, lessThan(favourite.top));
+  });
+
+  testWidgets('a stop search does not offer it', (tester) async {
+    // A coordinate is not a stop, so it could not answer a timetable.
+    await _pump(tester);
+    expect(find.text(myLocationName), findsNothing);
   });
 }

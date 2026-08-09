@@ -4,6 +4,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../widgets/validation_toast.dart';
 import '../utils/haptics.dart';
 import '../theme/app_colors.dart';
+import '../screens/location_search_screen.dart';
 import 'search/journey_segment.dart';
 import 'skeletons/skeleton_shimmer.dart';
 
@@ -390,7 +391,7 @@ class _InlineField extends StatelessWidget {
                           ),
                           const SizedBox(width: 6),
                           Text(
-                            'My Location',
+                            myLocationName,
                             style: TextStyle(
                               color: accentColor,
                               fontSize: 16,

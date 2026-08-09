@@ -2421,6 +2421,17 @@ class _MapScreenState extends State<MapScreen>
     RouteFieldKind field,
     TransitousLocationSuggestion suggestion,
   ) {
+    // An empty field already means "from where I am", resolved at search time
+    // so the trip starts where you are when you press Search. Clearing it is
+    // therefore the whole of picking My Location.
+    if (suggestion.id == myLocationSuggestion.id) {
+      _setControllerText(field, '');
+      _setSelection(field, null, notify: true);
+      if (field == RouteFieldKind.from && _toCtrl.text.trim().isEmpty) {
+        unawaited(_openLocationSearch(RouteFieldKind.to));
+      }
+      return;
+    }
     unawaited(_recordSavedPlace(suggestion));
     _setControllerText(field, suggestion.name);
     _setSelection(field, suggestion, notify: true);
@@ -4102,7 +4113,7 @@ class _MapScreenState extends State<MapScreen>
   void _onRecentTripTap(TripHistoryItem trip) {
     Haptics.lightTick();
 
-    if (trip.fromName != 'My Location') {
+    if (trip.fromName != myLocationName) {
       final fromSuggestion = TransitousLocationSuggestion(
         id: 'history-from-${trip.fromLat}-${trip.fromLon}',
         name: trip.fromName,

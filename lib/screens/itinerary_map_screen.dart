@@ -23,10 +23,16 @@ class ItineraryMapScreen extends StatefulWidget {
   final Itinerary itinerary;
   final bool showCarousel;
 
+  /// Which leg to open on, as an index into the *display* legs — the list
+  /// `buildDisplayLegs` produces, which drops the edge walks and folds short
+  /// mid-journey ones into transfers. Null opens on the whole journey.
+  final int? initialLegIndex;
+
   const ItineraryMapScreen({
     super.key,
     required this.itinerary,
     this.showCarousel = true,
+    this.initialLegIndex,
   });
 
   @override
@@ -73,7 +79,14 @@ class _ItineraryMapScreenState extends State<ItineraryMapScreen> {
   void initState() {
     super.initState();
     _displayLegs = buildDisplayLegs(widget.itinerary.legs);
+    // Page 0 is the whole journey, so leg N is page N + 1. _onStyleLoaded
+    // already focuses whatever page it opens on.
+    final requested = widget.initialLegIndex;
+    _currentPage = requested != null && requested >= 0
+        ? (requested + 1).clamp(0, _displayLegs.length)
+        : 0;
     _pageController = PageController(
+      initialPage: _currentPage,
       viewportFraction: widget.showCarousel ? 0.86 : 1.0,
     );
   }
