@@ -134,6 +134,7 @@ class _MapScreenState extends State<MapScreen>
   bool _hasVibrator = false;
   bool _hasCustomVibration = false;
   Timer? _dragVibeTimer;
+  Timer? _dragVibeDeadline;
   Timer? _unfocusDebounceTimer;
   bool _didInitLocation = false;
   VoidCallback? _activateListener;
@@ -2312,17 +2313,27 @@ class _MapScreenState extends State<MapScreen>
     setState(() {});
   }
 
+  /// Longer than any real drag, and short enough that a missed stop is a
+  /// blip rather than a phone that will not settle.
+  ///
+  /// Three call sites have to remember to stop the rumble and any new one
+  /// will too, so the loop bounds itself rather than trusting all of them.
+  static const Duration _maxDragRumble = Duration(seconds: 4);
+
   void _startDragRumble() {
-    _dragVibeTimer?.cancel();
+    _stopDragRumble();
     if (!_hasCustomVibration || !Haptics.isEnabled) return;
     _dragVibeTimer = Timer.periodic(const Duration(milliseconds: 90), (_) {
       Haptics.dragRumblePulse();
     });
+    _dragVibeDeadline = Timer(_maxDragRumble, _stopDragRumble);
   }
 
   void _stopDragRumble() {
     _dragVibeTimer?.cancel();
     _dragVibeTimer = null;
+    _dragVibeDeadline?.cancel();
+    _dragVibeDeadline = null;
   }
 
   void _handleFromTextChanged() => _handleTextChanged(RouteFieldKind.from);

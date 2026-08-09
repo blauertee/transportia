@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../models/routing_options.dart';
@@ -14,6 +15,7 @@ import '../widgets/route_field_box.dart';
 import '../theme/app_colors.dart';
 import 'saved_trip_card.dart';
 import 'buttons/pill_button.dart';
+import 'floating_nav_bar.dart';
 import 'buttons/primary_button.dart';
 import 'search/journey_spine.dart';
 import 'search/save_default_row.dart';
@@ -182,6 +184,12 @@ class _BottomCardState extends State<BottomCard> {
 
   @override
   void dispose() {
+    // A card torn down mid-drag would otherwise leave the rumble running.
+    if (_gestureMovesSheet != null) {
+      _gestureMovesSheet = null;
+      _pullingDown = false;
+      widget.onDragEnd(0);
+    }
     _scroll.dispose();
     _savedTimer?.cancel();
     widget.fromFocusNode.removeListener(_onFocusChanged);
@@ -195,25 +203,60 @@ class _BottomCardState extends State<BottomCard> {
 
   final ScrollController _scroll = ScrollController();
 
+  /// Which job the body is doing for the gesture in flight, latched at its
+  /// start. Null between gestures.
+  ///
+  /// The gesture moves the card, and so changes [BottomCard.canScrollBody]
+  /// underneath itself. Reading that live swapped the scroll physics and
+  /// unmounted the drag recognizer mid-drag — and a recognizer disposed after
+  /// it has been accepted reports neither an end nor a cancel, so whatever
+  /// the start turned on was left running with nothing to turn it off.
+  bool? _gestureMovesSheet;
+
   /// True while a downward drag at the top of the list is lowering the card
   /// rather than scrolling, so the release knows to snap.
   bool _pullingDown = false;
 
+  bool get _bodyMovesSheet => _gestureMovesSheet ?? !widget.canScrollBody;
+
+  void _beginBodyGesture() {
+    if (_gestureMovesSheet != null) return;
+    setState(() => _gestureMovesSheet = !widget.canScrollBody);
+    widget.onDragStart();
+  }
+
+  /// Idempotent, because an end and a cancel can both arrive for one gesture,
+  /// and because the callers below have no way to know which they are.
+  void _endBodyGesture(double velocityDy) {
+    if (_gestureMovesSheet == null) return;
+    setState(() => _gestureMovesSheet = null);
+    _pullingDown = false;
+    widget.onDragEnd(velocityDy);
+  }
+
   /// At the top of the list, a downward drag has nothing left to scroll, so
   /// it hands the card back down instead of dead-ending in an overscroll.
   bool _onScrollNotification(ScrollNotification notification) {
-    if (!widget.canScrollBody) return false;
-    if (notification is OverscrollNotification && notification.overscroll < 0) {
+    // Endings are handled first and unguarded. A pull-down lowers the card,
+    // which is the point of it — so anything gated on the card still being
+    // at the top would miss the end of the very gesture that moved it.
+    if (_pullingDown &&
+        (notification is ScrollEndNotification ||
+            (notification is UserScrollNotification &&
+                notification.direction == ScrollDirection.idle))) {
+      _endBodyGesture(0);
+      return false;
+    }
+
+    if (!_bodyMovesSheet &&
+        notification is OverscrollNotification &&
+        notification.overscroll < 0) {
       if (!_pullingDown) {
         _pullingDown = true;
-        widget.onDragStart();
+        _beginBodyGesture();
       }
       widget.onDragUpdate(-notification.overscroll);
       return true;
-    }
-    if (notification is ScrollEndNotification && _pullingDown) {
-      _pullingDown = false;
-      widget.onDragEnd(0);
     }
     return false;
   }
@@ -244,9 +287,9 @@ class _BottomCardState extends State<BottomCard> {
       onNotification: _onScrollNotification,
       child: SingleChildScrollView(
         controller: _scroll,
-        physics: widget.canScrollBody
-            ? const ClampingScrollPhysics()
-            : const NeverScrollableScrollPhysics(),
+        physics: _bodyMovesSheet
+            ? const NeverScrollableScrollPhysics()
+            : const ClampingScrollPhysics(),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -267,16 +310,19 @@ class _BottomCardState extends State<BottomCard> {
       ),
     );
 
-    if (widget.canScrollBody) return scroller;
+    if (!_bodyMovesSheet) return scroller;
 
     // Not yet at the top stop, so a drag on the body raises the card. The
     // recognizer is only installed in that state, which keeps it out of the
-    // arena once the list is the thing that should be moving.
+    // arena once the list is the thing that should be moving — and stays
+    // installed for the rest of a gesture that reaches the stop, so its end
+    // has something left to report to.
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
-      onVerticalDragStart: (_) => widget.onDragStart(),
+      onVerticalDragStart: (_) => _beginBodyGesture(),
       onVerticalDragUpdate: (d) => widget.onDragUpdate(d.delta.dy),
-      onVerticalDragEnd: (d) => widget.onDragEnd(d.velocity.pixelsPerSecond.dy),
+      onVerticalDragEnd: (d) => _endBodyGesture(d.velocity.pixelsPerSecond.dy),
+      onVerticalDragCancel: () => _endBodyGesture(0),
       child: scroller,
     );
   }
@@ -345,6 +391,9 @@ class _BottomCardState extends State<BottomCard> {
                         widget.onDragUpdate(d.delta.dy),
                     onVerticalDragEnd: (d) =>
                         widget.onDragEnd(d.velocity.pixelsPerSecond.dy),
+                    // A drag that loses the arena after starting reports no
+                    // end, and the drag rumble only stops on one.
+                    onVerticalDragCancel: () => widget.onDragEnd(0),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -518,14 +567,21 @@ class _BottomCardState extends State<BottomCard> {
                               ),
                             ),
                           ),
-                        const SizedBox(height: 96),
+                        const SizedBox(height: 8),
                       ],
                     ),
                   ),
 
                   if (!widget.isCollapsed)
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                      // Clears the floating nav bar, which is a sibling
+                      // painted over this card rather than beside it.
+                      padding: const EdgeInsets.fromLTRB(
+                        12,
+                        0,
+                        12,
+                        FloatingNavBar.reservedHeight + 12,
+                      ),
                       child: Builder(
                         builder: (context) {
                           const double start = 0.5;
