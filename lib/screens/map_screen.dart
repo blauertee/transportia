@@ -30,6 +30,7 @@ import '../screens/itinerary_list_screen.dart';
 import '../screens/location_settings_screen.dart';
 import '../screens/saved_trips_screen.dart';
 import '../screens/timetables_screen.dart';
+import '../screens/location_search_screen.dart';
 import '../screens/via_stops_screen.dart';
 import '../services/favorites_service.dart';
 import '../services/location_service.dart';
@@ -60,7 +61,6 @@ import '../widgets/app_toggle_switch.dart';
 import '../widgets/pressable_highlight.dart';
 import '../widgets/quick_button_picker_sheet.dart';
 import '../widgets/route_bottom_card.dart';
-import '../widgets/route_suggestions_overlay.dart';
 import '../widgets/validation_toast.dart';
 import '../widgets/buttons/pill_button.dart';
 import '../widgets/selectable_icon_card.dart';
@@ -139,11 +139,6 @@ class _MapScreenState extends State<MapScreen>
   VoidCallback? _activateListener;
   TransitousLocationSuggestion? _fromSelection;
   TransitousLocationSuggestion? _toSelection;
-  RouteFieldKind? _activeSuggestionField;
-  List<TransitousLocationSuggestion> _suggestions =
-      const <TransitousLocationSuggestion>[];
-  bool _isFetchingSuggestions = false;
-  int _suggestionRequestId = 0;
   List<SavedPlace> _savedSearchPlaces = [];
   bool _suppressFromListener = false;
   bool _suppressToListener = false;
@@ -1598,8 +1593,7 @@ class _MapScreenState extends State<MapScreen>
     });
   }
 
-  void _notifyOverlayVisibility() {
-    final overlaysVisible = _activeSuggestionField != null;
+  void _notifyOverlayVisibility({bool overlaysVisible = false}) {
     widget.onOverlayVisibilityChanged?.call(overlaysVisible);
   }
 
@@ -1756,8 +1750,6 @@ class _MapScreenState extends State<MapScreen>
               ? 0.0
               : ((expandedTop - _sheetTop!) / fullDenom).clamp(0.0, 1.0);
 
-          final overlayWidth = math.max(0.0, constraints.maxWidth - 24);
-          final showOverlay = _activeSuggestionField != null;
           final showLongPressOverlay =
               _longPressLatLng != null || _isLongPressClosing;
           final showStopOverlay =
@@ -2005,6 +1997,18 @@ class _MapScreenState extends State<MapScreen>
                               onSaveOptionsAsDefault: () =>
                                   unawaited(_saveOptionsAsDefault()),
                               onAddViaStop: _openViaStopPicker,
+                              onFromPressed: () => unawaited(
+                                _openLocationSearch(RouteFieldKind.from),
+                              ),
+                              onToPressed: () => unawaited(
+                                _openLocationSearch(RouteFieldKind.to),
+                              ),
+                              isFromFavourite: _isFavourite(_fromSelection),
+                              isToFavourite: _isFavourite(_toSelection),
+                              onToggleFromFavourite: () =>
+                                  unawaited(_toggleFavourite(_fromSelection)),
+                              onToggleToFavourite: () =>
+                                  unawaited(_toggleFavourite(_toSelection)),
                               routeFieldLink: _routeFieldLink,
                               fromLoading: _isReverseGeocodeLoading(
                                 RouteFieldKind.from,
@@ -2032,49 +2036,6 @@ class _MapScreenState extends State<MapScreen>
                               onFavoriteTap: _onFavoriteTap,
                               hasLocationPermission: _hasLocationPermission,
                             ),
-                      if (!_isTripFocus && !_isQuickSettings)
-                        CompositedTransformFollower(
-                          link: _routeFieldLink,
-                          showWhenUnlinked: false,
-                          targetAnchor: Alignment.bottomLeft,
-                          followerAnchor: Alignment.topLeft,
-                          offset: const Offset(0, 8),
-                          child: AnimatedSwitcher(
-                            duration: const Duration(milliseconds: 180),
-                            switchInCurve: Curves.easeOutCubic,
-                            switchOutCurve: Curves.easeInCubic,
-                            transitionBuilder: (child, animation) {
-                              final offsetTween = Tween<Offset>(
-                                begin: const Offset(0, -0.05),
-                                end: Offset.zero,
-                              );
-                              return FadeTransition(
-                                opacity: animation,
-                                child: SlideTransition(
-                                  position: animation.drive(offsetTween),
-                                  child: child,
-                                ),
-                              );
-                            },
-                            child: !showOverlay
-                                ? const SizedBox.shrink()
-                                : RouteSuggestionsOverlay(
-                                    key: const ValueKey(
-                                      'route-suggestions-overlay',
-                                    ),
-                                    width: overlayWidth,
-                                    activeField: _activeSuggestionField,
-                                    fromController: _fromCtrl,
-                                    toController: _toCtrl,
-                                    suggestions: _suggestions,
-                                    savedPlaces: _savedSearchPlaces,
-                                    favorites: _favorites,
-                                    isLoading: _isFetchingSuggestions,
-                                    onSuggestionTap: _onSuggestionSelected,
-                                    onDismissRequest: _unfocusInputs,
-                                  ),
-                          ),
-                        ),
                     ],
                   ),
                 ),
@@ -2226,7 +2187,7 @@ class _MapScreenState extends State<MapScreen>
         text: query,
         placeBias: placeBias,
       );
-      final ordered = _prioritizeSavedSuggestions(results);
+      final ordered = results;
       if (ordered.isEmpty) return null;
       final suggestion = ordered.first;
       if (!mounted) return suggestion;
@@ -2378,7 +2339,6 @@ class _MapScreenState extends State<MapScreen>
     if (selection != null && selection.name != trimmed) {
       _setSelection(kind, null, notify: true);
     }
-    _requestSuggestions(kind, trimmed);
   }
 
   void _setSelection(
@@ -2408,84 +2368,6 @@ class _MapScreenState extends State<MapScreen>
     return kind == RouteFieldKind.from ? _fromCtrl : _toCtrl;
   }
 
-  void _requestSuggestions(RouteFieldKind kind, String text) {
-    final query = text.trim();
-    final coord = TransitousGeocodeService.tryParseLatLon(query);
-    if (coord != null) {
-      ++_suggestionRequestId;
-      setState(() {
-        _activeSuggestionField = kind;
-        _suggestions = [TransitousLocationSuggestion.fromLatLon(coord)];
-        _isFetchingSuggestions = false;
-      });
-      _notifyOverlayVisibility();
-      return;
-    }
-    if (query.length < 3) {
-      if (_activeSuggestionField == kind) {
-        setState(() {
-          _suggestions = const <TransitousLocationSuggestion>[];
-          _isFetchingSuggestions = false;
-        });
-      }
-      return;
-    }
-    final requestId = ++_suggestionRequestId;
-    setState(() {
-      _activeSuggestionField = kind;
-      _isFetchingSuggestions = true;
-    });
-    _notifyOverlayVisibility();
-    final placeBias = _placeBiasLatLng();
-    TransitousGeocodeService.fetchSuggestions(text: query, placeBias: placeBias)
-        .then((results) {
-          if (!mounted || requestId != _suggestionRequestId) return;
-          final orderedResults = _prioritizeSavedSuggestions(results);
-          setState(() {
-            _suggestions = orderedResults;
-            _isFetchingSuggestions = false;
-          });
-        })
-        .catchError((_) {
-          if (!mounted || requestId != _suggestionRequestId) return;
-          setState(() {
-            _suggestions = const <TransitousLocationSuggestion>[];
-            _isFetchingSuggestions = false;
-          });
-        });
-  }
-
-  List<TransitousLocationSuggestion> _prioritizeSavedSuggestions(
-    List<TransitousLocationSuggestion> results,
-  ) {
-    if (_savedSearchPlaces.isEmpty) return results;
-    final importanceByKey = <String, int>{
-      for (final place in _savedSearchPlaces) place.key: place.importance,
-    };
-    final indexBySuggestion = <TransitousLocationSuggestion, int>{};
-    for (int i = 0; i < results.length; i++) {
-      indexBySuggestion[results[i]] = i;
-    }
-    final ordered = List<TransitousLocationSuggestion>.from(results);
-    ordered.sort((a, b) {
-      final aKey = SavedPlace.buildKey(type: a.type, lat: a.lat, lon: a.lon);
-      final bKey = SavedPlace.buildKey(type: b.type, lat: b.lat, lon: b.lon);
-      final aImportance = importanceByKey[aKey];
-      final bImportance = importanceByKey[bKey];
-      final aSaved = aImportance != null;
-      final bSaved = bImportance != null;
-      if (aSaved != bSaved) {
-        return aSaved ? -1 : 1;
-      }
-      if (aImportance != null && bImportance != null) {
-        final diff = bImportance.compareTo(aImportance);
-        if (diff != 0) return diff;
-      }
-      return indexBySuggestion[a]!.compareTo(indexBySuggestion[b]!);
-    });
-    return ordered;
-  }
-
   LatLng? _placeBiasLatLng() {
     if (!_hasLocationPermission) return null;
     if (_lastUserLatLng != null) return _lastUserLatLng;
@@ -2493,18 +2375,54 @@ class _MapScreenState extends State<MapScreen>
     return null;
   }
 
-  void _clearSuggestions() {
-    if (_suggestions.isEmpty &&
-        !_isFetchingSuggestions &&
-        _activeSuggestionField == null) {
+  bool _isFavourite(TransitousLocationSuggestion? selection) =>
+      selection != null &&
+      FavoritesService.findAt(selection.lat, selection.lon) != null;
+
+  /// Keeps the place in a field, or lets it go.
+  ///
+  /// Nothing to keep until a place has actually been picked: the text alone
+  /// has no coordinates to store.
+  Future<void> _toggleFavourite(TransitousLocationSuggestion? selection) async {
+    if (selection == null) {
+      showValidationToast(context, 'Pick a place first');
       return;
     }
-    setState(() {
-      _suggestions = const <TransitousLocationSuggestion>[];
-      _isFetchingSuggestions = false;
-      _activeSuggestionField = null;
-    });
+    Haptics.lightTick();
+    final added = await FavoritesService.toggleAt(
+      name: selection.name,
+      lat: selection.lat,
+      lon: selection.lon,
+    );
+    if (!mounted) return;
+    showValidationToast(
+      context,
+      added == null ? 'Removed from favourites' : 'Kept ${selection.name}',
+    );
+  }
+
+  /// Opens the place picker for one of the two fields.
+  ///
+  /// A screen rather than a dropdown: it has favourites, recents and results
+  /// to show, and it can give each of them the room to be read.
+  Future<void> _openLocationSearch(RouteFieldKind field) async {
+    _unfocusInputs();
+    _notifyOverlayVisibility(overlaysVisible: true);
+    final picked = await Navigator.of(context)
+        .push<TransitousLocationSuggestion>(
+          CustomPageRoute(
+            child: LocationSearchScreen(
+              title: field == RouteFieldKind.from ? 'Origin' : 'Destination',
+              bucket: SavedPlacesBucket.search,
+              initialQuery: _controllerFor(field).text,
+              placeBias: _placeBiasLatLng(),
+            ),
+          ),
+        );
+    if (!mounted) return;
     _notifyOverlayVisibility();
+    if (picked == null) return;
+    _onSuggestionSelected(field, picked);
   }
 
   void _onSuggestionSelected(
@@ -2515,9 +2433,7 @@ class _MapScreenState extends State<MapScreen>
     _setControllerText(field, suggestion.name);
     _setSelection(field, suggestion, notify: true);
     if (field == RouteFieldKind.from && _toCtrl.text.trim().isEmpty) {
-      _toFocus.requestFocus();
-    } else {
-      _unfocusInputs();
+      unawaited(_openLocationSearch(RouteFieldKind.to));
     }
   }
 
@@ -2563,11 +2479,6 @@ class _MapScreenState extends State<MapScreen>
     _suppressFromListener = false;
     _suppressToListener = false;
     _swapSelectionMetadata();
-    if (_activeSuggestionField == RouteFieldKind.from) {
-      _requestSuggestions(RouteFieldKind.from, _fromCtrl.text);
-    } else if (_activeSuggestionField == RouteFieldKind.to) {
-      _requestSuggestions(RouteFieldKind.to, _toCtrl.text);
-    }
     _maybeFitSelectionsOnCollapsed();
     return true;
   }
@@ -3710,7 +3621,6 @@ class _MapScreenState extends State<MapScreen>
 
     _setControllerText(kind, suggestion.name);
     _setSelection(kind, suggestion, notify: true);
-    _clearSuggestions();
     _maybeFitSelectionsOnCollapsed();
     _setReverseGeocodeLoading(kind, false);
   }
@@ -3760,7 +3670,6 @@ class _MapScreenState extends State<MapScreen>
       _showStops = false;
     });
     _unfocusInputs();
-    _clearSuggestions();
     _closeTimeSelectionOverlay();
     _dismissStopOverlay(animated: false);
     _dismissLongPressOverlay(animated: false);
@@ -3842,7 +3751,6 @@ class _MapScreenState extends State<MapScreen>
   void _openQuickSettings() {
     if (_isQuickSettings) return;
     _unfocusInputs();
-    _clearSuggestions();
     _closeTimeSelectionOverlay();
     _dismissStopOverlay(animated: false);
     _dismissLongPressOverlay(animated: false);
@@ -3966,7 +3874,6 @@ class _MapScreenState extends State<MapScreen>
     unawaited(_recordSavedPlace(suggestion));
     _setControllerText(kind, suggestion.name);
     _setSelection(kind, suggestion, notify: true);
-    _clearSuggestions();
     _dismissStopOverlay();
     _maybeFitSelectionsOnCollapsed();
   }
@@ -4126,9 +4033,7 @@ class _MapScreenState extends State<MapScreen>
       _unfocusDebounceTimer?.cancel();
       _unfocusDebounceTimer = Timer(const Duration(milliseconds: 100), () {
         if (!mounted) return;
-        if (!_fromFocus.hasFocus && !_toFocus.hasFocus) {
-          _clearSuggestions();
-        }
+        if (!_fromFocus.hasFocus && !_toFocus.hasFocus) {}
       });
       return;
     }
@@ -4136,11 +4041,6 @@ class _MapScreenState extends State<MapScreen>
     _unfocusDebounceTimer?.cancel();
     _unfocusDebounceTimer = null;
 
-    final field = hasFrom ? RouteFieldKind.from : RouteFieldKind.to;
-    if (_activeSuggestionField != field) {
-      setState(() => _activeSuggestionField = field);
-    }
-    _requestSuggestions(field, _controllerFor(field).text);
     if (_isSheetCollapsed) {
       final expTop = _lastComputedExpandedTop;
       final colTop = _lastComputedCollapsedTop;
@@ -4157,7 +4057,6 @@ class _MapScreenState extends State<MapScreen>
     FocusScope.of(context).unfocus(disposition: UnfocusDisposition.scope);
     _dismissStopOverlay();
     _dismissLongPressOverlay();
-    _clearSuggestions();
   }
 
   Future<void> _loadSavedSearchPlaces() async {

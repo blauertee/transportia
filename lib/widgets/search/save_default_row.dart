@@ -4,25 +4,29 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/haptics.dart';
 
-/// Says that this search is not the usual one, and offers the two ways out.
+/// Keeps or discards the options this search is using.
 ///
 /// Options set in the spine last for one search, which is the point: whether
 /// you have a bike today should not rewrite what every future search does.
-/// This appears only once something differs, so the ordinary case carries no
-/// extra row, and it names the difference rather than leaving the user to
-/// spot it.
+/// The row says so when this search differs, and the two buttons are always
+/// there — a control that appears and disappears is harder to find than one
+/// that is simply always in the same place.
 class SaveDefaultRow extends StatelessWidget {
   const SaveDefaultRow({
     super.key,
     required this.onReset,
     required this.onSaveAsDefault,
+    this.differsFromStored = true,
     this.saved = false,
   });
 
   final VoidCallback onReset;
   final VoidCallback onSaveAsDefault;
 
-  /// Set once the save lands, so the row can confirm before it goes away.
+  /// Whether this search has been changed from what a new one starts with.
+  final bool differsFromStored;
+
+  /// Set once the save lands, so the row can confirm.
   final bool saved;
 
   @override
@@ -32,14 +36,22 @@ class SaveDefaultRow extends StatelessWidget {
     return Row(
       children: [
         Icon(
-          saved ? LucideIcons.check : LucideIcons.pencilLine,
+          saved
+              ? LucideIcons.check
+              : (differsFromStored
+                    ? LucideIcons.pencilLine
+                    : LucideIcons.settings2),
           size: 13,
           color: saved ? accent : AppColors.black.withValues(alpha: 0.45),
         ),
         const SizedBox(width: 7),
         Expanded(
           child: Text(
-            saved ? 'Saved as your default' : 'Changed for this search',
+            saved
+                ? 'Saved as your default'
+                : (differsFromStored
+                      ? 'Changed for this search'
+                      : 'Using your defaults'),
             style: TextStyle(
               fontSize: 12.5,
               color: saved ? accent : AppColors.black.withValues(alpha: 0.55),
@@ -47,11 +59,16 @@ class SaveDefaultRow extends StatelessWidget {
           ),
         ),
         if (!saved) ...[
-          _TextAction(label: 'Reset', onPressed: onReset),
+          _TextAction(
+            label: 'Reset',
+            enabled: differsFromStored,
+            onPressed: onReset,
+          ),
           const SizedBox(width: 14),
           _TextAction(
             label: 'Save as default',
             emphasised: true,
+            enabled: differsFromStored,
             onPressed: onSaveAsDefault,
           ),
         ],
@@ -65,11 +82,16 @@ class _TextAction extends StatelessWidget {
     required this.label,
     required this.onPressed,
     this.emphasised = false,
+    this.enabled = true,
   });
 
   final String label;
   final VoidCallback onPressed;
   final bool emphasised;
+
+  /// Dimmed rather than hidden when there is nothing to do, so the row keeps
+  /// its shape and the buttons keep their place.
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
@@ -78,10 +100,12 @@ class _TextAction extends StatelessWidget {
       button: true,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: () {
-          Haptics.lightTick();
-          onPressed();
-        },
+        onTap: enabled
+            ? () {
+                Haptics.lightTick();
+                onPressed();
+              }
+            : null,
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
           child: Text(
@@ -89,9 +113,11 @@ class _TextAction extends StatelessWidget {
             style: TextStyle(
               fontSize: 12.5,
               fontWeight: FontWeight.w700,
-              color: emphasised
-                  ? accent
-                  : AppColors.black.withValues(alpha: 0.6),
+              color: enabled
+                  ? (emphasised
+                        ? accent
+                        : AppColors.black.withValues(alpha: 0.6))
+                  : AppColors.black.withValues(alpha: 0.25),
             ),
           ),
         ),

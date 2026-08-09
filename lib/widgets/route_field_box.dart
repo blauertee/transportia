@@ -26,6 +26,12 @@ class RouteFieldBox extends StatefulWidget {
     this.fromLoading = false,
     this.toLoading = false,
     this.middle,
+    required this.onFromPressed,
+    required this.onToPressed,
+    this.isFromFavourite = false,
+    this.isToFavourite = false,
+    required this.onToggleFromFavourite,
+    required this.onToggleToFavourite,
   });
 
   final TextEditingController fromController;
@@ -41,11 +47,17 @@ class RouteFieldBox extends StatefulWidget {
 
   /// Sits between the two fields, sharing their gutter so the rail continues
   /// the line the two markers start and end.
-  ///
-  /// Callers drop it while a field has focus: the suggestions overlay hangs
-  /// off the bottom of this box, and it belongs under the field being typed
-  /// into rather than under everything the journey could be.
   final Widget? middle;
+
+  /// Opens the place picker. The fields are not edited in place: picking a
+  /// place is a search with favourites and recents of its own.
+  final VoidCallback onFromPressed;
+  final VoidCallback onToPressed;
+
+  final bool isFromFavourite;
+  final bool isToFavourite;
+  final VoidCallback onToggleFromFavourite;
+  final VoidCallback onToggleToFavourite;
 
   @override
   State<RouteFieldBox> createState() => _RouteFieldBoxState();
@@ -107,7 +119,19 @@ class _RouteFieldBoxState extends State<RouteFieldBox> {
           children: [
             _EndpointRow(
               marker: _EndpointDot(color: widget.accentColor, filled: false),
-              trailing: _buildSwapButton(context),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _HeartButton(
+                    filled: widget.isFromFavourite,
+                    accentColor: widget.accentColor,
+                    label: 'origin',
+                    onPressed: widget.onToggleFromFavourite,
+                  ),
+                  const SizedBox(width: 6),
+                  _buildSwapButton(context),
+                ],
+              ),
               child: _InlineField(
                 controller: widget.fromController,
                 focusNode: widget.fromFocusNode,
@@ -116,6 +140,7 @@ class _RouteFieldBoxState extends State<RouteFieldBox> {
                 showMyLocationDefault: widget.showMyLocationDefault,
                 accentColor: widget.accentColor,
                 showLoading: widget.fromLoading,
+                onPressed: widget.onFromPressed,
               ),
             ),
             if (widget.middle case final middle?) ...[
@@ -136,6 +161,12 @@ class _RouteFieldBoxState extends State<RouteFieldBox> {
               ),
             _EndpointRow(
               marker: _EndpointDot(color: widget.accentColor, filled: true),
+              trailing: _HeartButton(
+                filled: widget.isToFavourite,
+                accentColor: widget.accentColor,
+                label: 'destination',
+                onPressed: widget.onToggleToFavourite,
+              ),
               child: _InlineField(
                 controller: widget.toController,
                 focusNode: widget.toFocusNode,
@@ -144,6 +175,7 @@ class _RouteFieldBoxState extends State<RouteFieldBox> {
                 showMyLocationDefault: false,
                 accentColor: widget.accentColor,
                 showLoading: widget.toLoading,
+                onPressed: widget.onToPressed,
               ),
             ),
           ],
@@ -277,6 +309,7 @@ class _InlineField extends StatelessWidget {
     required this.isFromField,
     required this.showMyLocationDefault,
     required this.accentColor,
+    required this.onPressed,
     this.focusNode,
     this.showLoading = false,
   });
@@ -288,6 +321,7 @@ class _InlineField extends StatelessWidget {
   final Color accentColor;
   final FocusNode? focusNode;
   final bool showLoading;
+  final VoidCallback onPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -326,6 +360,11 @@ class _InlineField extends StatelessWidget {
               maxLines: 1,
               textInputAction: TextInputAction.next,
               keyboardType: TextInputType.text,
+              // Held for its text, not for typing: tapping opens the picker,
+              // which has room for favourites and recents this row does not.
+              readOnly: true,
+              showCursor: false,
+              onTap: onPressed,
             ),
             IgnorePointer(
               ignoring: overlayT < 0.01,
@@ -340,7 +379,7 @@ class _InlineField extends StatelessWidget {
                     ),
                     child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
-                      onTap: () => focusNode?.requestFocus(),
+                      onTap: onPressed,
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -398,6 +437,60 @@ class _InlineField extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+/// Keeps a place, or lets it go.
+class _HeartButton extends StatelessWidget {
+  const _HeartButton({
+    required this.filled,
+    required this.accentColor,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final bool filled;
+  final Color accentColor;
+
+  /// Names which end this is, for a screen reader.
+  final String label;
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      toggled: filled,
+      label: filled ? 'Remove $label from favourites' : 'Keep $label',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          Haptics.lightTick();
+          onPressed();
+        },
+        // Lucide has no solid heart, so kept reads as accent on a tint and
+        // unkept as a pale outline on nothing.
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: filled
+                ? accentColor.withValues(alpha: 0.16)
+                : const Color(0x00000000),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            LucideIcons.heart,
+            size: 16,
+            color: filled
+                ? accentColor
+                : AppColors.black.withValues(alpha: 0.3),
+          ),
+        ),
+      ),
     );
   }
 }

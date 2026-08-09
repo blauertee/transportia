@@ -13,6 +13,7 @@ import '../screens/connection_info_screen.dart';
 import '../services/location_service.dart';
 import '../services/saved_places_service.dart';
 import '../services/stop_times_service.dart';
+import '../screens/location_search_screen.dart';
 import '../services/transitous_geocode_service.dart';
 import '../utils/color_utils.dart';
 import '../utils/custom_page_route.dart';
@@ -24,7 +25,6 @@ import '../widgets/buttons/primary_button.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/skeletons/skeleton_list.dart';
 import '../widgets/load_more_button.dart';
-import '../widgets/route_suggestions_overlay.dart';
 import '../widgets/time_selection_overlay.dart';
 import '../widgets/validation_toast.dart';
 
@@ -46,9 +46,6 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
   TimeSelection _timeSelection = TimeSelection.now();
   bool _showTimeSelectionOverlay = false;
   bool _suppressTimeSelectionReopen = false;
-  List<TransitousLocationSuggestion> _suggestions = [];
-  bool _isFetchingSuggestions = false;
-  int _suggestionRequestId = 0;
   List<SavedPlace> _savedTimetablePlaces = [];
   LatLng? _lastUserLatLng;
   TransitousLocationSuggestion? _selectedStop;
@@ -233,97 +230,37 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
     _toggleTimeSelectionOverlay();
   }
 
-  void _onSearchTextChanged() {
-    final query = _searchController.text.trim();
-    setState(() {});
-
-    if (_searchFocus.hasFocus) {
-      if (query.length >= 3) {
-        _requestSuggestions(query);
-      } else {
-        setState(() {
-          _suggestions = [];
-          _isFetchingSuggestions = false;
-        });
-      }
-    } else {
-      setState(() {
-        _suggestions = [];
-        _isFetchingSuggestions = false;
-      });
-    }
-  }
+  void _onSearchTextChanged() => setState(() {});
 
   void _applyInitialStop(TransitousLocationSuggestion? initialStop) {
     if (initialStop == null) return;
     _selectedStop = initialStop;
     _searchController.text = initialStop.name;
-    _suggestions = [];
-    _isFetchingSuggestions = false;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _onSearch();
     });
   }
 
-  Future<void> _requestSuggestions(String query) async {
-    final requestId = ++_suggestionRequestId;
-    setState(() => _isFetchingSuggestions = true);
-
-    try {
-      final results = await TransitousGeocodeService.fetchSuggestions(
-        text: query,
-        type: 'STOP',
-        placeBias: _lastUserLatLng,
-      );
-
-      if (requestId != _suggestionRequestId) return;
-      if (!mounted) return;
-
-      setState(() {
-        _suggestions = _prioritizeSavedSuggestions(results);
-        _isFetchingSuggestions = false;
-      });
-    } catch (e) {
-      if (requestId != _suggestionRequestId) return;
-      if (!mounted) return;
-
-      setState(() {
-        _suggestions = [];
-        _isFetchingSuggestions = false;
-      });
-    }
-  }
-
-  List<TransitousLocationSuggestion> _prioritizeSavedSuggestions(
-    List<TransitousLocationSuggestion> results,
-  ) {
-    if (_savedTimetablePlaces.isEmpty) return results;
-    final importanceByKey = <String, int>{
-      for (final place in _savedTimetablePlaces) place.key: place.importance,
-    };
-    final indexBySuggestion = <TransitousLocationSuggestion, int>{};
-    for (int i = 0; i < results.length; i++) {
-      indexBySuggestion[results[i]] = i;
-    }
-    final ordered = List<TransitousLocationSuggestion>.from(results);
-    ordered.sort((a, b) {
-      final aKey = SavedPlace.buildKey(type: a.type, lat: a.lat, lon: a.lon);
-      final bKey = SavedPlace.buildKey(type: b.type, lat: b.lat, lon: b.lon);
-      final aImportance = importanceByKey[aKey];
-      final bImportance = importanceByKey[bKey];
-      final aSaved = aImportance != null;
-      final bSaved = bImportance != null;
-      if (aSaved != bSaved) {
-        return aSaved ? -1 : 1;
-      }
-      if (aImportance != null && bImportance != null) {
-        final diff = bImportance.compareTo(aImportance);
-        if (diff != 0) return diff;
-      }
-      return indexBySuggestion[a]!.compareTo(indexBySuggestion[b]!);
-    });
-    return ordered;
+  /// Opens the full-screen picker, restricted to stops.
+  ///
+  /// Same screen the route fields use, so favourites and recent stops show
+  /// here too — they never did in the dropdown this replaces.
+  Future<void> _openStopSearch() async {
+    _searchFocus.unfocus();
+    final picked = await Navigator.of(context)
+        .push<TransitousLocationSuggestion>(
+          CustomPageRoute(
+            child: LocationSearchScreen(
+              title: 'Stop',
+              bucket: SavedPlacesBucket.timetable,
+              initialQuery: _searchController.text,
+              type: 'STOP',
+            ),
+          ),
+        );
+    if (!mounted || picked == null) return;
+    _onSuggestionSelected(picked);
   }
 
   void _onSuggestionSelected(TransitousLocationSuggestion suggestion) {
@@ -332,7 +269,6 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
       _searchController.text = suggestion.name;
       _selectedStop = suggestion;
       _searchFocus.unfocus();
-      _suggestions = [];
     });
   }
 
@@ -410,17 +346,14 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
         type: 'STOP',
         placeBias: _lastUserLatLng,
       );
-      final ordered = _prioritizeSavedSuggestions(results);
-      if (ordered.isEmpty) return null;
-      final suggestion = ordered.first;
+      if (results.isEmpty) return null;
+      final suggestion = results.first;
       if (!mounted) return suggestion;
       unawaited(_recordSavedPlace(suggestion));
       setState(() {
         _searchController.text = suggestion.name;
         _selectedStop = suggestion;
         _searchFocus.unfocus();
-        _suggestions = [];
-        _isFetchingSuggestions = false;
       });
       return suggestion;
     } catch (_) {
@@ -542,7 +475,6 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
   @override
   Widget build(BuildContext context) {
     context.watch<ThemeProvider>();
-    final showSuggestions = _searchFocus.hasFocus;
 
     return PopScope(
       canPop: !_searchFocus.hasFocus && !_showTimeSelectionOverlay,
@@ -658,6 +590,13 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
                                       child: CupertinoTextField(
                                         controller: _searchController,
                                         focusNode: _searchFocus,
+                                        // Opens the picker rather than
+                                        // typing here: favourites and recents
+                                        // need more room than a dropdown.
+                                        readOnly: true,
+                                        showCursor: false,
+                                        onTap: () =>
+                                            unawaited(_openStopSearch()),
                                         placeholder: 'Search for a stop...',
                                         placeholderStyle: TextStyle(
                                           color: AppColors.black.withValues(
@@ -909,52 +848,6 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
                             ),
                     ),
                   ],
-                ),
-
-                Positioned(
-                  left: 20,
-                  right: 20,
-                  top: 0,
-                  child: CompositedTransformFollower(
-                    link: _searchFieldLink,
-                    showWhenUnlinked: false,
-                    targetAnchor: Alignment.bottomLeft,
-                    followerAnchor: Alignment.topLeft,
-                    offset: const Offset(0, 8),
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 180),
-                      switchInCurve: Curves.easeOutCubic,
-                      switchOutCurve: Curves.easeInCubic,
-                      transitionBuilder: (child, animation) {
-                        final offsetTween = Tween<Offset>(
-                          begin: const Offset(0, -0.05),
-                          end: Offset.zero,
-                        );
-                        return FadeTransition(
-                          opacity: animation,
-                          child: SlideTransition(
-                            position: animation.drive(offsetTween),
-                            child: child,
-                          ),
-                        );
-                      },
-                      child: !showSuggestions
-                          ? const SizedBox.shrink()
-                          : SingleFieldSuggestionsOverlay(
-                              key: const ValueKey('suggestions'),
-                              width: MediaQuery.of(context).size.width - 40,
-                              controller: _searchController,
-                              suggestions: _suggestions,
-                              savedPlaces: _savedTimetablePlaces,
-                              isLoading: _isFetchingSuggestions,
-                              onSuggestionTap: _onSuggestionSelected,
-                              onDismissRequest: () {
-                                _searchFocus.unfocus();
-                              },
-                              title: "Stop suggestions",
-                            ),
-                    ),
-                  ),
                 ),
               ],
             ),

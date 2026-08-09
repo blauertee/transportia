@@ -12,7 +12,6 @@ import '../services/favorites_service.dart';
 import '../services/transitous_geocode_service.dart';
 import '../widgets/route_field_box.dart';
 import '../theme/app_colors.dart';
-import '../utils/favorite_icons.dart';
 import 'saved_trip_card.dart';
 import 'buttons/pill_button.dart';
 import 'buttons/primary_button.dart';
@@ -43,6 +42,12 @@ class BottomCard extends StatefulWidget {
     required this.onResetOptions,
     required this.onSaveOptionsAsDefault,
     required this.onAddViaStop,
+    required this.onFromPressed,
+    required this.onToPressed,
+    required this.isFromFavourite,
+    required this.isToFavourite,
+    required this.onToggleFromFavourite,
+    required this.onToggleToFavourite,
     required this.canScrollBody,
     required this.fullProgress,
     required this.routeFieldLink,
@@ -94,6 +99,15 @@ class BottomCard extends StatefulWidget {
   final VoidCallback onResetOptions;
   final VoidCallback onSaveOptionsAsDefault;
   final VoidCallback onAddViaStop;
+
+  /// Opens the place picker for one end or the other.
+  final VoidCallback onFromPressed;
+  final VoidCallback onToPressed;
+
+  final bool isFromFavourite;
+  final bool isToFavourite;
+  final VoidCallback onToggleFromFavourite;
+  final VoidCallback onToggleToFavourite;
 
   /// True once the card has taken all the room it can, and so the only thing
   /// left for a drag to do is scroll.
@@ -204,17 +218,9 @@ class _BottomCardState extends State<BottomCard> {
     return false;
   }
 
-  /// The journey stages, unless something else needs the room.
-  ///
-  /// Collapsed, the card is a search box. Typing in a field replaces the
-  /// stages with the suggestions overlay, which hangs off the bottom of the
-  /// route fields — it belongs under the field being typed into rather than
-  /// under everything the journey could be.
+  /// The journey stages. Collapsed, the card is just a search box.
   Widget? _buildSpine() {
     if (widget.isCollapsed) return null;
-    if (widget.fromFocusNode.hasFocus || widget.toFocusNode.hasFocus) {
-      return null;
-    }
     return JourneySpine(
       options: widget.options,
       capabilities: widget.capabilities,
@@ -424,18 +430,29 @@ class _BottomCardState extends State<BottomCard> {
                                 fromLoading: widget.fromLoading,
                                 toLoading: widget.toLoading,
                                 middle: _buildSpine(),
+                                onFromPressed: widget.onFromPressed,
+                                onToPressed: widget.onToPressed,
+                                isFromFavourite: widget.isFromFavourite,
+                                isToFavourite: widget.isToFavourite,
+                                onToggleFromFavourite:
+                                    widget.onToggleFromFavourite,
+                                onToggleToFavourite: widget.onToggleToFavourite,
                               ),
                             ),
                           ),
                         ),
 
-                        if (!widget.isCollapsed &&
-                            (widget.options != widget.storedOptions ||
-                                _savedAsDefault))
+                        // Always offered, not only once something differs:
+                        // the row is where the routing options are managed
+                        // from, and hunting for a button that appears and
+                        // disappears is worse than one that is simply there.
+                        if (!widget.isCollapsed)
                           Padding(
                             padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
                             child: SaveDefaultRow(
                               saved: _savedAsDefault,
+                              differsFromStored:
+                                  widget.options != widget.storedOptions,
                               onReset: widget.onResetOptions,
                               onSaveAsDefault: () {
                                 widget.onSaveOptionsAsDefault();
@@ -454,36 +471,6 @@ class _BottomCardState extends State<BottomCard> {
                           ),
                       ],
                       below: [
-                        Padding(
-                          padding: const EdgeInsets.only(top: 16),
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.translucent,
-                            onTap: widget.onUnfocus,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Favourites',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
-                                    color: AppColors.black,
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                if (widget.favorites.isEmpty)
-                                  const _FavoritesEmptyMessage()
-                                else
-                                  _FavoritesQuickActions(
-                                    favorites: widget.favorites,
-                                    onFavoriteTap: widget.onFavoriteTap,
-                                    hasLocationPermission:
-                                        widget.hasLocationPermission,
-                                  ),
-                              ],
-                            ),
-                          ),
-                        ),
                         if (widget.savedTrips.isNotEmpty)
                           Padding(
                             padding: const EdgeInsets.only(top: 16),
@@ -792,155 +779,6 @@ class _RecentTripTileState extends State<_RecentTripTile> {
       behavior: HitTestBehavior.opaque,
       onTap: _handleTap,
       child: _isLoading ? SkeletonShimmer(child: content) : content,
-    );
-  }
-}
-
-class _FavoritesQuickActions extends StatelessWidget {
-  const _FavoritesQuickActions({
-    required this.favorites,
-    required this.onFavoriteTap,
-    required this.hasLocationPermission,
-  });
-
-  final List<FavoritePlace> favorites;
-  final ValueChanged<FavoritePlace> onFavoriteTap;
-  final bool hasLocationPermission;
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      physics: const BouncingScrollPhysics(),
-      child: Row(
-        children: [
-          const SizedBox(width: 12),
-          for (final favorite in favorites) ...[
-            _FavoriteShortcut(
-              favorite: favorite,
-              enabled: hasLocationPermission,
-              onTap: () => onFavoriteTap(favorite),
-            ),
-            const SizedBox(width: 12),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _FavoriteShortcut extends StatelessWidget {
-  const _FavoriteShortcut({
-    required this.favorite,
-    required this.enabled,
-    required this.onTap,
-  });
-
-  final FavoritePlace favorite;
-  final bool enabled;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = AppColors.accentOf(context);
-    final textColor = enabled
-        ? AppColors.black
-        : AppColors.black.withValues(alpha: 0.6);
-
-    return Opacity(
-      opacity: enabled ? 1.0 : 0.6,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: enabled ? onTap : null,
-        child: Container(
-          width: 96,
-          height: 96,
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0x11000000)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: accent.withValues(alpha: enabled ? 0.12 : 0.08),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                alignment: Alignment.center,
-                child: Icon(
-                  iconForFavorite(favorite.iconName),
-                  size: 22,
-                  color: enabled ? accent : accent.withValues(alpha: 0.6),
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                favorite.name,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: textColor,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _FavoritesEmptyMessage extends StatelessWidget {
-  const _FavoritesEmptyMessage();
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = AppColors.accentOf(context);
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            alignment: Alignment.center,
-            child: Icon(LucideIcons.heart, size: 24, color: accent),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'No favourites yet',
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-              color: AppColors.black,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Add your go-to destinations for quick routing.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              color: AppColors.black.withValues(alpha: 0.4),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:transportia/screens/appearance_screen.dart';
 import 'package:transportia/screens/developer_info_screen.dart';
 import 'package:transportia/screens/statistics_screen.dart';
-import 'package:transportia/screens/favourites_screen.dart';
 import 'package:transportia/screens/info_screen.dart';
 import 'package:transportia/screens/legal_screen.dart';
 import 'package:transportia/screens/location_settings_screen.dart';
@@ -213,16 +212,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               SettingsSection(
                 title: 'Preferences',
                 children: [
-                  SettingsTile(
-                    icon: LucideIcons.heart,
-                    title: 'Favourites',
-                    subtitle: 'Manage your favourite places',
-                    onPressed: () {
-                      Navigator.of(
-                        context,
-                      ).push(CustomPageRoute(child: const FavouritesScreen()));
-                    },
-                  ),
                   SettingsTile(
                     icon: LucideIcons.mapPin,
                     title: 'Location',
