@@ -9,10 +9,15 @@ class EditFavoriteOverlay extends StatefulWidget {
   final FavoritePlace favorite;
   final VoidCallback onSaved;
 
+  /// Offered alongside the rename, since a place you no longer keep and a
+  /// place you renamed are the same thought a moment apart.
+  final VoidCallback? onDeleted;
+
   const EditFavoriteOverlay({
     super.key,
     required this.favorite,
     required this.onSaved,
+    this.onDeleted,
   });
 
   @override
@@ -38,12 +43,16 @@ class _EditFavoriteOverlayState extends State<EditFavoriteOverlay> {
     super.dispose();
   }
 
+  /// Writes the alias rather than the name.
+  ///
+  /// The searched name stays underneath, so clearing the field restores it
+  /// instead of leaving the place nameless — and a rider who calls a station
+  /// "Home" has not forgotten what it is really called.
   Future<void> _saveFavorite() async {
-    final name = _nameController.text.trim();
-    if (name.isEmpty) return;
-
+    final alias = _nameController.text.trim();
     final updatedFavorite = widget.favorite.copyWith(
-      name: name,
+      label: alias,
+      clearLabel: alias.isEmpty || alias == widget.favorite.name,
       iconName: _selectedIcon,
     );
 
@@ -212,6 +221,27 @@ class _EditFavoriteOverlayState extends State<EditFavoriteOverlay> {
                     },
                   ),
                   const SizedBox(height: 24),
+                  if (widget.onDeleted != null) ...[
+                    GestureDetector(
+                      onTap: () {
+                        widget.onDeleted!();
+                        Navigator.of(context).pop();
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Text(
+                          'Remove favourite',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.disrupted,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
                   Row(
                     children: [
                       Expanded(
