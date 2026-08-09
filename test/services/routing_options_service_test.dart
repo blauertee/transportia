@@ -33,9 +33,9 @@ void main() {
         ],
         maxTransfers: 3,
         additionalTransferTime: Duration(minutes: 6),
-        firstMileMode: TransitMode.bike,
+        firstMileModes: [TransitMode.bike],
         maxFirstMileTime: Duration(minutes: 20),
-        directMode: TransitMode.bike,
+        directModes: [TransitMode.bike],
         maxDirectTime: Duration(minutes: 45),
         walkingSpeedKmh: 5.4,
         cyclingSpeedKmh: 18.0,
@@ -92,7 +92,7 @@ void main() {
         expect(loaded.maxTransfers, 2);
         // Unknown enum values fall back per field rather than failing the read.
         expect(loaded.elevationCosts, ElevationCosts.none);
-        expect(loaded.firstMileMode, TransitMode.walk);
+        expect(loaded.firstMileModes, [TransitMode.walk]);
       },
     );
   });

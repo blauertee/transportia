@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 
 import '../../models/transitous/enums.dart';
+import '../search/street_leg_section.dart';
 import '../../theme/app_colors.dart';
 import '../app_toggle_switch.dart';
 import 'value_controls.dart';
@@ -72,7 +73,11 @@ class OptionToggleRow extends StatelessWidget {
   }
 }
 
-/// Picks one street mode from a short row of choices.
+/// Picks the street modes a leg may use.
+///
+/// Several at once, because the server takes a list and "walk or grab a bike"
+/// is how people actually get to a stop. Never empty — the caller falls back
+/// to walking rather than sending a leg that can route nothing.
 class ModeChoiceRow extends StatelessWidget {
   const ModeChoiceRow({
     super.key,
@@ -82,33 +87,39 @@ class ModeChoiceRow extends StatelessWidget {
   });
 
   final List<TransitMode> modes;
-  final TransitMode selected;
-  final ValueChanged<TransitMode> onChanged;
+  final List<TransitMode> selected;
+  final ValueChanged<List<TransitMode>> onChanged;
 
-  static const Map<TransitMode, String> _labels = {
-    TransitMode.walk: 'Walk',
-    TransitMode.bike: 'Bike',
-    TransitMode.rental: 'Rental',
-    TransitMode.car: 'Car',
-    TransitMode.carParking: 'Park',
-    TransitMode.carDropoff: 'Drop-off',
-  };
+  void _toggle(TransitMode mode) => onChanged([
+    for (final candidate in modes)
+      if (candidate == mode
+          ? !selected.contains(mode)
+          : selected.contains(candidate))
+        candidate,
+  ]);
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        for (var i = 0; i < modes.length; i++) ...[
-          if (i > 0) const SizedBox(width: 8),
-          Expanded(
-            child: QuickValueCard(
-              value: _labels[modes[i]] ?? modes[i].wireName,
-              selected: selected == modes[i],
-              onTap: () => onChanged(modes[i]),
-            ),
-          ),
-        ],
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const spacing = 8.0;
+        final width = (constraints.maxWidth - spacing * 2) / 3;
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: [
+            for (final mode in modes)
+              SizedBox(
+                width: width,
+                child: QuickValueCard(
+                  value: mileModeLabel(mode),
+                  selected: selected.contains(mode),
+                  onTap: () => _toggle(mode),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }

@@ -203,12 +203,12 @@ class TransitOptionsStreetLegsCard extends StatelessWidget {
               _StreetLegRow(
                 icon: LucideIcons.logIn,
                 label: 'First mile',
-                mode: options.firstMileMode,
+                modes: options.firstMileModes,
                 budget: options.maxFirstMileTime,
                 maxBudget: prePostCap,
                 budgetChoices: _budgetChoices,
-                onModeChanged: (mode) =>
-                    onChanged(options.copyWith(firstMileMode: mode)),
+                onModesChanged: (modes) =>
+                    onChanged(options.copyWith(firstMileModes: modes)),
                 onBudgetChanged: (budget) =>
                     onChanged(options.copyWith(maxFirstMileTime: budget)),
               ),
@@ -216,12 +216,12 @@ class TransitOptionsStreetLegsCard extends StatelessWidget {
               _StreetLegRow(
                 icon: LucideIcons.logOut,
                 label: 'Last mile',
-                mode: options.lastMileMode,
+                modes: options.lastMileModes,
                 budget: options.maxLastMileTime,
                 maxBudget: prePostCap,
                 budgetChoices: _budgetChoices,
-                onModeChanged: (mode) =>
-                    onChanged(options.copyWith(lastMileMode: mode)),
+                onModesChanged: (modes) =>
+                    onChanged(options.copyWith(lastMileModes: modes)),
                 onBudgetChanged: (budget) =>
                     onChanged(options.copyWith(maxLastMileTime: budget)),
               ),
@@ -231,12 +231,12 @@ class TransitOptionsStreetLegsCard extends StatelessWidget {
                 label: 'Direct journey',
                 description:
                     'Offer a route with no transit when it is short enough.',
-                mode: options.directMode,
+                modes: options.directModes,
                 budget: options.maxDirectTime,
                 maxBudget: directCap,
                 budgetChoices: _budgetChoices,
-                onModeChanged: (mode) =>
-                    onChanged(options.copyWith(directMode: mode)),
+                onModesChanged: (modes) =>
+                    onChanged(options.copyWith(directModes: modes)),
                 onBudgetChanged: (budget) =>
                     onChanged(options.copyWith(maxDirectTime: budget)),
               ),
@@ -252,11 +252,11 @@ class _StreetLegRow extends StatelessWidget {
   const _StreetLegRow({
     required this.icon,
     required this.label,
-    required this.mode,
+    required this.modes,
     required this.budget,
     required this.maxBudget,
     required this.budgetChoices,
-    required this.onModeChanged,
+    required this.onModesChanged,
     required this.onBudgetChanged,
     this.description,
   });
@@ -264,11 +264,11 @@ class _StreetLegRow extends StatelessWidget {
   final IconData icon;
   final String label;
   final String? description;
-  final TransitMode mode;
+  final List<TransitMode> modes;
   final Duration budget;
   final Duration maxBudget;
   final List<int> budgetChoices;
-  final ValueChanged<TransitMode> onModeChanged;
+  final ValueChanged<List<TransitMode>> onModesChanged;
   final ValueChanged<Duration> onBudgetChanged;
 
   @override
@@ -308,8 +308,8 @@ class _StreetLegRow extends StatelessWidget {
         const SizedBox(height: 10),
         ModeChoiceRow(
           modes: RoutingOptions.streetModeChoices,
-          selected: mode,
-          onChanged: onModeChanged,
+          selected: modes,
+          onChanged: onModesChanged,
         ),
         const SizedBox(height: 10),
         Row(

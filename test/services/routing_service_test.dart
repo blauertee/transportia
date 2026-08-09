@@ -141,11 +141,11 @@ void main() {
           ],
           maxTransfers: 3,
           additionalTransferTime: Duration(minutes: 5),
-          firstMileMode: TransitMode.bike,
+          firstMileModes: [TransitMode.bike],
           maxFirstMileTime: Duration(minutes: 20),
-          lastMileMode: TransitMode.bike,
+          lastMileModes: [TransitMode.bike],
           maxLastMileTime: Duration(minutes: 10),
-          directMode: TransitMode.bike,
+          directModes: [TransitMode.bike],
           maxDirectTime: Duration(minutes: 45),
           walkingSpeedKmh: 5.4,
           cyclingSpeedKmh: 18.0,
@@ -225,8 +225,8 @@ void main() {
       final query = await plan(
         options: RoutingOptions.defaults.copyWith(
           maxTransfers: 0,
-          firstMileMode: TransitMode.bike,
-          lastMileMode: TransitMode.bike,
+          firstMileModes: [TransitMode.bike],
+          lastMileModes: [TransitMode.bike],
         ),
       );
 

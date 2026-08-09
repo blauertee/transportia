@@ -60,12 +60,13 @@ class RoutingOptions {
     this.via = const [],
     this.maxTransfers,
     this.additionalTransferTime = Duration.zero,
-    this.firstMileMode = TransitMode.walk,
+    this.firstMileModes = const [TransitMode.walk],
     this.maxFirstMileTime = const Duration(minutes: 15),
-    this.lastMileMode = TransitMode.walk,
+    this.lastMileModes = const [TransitMode.walk],
     this.maxLastMileTime = const Duration(minutes: 15),
-    this.directMode = TransitMode.walk,
+    this.directModes = const [TransitMode.walk],
     this.maxDirectTime = const Duration(minutes: 30),
+    this.rentalFormFactors = const [],
     this.walkingSpeedKmh = _defaultWalkingSpeedKmh,
     this.cyclingSpeedKmh = _defaultCyclingSpeedKmh,
     this.elevationCosts = ElevationCosts.none,
@@ -104,25 +105,24 @@ class RoutingOptions {
   /// Same rule for taking a car aboard, where carriage means motorail.
   final bool? carCarriageOverride;
 
-  /// A bike is chosen for both the first and the last mile, so it travels
-  /// with the rider rather than being left at the origin station.
+  /// A bike is among the modes at both ends, so it travels with the rider
+  /// rather than being left at the origin station.
   bool get bikeAtBothEnds =>
-      firstMileMode == TransitMode.bike && lastMileMode == TransitMode.bike;
+      firstMileModes.contains(TransitMode.bike) &&
+      lastMileModes.contains(TransitMode.bike);
 
   bool get carAtBothEnds =>
-      firstMileMode == TransitMode.car && lastMileMode == TransitMode.car;
+      firstMileModes.contains(TransitMode.car) &&
+      lastMileModes.contains(TransitMode.car);
 
   /// The value actually sent.
   ///
-  /// Gated on the condition as well as the override: demanding a service that
-  /// carries bicycles while walking to the station asks for room for a bike
-  /// that is not coming. Copies clear a stale override, and this keeps a
-  /// restored one from forcing carriage with no control on screen to undo it.
-  bool get requireBikeTransport =>
-      bikeAtBothEnds && (bikeCarriageOverride ?? true);
+  /// The derivation is the default, not a gate: a bike at both ends turns
+  /// carriage on without being asked, and the rider can still turn it off, or
+  /// on for a journey where the derivation does not apply.
+  bool get requireBikeTransport => bikeCarriageOverride ?? bikeAtBothEnds;
 
-  bool get requireCarTransport =>
-      carAtBothEnds && (carCarriageOverride ?? true);
+  bool get requireCarTransport => carCarriageOverride ?? carAtBothEnds;
 
   /// True when the rider set carriage by hand rather than inheriting it.
   bool get bikeCarriageIsManual => bikeCarriageOverride != null;
@@ -139,16 +139,27 @@ class RoutingOptions {
   final Duration additionalTransferTime;
 
   /// How to reach the first stop, and the budget for it.
-  final TransitMode firstMileMode;
+  ///
+  /// A list because the server takes one: offering several says "any of
+  /// these", which is how someone who might walk or might grab a bike
+  /// actually travels. Never empty — a mile with no mode routes nothing.
+  final List<TransitMode> firstMileModes;
   final Duration maxFirstMileTime;
 
   /// How to travel from the last stop, and the budget for it.
-  final TransitMode lastMileMode;
+  final List<TransitMode> lastMileModes;
   final Duration maxLastMileTime;
 
-  /// Mode and budget for a transit-free itinerary.
-  final TransitMode directMode;
+  /// Modes and budget for a transit-free itinerary.
+  final List<TransitMode> directModes;
   final Duration maxDirectTime;
+
+  /// Which shared vehicles a rental leg may use. Empty means any.
+  ///
+  /// One set covers both miles: picking a shared cargo bike to the station
+  /// and a shared moped back is a distinction nobody draws, and two sets
+  /// would double the control.
+  final List<RentalFormFactor> rentalFormFactors;
 
   /// Stored in km/h because that is what the UI shows; converted to m/s on
   /// the way out.
@@ -176,7 +187,7 @@ class RoutingOptions {
   /// Slider position for the current transfer limit.
   int get transfersSliderValue => maxTransfers ?? unlimitedTransfersSliderValue;
 
-  /// The transit selection as the four groups plus named extras.
+  /// The transit selection as a set of modes.
   TransitSelection get transitSelection =>
       TransitSelection.fromModes(transitModes);
 
@@ -190,7 +201,11 @@ class RoutingOptions {
       ? copyWith(clearMaxTransfers: true)
       : copyWith(maxTransfers: value);
 
-  /// Modes the street legs may use, i.e. the ones a speed applies to.
+  /// Every mode a street leg may use, in the order the pickers read.
+  ///
+  /// The search screen gives the first five an icon each and puts the rest
+  /// behind a chevron; the defaults editor lists them all. Both read this, so
+  /// neither can offer a mode the other cannot show.
   static const List<TransitMode> streetModeChoices = [
     TransitMode.walk,
     TransitMode.bike,
@@ -198,6 +213,9 @@ class RoutingOptions {
     TransitMode.car,
     TransitMode.carParking,
     TransitMode.carDropoff,
+    TransitMode.hgv,
+    TransitMode.odm,
+    TransitMode.flex,
   ];
 
   RoutingOptions copyWith({
@@ -212,32 +230,31 @@ class RoutingOptions {
     int? maxTransfers,
     bool clearMaxTransfers = false,
     Duration? additionalTransferTime,
-    TransitMode? firstMileMode,
+    List<TransitMode>? firstMileModes,
     Duration? maxFirstMileTime,
-    TransitMode? lastMileMode,
+    List<TransitMode>? lastMileModes,
     Duration? maxLastMileTime,
-    TransitMode? directMode,
+    List<TransitMode>? directModes,
     Duration? maxDirectTime,
+    List<RentalFormFactor>? rentalFormFactors,
     double? walkingSpeedKmh,
     double? cyclingSpeedKmh,
     ElevationCosts? elevationCosts,
   }) {
-    final nextFirst = firstMileMode ?? this.firstMileMode;
-    final nextLast = lastMileMode ?? this.lastMileMode;
-    final keepsBike =
-        nextFirst == TransitMode.bike && nextLast == TransitMode.bike;
-    final keepsCar =
-        nextFirst == TransitMode.car && nextLast == TransitMode.car;
+    // A mile with no mode routes nothing, so deselecting the last one falls
+    // back to walking rather than producing a query that cannot answer.
+    final nextFirst = _atLeastWalking(firstMileModes ?? this.firstMileModes);
+    final nextLast = _atLeastWalking(lastMileModes ?? this.lastMileModes);
 
     return RoutingOptions(
       transitModes: transitModes ?? this.transitModes,
       useRoutedTransfers: useRoutedTransfers ?? this.useRoutedTransfers,
       wheelchairAccessibleOnly:
           wheelchairAccessibleOnly ?? this.wheelchairAccessibleOnly,
-      bikeCarriageOverride: clearCarriageOverrides || !keepsBike
+      bikeCarriageOverride: clearCarriageOverrides
           ? null
           : (bikeCarriageOverride ?? this.bikeCarriageOverride),
-      carCarriageOverride: clearCarriageOverrides || !keepsCar
+      carCarriageOverride: clearCarriageOverrides
           ? null
           : (carCarriageOverride ?? this.carCarriageOverride),
       noCompulsoryReservation:
@@ -248,12 +265,13 @@ class RoutingOptions {
           : (maxTransfers ?? this.maxTransfers),
       additionalTransferTime:
           additionalTransferTime ?? this.additionalTransferTime,
-      firstMileMode: firstMileMode ?? this.firstMileMode,
+      firstMileModes: nextFirst,
       maxFirstMileTime: maxFirstMileTime ?? this.maxFirstMileTime,
-      lastMileMode: lastMileMode ?? this.lastMileMode,
+      lastMileModes: nextLast,
       maxLastMileTime: maxLastMileTime ?? this.maxLastMileTime,
-      directMode: directMode ?? this.directMode,
+      directModes: _atLeastWalking(directModes ?? this.directModes),
       maxDirectTime: maxDirectTime ?? this.maxDirectTime,
+      rentalFormFactors: rentalFormFactors ?? this.rentalFormFactors,
       walkingSpeedKmh: walkingSpeedKmh ?? this.walkingSpeedKmh,
       cyclingSpeedKmh: cyclingSpeedKmh ?? this.cyclingSpeedKmh,
       elevationCosts: elevationCosts ?? this.elevationCosts,
@@ -294,12 +312,14 @@ class RoutingOptions {
           ? additionalTransferTime
           : null,
       transitModes: transitModes,
-      preTransitModes: [firstMileMode],
+      preTransitModes: firstMileModes,
       maxPreTransitTime: maxFirstMileTime,
-      postTransitModes: [lastMileMode],
+      postTransitModes: lastMileModes,
       maxPostTransitTime: maxLastMileTime,
-      directModes: [directMode],
+      directModes: directModes,
       maxDirectTime: maxDirectTime,
+      preTransitRentals: _rentalFilters,
+      postTransitRentals: _rentalFilters,
       pedestrianSpeed: _msFrom(walkingSpeedKmh, _defaultWalkingSpeedKmh),
       cyclingSpeed: _msFrom(cyclingSpeedKmh, _defaultCyclingSpeedKmh),
       elevationCosts: elevationCosts == ElevationCosts.none
@@ -307,6 +327,15 @@ class RoutingOptions {
           : elevationCosts,
     );
   }
+
+  /// Form-factor filter for whichever leg asks, or none when any vehicle
+  /// will do.
+  RentalFilters get _rentalFilters =>
+      RentalFilters(formFactors: rentalFormFactors);
+
+  /// A mile always has somewhere to start from.
+  static List<TransitMode> _atLeastWalking(List<TransitMode> modes) =>
+      modes.isEmpty ? const [TransitMode.walk] : modes;
 
   /// km/h to m/s, or null when the value is the server's own default.
   static double? _msFrom(double kmh, double defaultKmh) {
@@ -324,12 +353,13 @@ class RoutingOptions {
     'via': [for (final stop in via) stop.toJson()],
     'maxTransfers': maxTransfers,
     'additionalTransferTimeMinutes': additionalTransferTime.inMinutes,
-    'firstMileMode': firstMileMode.wireName,
+    'firstMileModes': [for (final mode in firstMileModes) mode.wireName],
     'maxFirstMileTimeMinutes': maxFirstMileTime.inMinutes,
-    'lastMileMode': lastMileMode.wireName,
+    'lastMileModes': [for (final mode in lastMileModes) mode.wireName],
     'maxLastMileTimeMinutes': maxLastMileTime.inMinutes,
-    'directMode': directMode.wireName,
+    'directModes': [for (final mode in directModes) mode.wireName],
     'maxDirectTimeMinutes': maxDirectTime.inMinutes,
+    'rentalFormFactors': [for (final f in rentalFormFactors) f.wireName],
     'walkingSpeedKmh': walkingSpeedKmh,
     'cyclingSpeedKmh': cyclingSpeedKmh,
     'elevationCosts': elevationCosts.wireName,
@@ -346,14 +376,8 @@ class RoutingOptions {
       wheelchairAccessibleOnly:
           json['wheelchairAccessibleOnly'] as bool? ??
           fallback.wheelchairAccessibleOnly,
-      // Older stores wrote a plain flag; a true one is a decision worth
-      // keeping, a false one is indistinguishable from the default.
-      bikeCarriageOverride:
-          json['bikeCarriageOverride'] as bool? ??
-          (json['requireBikeTransport'] == true ? true : null),
-      carCarriageOverride:
-          json['carCarriageOverride'] as bool? ??
-          (json['requireCarTransport'] == true ? true : null),
+      bikeCarriageOverride: json['bikeCarriageOverride'] as bool?,
+      carCarriageOverride: json['carCarriageOverride'] as bool?,
       noCompulsoryReservation:
           json['noCompulsoryReservation'] as bool? ??
           fallback.noCompulsoryReservation,
@@ -363,17 +387,20 @@ class RoutingOptions {
         json['additionalTransferTimeMinutes'],
         fallback.additionalTransferTime,
       ),
-      firstMileMode: _mode(json['firstMileMode'], fallback.firstMileMode),
+      firstMileModes: _mileModes(
+        json['firstMileModes'],
+        fallback.firstMileModes,
+      ),
       maxFirstMileTime: _minutes(
         json['maxFirstMileTimeMinutes'],
         fallback.maxFirstMileTime,
       ),
-      lastMileMode: _mode(json['lastMileMode'], fallback.lastMileMode),
+      lastMileModes: _mileModes(json['lastMileModes'], fallback.lastMileModes),
       maxLastMileTime: _minutes(
         json['maxLastMileTimeMinutes'],
         fallback.maxLastMileTime,
       ),
-      directMode: _mode(json['directMode'], fallback.directMode),
+      directModes: _mileModes(json['directModes'], fallback.directModes),
       maxDirectTime: _minutes(
         json['maxDirectTimeMinutes'],
         fallback.maxDirectTime,
@@ -387,6 +414,7 @@ class RoutingOptions {
       elevationCosts:
           ElevationCosts.fromWire(json['elevationCosts']) ??
           fallback.elevationCosts,
+      rentalFormFactors: _formFactors(json['rentalFormFactors']),
     );
   }
 
@@ -398,8 +426,20 @@ class RoutingOptions {
     ];
   }
 
-  static TransitMode _mode(Object? raw, TransitMode fallback) =>
-      TransitMode.fromWire(raw) ?? fallback;
+  /// A stored mile list, falling back when it is absent or unreadable — an
+  /// empty list here would mean "route nothing", not "use the default".
+  static List<TransitMode> _mileModes(Object? raw, List<TransitMode> fallback) {
+    final modes = _modes(raw);
+    return modes.isEmpty ? fallback : modes;
+  }
+
+  static List<RentalFormFactor> _formFactors(Object? raw) {
+    if (raw is! List) return const [];
+    return [
+      for (final entry in raw)
+        if (RentalFormFactor.fromWire(entry) case final factor?) factor,
+    ];
+  }
 
   static Duration _minutes(Object? raw, Duration fallback) =>
       raw is int ? Duration(minutes: raw) : fallback;
