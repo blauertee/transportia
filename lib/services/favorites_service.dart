@@ -20,6 +20,12 @@ class FavoritePlace {
   final DateTime addedAt;
   final String iconName;
 
+  /// What the geocoder called this place — `STOP`, `ADDRESS`, `PLACE`.
+  ///
+  /// Kept so a screen can ask which favourites are stations without
+  /// re-geocoding them; the timetable screen offers only those.
+  final String type;
+
   const FavoritePlace({
     required this.id,
     required this.name,
@@ -27,8 +33,11 @@ class FavoritePlace {
     required this.lon,
     required this.addedAt,
     this.label,
+    this.type = 'PLACE',
     this.iconName = 'mapPin',
   });
+
+  bool get isStation => type.toUpperCase() == 'STOP';
 
   /// What to show. The alias when there is one, the searched name otherwise.
   String get displayName => (label?.trim().isNotEmpty ?? false) ? label! : name;
@@ -42,6 +51,7 @@ class FavoritePlace {
     String? name,
     String? label,
     bool clearLabel = false,
+    String? type,
     double? lat,
     double? lon,
     DateTime? addedAt,
@@ -51,6 +61,7 @@ class FavoritePlace {
       id: id ?? this.id,
       name: name ?? this.name,
       label: clearLabel ? null : (label ?? this.label),
+      type: type ?? this.type,
       lat: lat ?? this.lat,
       lon: lon ?? this.lon,
       addedAt: addedAt ?? this.addedAt,
@@ -63,6 +74,7 @@ class FavoritePlace {
       'id': id,
       'name': name,
       'label': label,
+      'type': type,
       'lat': lat,
       'lon': lon,
       'addedAt': addedAt.toIso8601String(),
@@ -75,6 +87,7 @@ class FavoritePlace {
       id: json['id'] as String,
       name: json['name'] as String,
       label: json['label'] as String?,
+      type: json['type'] as String? ?? 'PLACE',
       lat: (json['lat'] as num).toDouble(),
       lon: (json['lon'] as num).toDouble(),
       addedAt: DateTime.parse(json['addedAt'] as String),
@@ -171,6 +184,7 @@ class FavoritesService {
     required String name,
     required double lat,
     required double lon,
+    String type = 'PLACE',
   }) async {
     final existing = findAt(lat, lon);
     if (existing != null) {
@@ -182,6 +196,7 @@ class FavoritesService {
       name: name,
       lat: lat,
       lon: lon,
+      type: type,
       addedAt: DateTime.now(),
     );
     await saveFavorite(place);

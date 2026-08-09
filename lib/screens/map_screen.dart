@@ -2385,6 +2385,7 @@ class _MapScreenState extends State<MapScreen>
       name: selection.name,
       lat: selection.lat,
       lon: selection.lon,
+      type: selection.type,
     );
     if (!mounted) return;
     showValidationToast(

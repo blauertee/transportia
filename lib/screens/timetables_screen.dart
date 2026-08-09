@@ -11,12 +11,15 @@ import '../models/saved_place.dart';
 import '../models/stop_time.dart';
 import '../screens/connection_info_screen.dart';
 import '../services/location_service.dart';
+import '../services/favorites_service.dart';
 import '../services/saved_places_service.dart';
 import '../services/stop_times_service.dart';
 import '../screens/location_search_screen.dart';
 import '../services/transitous_geocode_service.dart';
 import '../utils/color_utils.dart';
 import '../utils/custom_page_route.dart';
+import '../utils/haptics.dart';
+import '../utils/favorite_icons.dart';
 import '../utils/leg_helper.dart' show getLegIcon;
 import '../utils/stop_time_utils.dart';
 import '../utils/time_utils.dart';
@@ -47,6 +50,7 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
   bool _showTimeSelectionOverlay = false;
   bool _suppressTimeSelectionReopen = false;
   List<SavedPlace> _savedTimetablePlaces = [];
+  List<FavoritePlace> _favourites = FavoritesService.favoritesListenable.value;
   LatLng? _lastUserLatLng;
   TransitousLocationSuggestion? _selectedStop;
   List<StopTime>? _stopTimes;
@@ -79,6 +83,8 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
     _searchFocus.addListener(_onFocusChanged);
     _checkLocationPermission();
     unawaited(_loadSavedTimetablePlaces());
+    FavoritesService.favoritesListenable.addListener(_onFavouritesChanged);
+    unawaited(FavoritesService.getFavorites());
     _applyInitialStop(widget.initialStop);
   }
 
@@ -92,6 +98,7 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
 
   @override
   void dispose() {
+    FavoritesService.favoritesListenable.removeListener(_onFavouritesChanged);
     _searchController.dispose();
     _searchFocus.dispose();
     _resultsScrollController.dispose();
@@ -112,6 +119,123 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
         }
       } catch (_) {}
     }
+  }
+
+  /// What to show before a stop is chosen.
+  ///
+  /// The stops you use and the ones you keep, rather than an empty screen
+  /// telling you to type — choosing a stop is what this screen is for, and
+  /// both lists already exist.
+  Widget _buildStartingPoint(BuildContext context) {
+    final recents = _savedTimetablePlaces
+        .where((place) => place.type.toUpperCase() == 'STOP')
+        .take(6)
+        .toList();
+    final favourites = _favourites.where((f) => f.isStation).toList();
+
+    if (recents.isEmpty && favourites.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(40),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              EmptyState(
+                icon: Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    color: AppColors.black.withValues(alpha: 0.04),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Icon(
+                    LucideIcons.trainFront,
+                    size: 40,
+                    color: AppColors.black.withValues(alpha: 0.2),
+                  ),
+                ),
+                title: 'Search for a stop',
+                subtitle:
+                    'Enter a stop name above to view\ndepartures and arrivals',
+                titleStyle: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.black,
+                ),
+                subtitleStyle: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                  color: AppColors.black.withValues(alpha: 0.4),
+                  height: 1.4,
+                ),
+                padding: EdgeInsets.zero,
+              ),
+              const SizedBox(height: 96),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 96),
+      children: [
+        // Only when some favourite actually is a station; a list of places
+        // this screen cannot open would be a list of dead ends.
+        if (favourites.isNotEmpty) ...[
+          _stationHeading('Favourite stops'),
+          for (final favourite in favourites)
+            _StationRow(
+              icon: iconForFavorite(favourite.iconName),
+              title: favourite.displayName,
+              subtitle: favourite.hasAlias ? favourite.name : null,
+              onTap: () => unawaited(_openStationByName(favourite.name)),
+            ),
+          const SizedBox(height: 20),
+        ],
+        if (recents.isNotEmpty) ...[
+          _stationHeading('Recent stops'),
+          for (final place in recents)
+            _StationRow(
+              icon: LucideIcons.busFront,
+              title: place.name,
+              subtitle: place.city,
+              onTap: () => unawaited(_openStationByName(place.name)),
+            ),
+        ],
+      ],
+    );
+  }
+
+  Widget _stationHeading(String text) => Padding(
+    padding: const EdgeInsets.only(top: 8, bottom: 8),
+    child: Text(
+      text.toUpperCase(),
+      style: TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.7,
+        color: AppColors.black.withValues(alpha: 0.45),
+      ),
+    ),
+  );
+
+  /// Opens a stop the app remembers by name.
+  ///
+  /// Neither a saved place nor a favourite stores the feed's stop id — both
+  /// would mint a synthetic one, and the departures endpoint would be handed
+  /// a string that is not a stop. Resolving the name is what gets a real id.
+  Future<void> _openStationByName(String name) async {
+    Haptics.lightTick();
+    _searchController.text = name;
+    final resolved = await _resolveStopFromQuery(name);
+    if (!mounted || resolved == null) return;
+    await _onSearch();
+  }
+
+  void _onFavouritesChanged() {
+    if (!mounted) return;
+    setState(() => _favourites = FavoritesService.favoritesListenable.value);
   }
 
   Future<void> _loadSavedTimetablePlaces() async {
@@ -522,30 +646,35 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
                                 ),
                               ),
                               const SizedBox(width: 16),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Timetables',
-                                    style: TextStyle(
-                                      fontSize: 28,
-                                      fontWeight: FontWeight.w800,
-                                      color: AppColors.black,
-                                      height: 1.1,
-                                    ),
-                                  ),
-                                  SizedBox(height: 4),
-                                  Text(
-                                    'Stop departures & arrivals',
-                                    style: TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w500,
-                                      color: AppColors.black.withValues(
-                                        alpha: 0.4,
+                              // Flexible, or the title and its subtitle claim
+                              // their natural width and overflow the row on a
+                              // narrow screen.
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Timetables',
+                                      style: TextStyle(
+                                        fontSize: 28,
+                                        fontWeight: FontWeight.w800,
+                                        color: AppColors.black,
+                                        height: 1.1,
                                       ),
                                     ),
-                                  ),
-                                ],
+                                    SizedBox(height: 4),
+                                    Text(
+                                      'Stop departures & arrivals',
+                                      style: TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w500,
+                                        color: AppColors.black.withValues(
+                                          alpha: 0.4,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ],
                           ),
@@ -797,55 +926,7 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
                                 );
                               },
                             )
-                          : Center(
-                              child: Padding(
-                                padding: const EdgeInsets.all(40),
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    EmptyState(
-                                      icon: Container(
-                                        width: 80,
-                                        height: 80,
-                                        decoration: BoxDecoration(
-                                          color: AppColors.black.withValues(
-                                            alpha: 0.04,
-                                          ),
-                                          borderRadius: BorderRadius.circular(
-                                            20,
-                                          ),
-                                        ),
-                                        child: Icon(
-                                          LucideIcons.trainFront,
-                                          size: 40,
-                                          color: AppColors.black.withValues(
-                                            alpha: 0.2,
-                                          ),
-                                        ),
-                                      ),
-                                      title: 'Search for a stop',
-                                      subtitle:
-                                          'Enter a stop name above to view\ndepartures and arrivals',
-                                      titleStyle: TextStyle(
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.w700,
-                                        color: AppColors.black,
-                                      ),
-                                      subtitleStyle: TextStyle(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w500,
-                                        color: AppColors.black.withValues(
-                                          alpha: 0.4,
-                                        ),
-                                        height: 1.4,
-                                      ),
-                                      padding: EdgeInsets.zero,
-                                    ),
-                                    const SizedBox(height: 96),
-                                  ],
-                                ),
-                              ),
-                            ),
+                          : _buildStartingPoint(context),
                     ),
                   ],
                 ),
@@ -1009,6 +1090,77 @@ class _TimeWithDelayText extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+/// One remembered stop, offered before anything has been searched for.
+class _StationRow extends StatelessWidget {
+  const _StationRow({
+    required this.icon,
+    required this.title,
+    required this.onTap,
+    this.subtitle,
+  });
+
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = AppColors.accentOf(context);
+    return Semantics(
+      button: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, size: 17, color: accent),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.black,
+                      ),
+                    ),
+                    if (subtitle != null && subtitle!.isNotEmpty)
+                      Text(
+                        subtitle!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: AppColors.black.withValues(alpha: 0.55),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
