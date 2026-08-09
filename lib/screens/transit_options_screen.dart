@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../environment.dart';
 import '../models/routing_options.dart';
 import '../models/transit_mode_group.dart';
+import '../models/transitous/enums.dart';
 import '../models/transitous/server_config.dart';
 import '../providers/theme_provider.dart';
 import '../services/routing_options_service.dart';
@@ -160,7 +161,7 @@ class _TransitOptionsScreenState extends State<TransitOptionsScreen> {
                     child: SelectableIconCard(
                       label: group.label,
                       icon: transitGroupIcons[group]!,
-                      selected: _selection.has(group),
+                      selected: _selection.stateOf(group) == GroupState.all,
                       onTap: () =>
                           _applySelection(_selection.toggleGroup(group)),
                     ),
@@ -169,25 +170,44 @@ class _TransitOptionsScreenState extends State<TransitOptionsScreen> {
             );
           },
         ),
-        const SizedBox(height: 12),
-        // The rest of what the server can route. Rare enough that they sit
-        // below the four, common enough that hiding them entirely would make
-        // some journeys unplannable.
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final mode in TransitModeGroup.extras)
-              _ExtraModeTick(
-                label: TransitModeGroup.extraLabel(mode),
-                selected: _selection.extras.contains(mode),
-                onPressed: () => _applySelection(_selection.toggleExtra(mode)),
-              ),
-          ],
-        ),
+        const SizedBox(height: 16),
+        // Every mode individually, because a group is a shortcut for picking
+        // several at once rather than the finest the server accepts.
+        for (final group in TransitModeGroup.values) ...[
+          _modeListHeading(group.label),
+          const SizedBox(height: 8),
+          _modeTicks(group.modes),
+          const SizedBox(height: 14),
+        ],
+        _modeListHeading('Other'),
+        const SizedBox(height: 8),
+        _modeTicks(TransitModeGroup.extras),
       ],
     );
   }
+
+  Widget _modeListHeading(String text) => Text(
+    text.toUpperCase(),
+    style: TextStyle(
+      fontSize: 11,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 0.7,
+      color: AppColors.black.withValues(alpha: 0.45),
+    ),
+  );
+
+  Widget _modeTicks(List<TransitMode> modes) => Wrap(
+    spacing: 8,
+    runSpacing: 8,
+    children: [
+      for (final mode in modes)
+        _ExtraModeTick(
+          label: TransitModeGroup.modeLabel(mode),
+          selected: _selection.has(mode),
+          onPressed: () => _applySelection(_selection.toggleMode(mode)),
+        ),
+    ],
+  );
 
   Widget _buildWalkingCard(BuildContext context) {
     const presets = [3.6, 4.8, 5.8];
