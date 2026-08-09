@@ -29,11 +29,10 @@ class TravellerStrip extends StatelessWidget {
   final VoidCallback onPacePressed;
 
   /// A speed only matters when something in the journey travels at it.
-  bool get _showsCyclingPace =>
-      options.firstMileMode == TransitMode.bike ||
-      options.lastMileMode == TransitMode.bike ||
-      options.firstMileMode == TransitMode.rental ||
-      options.lastMileMode == TransitMode.rental;
+  bool get _showsCyclingPace => [
+    ...options.firstMileModes,
+    ...options.lastMileModes,
+  ].any((mode) => mode == TransitMode.bike || mode == TransitMode.rental);
 
   @override
   Widget build(BuildContext context) {

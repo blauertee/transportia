@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../models/routing_options.dart';
+import '../../models/transitous/enums.dart';
 import '../../models/transitous/server_config.dart';
 import '../options/icon_controls.dart';
 import 'journey_segment.dart';
@@ -49,6 +50,8 @@ class _JourneySpineState extends State<JourneySpine> {
   bool _paceOpen = false;
   bool _fromBudgetOpen = false;
   bool _toBudgetOpen = false;
+  bool _fromModesOpen = false;
+  bool _toModesOpen = false;
   bool _modesOpen = false;
   bool _changesOpen = false;
 
@@ -135,28 +138,40 @@ class _JourneySpineState extends State<JourneySpine> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         JourneySegment(
-          icon: mileModeIcon(options.firstMileMode),
+          icon: mileModesIcon(options.firstMileModes),
           headline: 'To the station',
           summary:
-              '${mileModeLabel(options.firstMileMode)} · '
+              '${mileModesLabel(options.firstMileModes)} · '
               '${budgetSummaryText(options.maxFirstMileTime)}',
           isOpen: _open.contains(_Stage.toStation),
           onToggle: () => _toggleStage(_Stage.toStation),
           child: StreetLegSection(
-            mode: options.firstMileMode,
+            modes: options.firstMileModes,
             budget: options.maxFirstMileTime,
             maxBudget: _mileCeiling,
+            formFactors: options.rentalFormFactors,
             tooltips: _tooltips,
             budgetOpen: _fromBudgetOpen,
+            modesOpen: _fromModesOpen,
             onBudgetPressed: () {
               _tooltips.hide();
               setState(() => _fromBudgetOpen = !_fromBudgetOpen);
             },
-            onModeChanged: (mode) {
-              _apply(options.copyWith(firstMileMode: mode));
-              _announce(
-                '${mileModeLabel(mode)} to the station',
-                icon: mileModeIcon(mode),
+            onModesPressed: () {
+              _tooltips.hide();
+              setState(() => _fromModesOpen = !_fromModesOpen);
+            },
+            onChanged: (choice) {
+              _apply(
+                options.copyWith(
+                  firstMileModes: choice.modes,
+                  rentalFormFactors: choice.formFactors,
+                ),
+              );
+              _announceMileChange(
+                options.firstMileModes,
+                choice.modes,
+                'to the station',
               );
             },
             onBudgetChanged: (budget) =>
@@ -194,28 +209,40 @@ class _JourneySpineState extends State<JourneySpine> {
         ),
         const SizedBox(height: 20),
         JourneySegment(
-          icon: mileModeIcon(options.lastMileMode),
+          icon: mileModesIcon(options.lastMileModes),
           headline: 'From the station',
           summary:
-              '${mileModeLabel(options.lastMileMode)} · '
+              '${mileModesLabel(options.lastMileModes)} · '
               '${budgetSummaryText(options.maxLastMileTime)}',
           isOpen: _open.contains(_Stage.fromStation),
           onToggle: () => _toggleStage(_Stage.fromStation),
           child: StreetLegSection(
-            mode: options.lastMileMode,
+            modes: options.lastMileModes,
             budget: options.maxLastMileTime,
             maxBudget: _mileCeiling,
+            formFactors: options.rentalFormFactors,
             tooltips: _tooltips,
             budgetOpen: _toBudgetOpen,
+            modesOpen: _toModesOpen,
             onBudgetPressed: () {
               _tooltips.hide();
               setState(() => _toBudgetOpen = !_toBudgetOpen);
             },
-            onModeChanged: (mode) {
-              _apply(options.copyWith(lastMileMode: mode));
-              _announce(
-                '${mileModeLabel(mode)} from the station',
-                icon: mileModeIcon(mode),
+            onModesPressed: () {
+              _tooltips.hide();
+              setState(() => _toModesOpen = !_toModesOpen);
+            },
+            onChanged: (choice) {
+              _apply(
+                options.copyWith(
+                  lastMileModes: choice.modes,
+                  rentalFormFactors: choice.formFactors,
+                ),
+              );
+              _announceMileChange(
+                options.lastMileModes,
+                choice.modes,
+                'from the station',
               );
             },
             onBudgetChanged: (budget) =>
@@ -224,6 +251,26 @@ class _JourneySpineState extends State<JourneySpine> {
         ),
       ],
     );
+  }
+
+  /// Names the mode that was just added or dropped, since the icon alone
+  /// cannot say which of the two happened.
+  void _announceMileChange(
+    List<TransitMode> before,
+    List<TransitMode> after,
+    String where,
+  ) {
+    for (final mode in mileModeOrder) {
+      final wasOn = before.contains(mode);
+      if (wasOn == after.contains(mode)) continue;
+      _announce(
+        wasOn
+            ? 'No ${mileModeLabel(mode).toLowerCase()} $where'
+            : '${mileModeLabel(mode)} $where',
+        icon: mileModeIcon(mode),
+      );
+      return;
+    }
   }
 
   /// Names whichever transport-section control changed, so an icon-only tap
