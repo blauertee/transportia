@@ -7,6 +7,7 @@ import 'package:transportia/models/itinerary.dart';
 import 'package:transportia/providers/theme_provider.dart';
 import 'package:transportia/screens/itinerary_detail_screen.dart';
 import 'package:transportia/theme/journey_metrics.dart';
+import 'package:transportia/utils/changeover.dart';
 import 'package:transportia/utils/journey_colors.dart';
 import 'package:transportia/widgets/custom_card.dart';
 import 'package:transportia/widgets/journey/spine_node.dart';
@@ -69,7 +70,10 @@ Leg _ride() => Leg.fromJson({
 });
 
 /// The short walk between two services the planner returns for a change.
-Leg _change() => Leg.fromJson({
+///
+/// [arrivesAtTrack] is the platform the walk ends on. It defaults to the one
+/// the ride leaves from, which is the ordinary case — you walk to your train.
+Leg _change({String arrivesAtTrack = '7'}) => Leg.fromJson({
   'mode': 'WALK',
   'startTime': _at(const Duration(minutes: 3)),
   'endTime': _at(const Duration(minutes: 8)),
@@ -87,9 +91,109 @@ Leg _change() => Leg.fromJson({
     'lat': 52.525,
     'lon': 13.369,
     'stopId': 'stop-hbf',
-    'track': '7',
+    'track': arrivesAtTrack,
   },
 });
+
+/// A service leaving this node at [departs] past the hour.
+Leg _onward(Duration departs, {bool realTime = true}) => Leg.fromJson({
+  'mode': 'SUBURBAN',
+  'startTime': _at(departs),
+  'endTime': _at(departs + const Duration(minutes: 20)),
+  'duration': 1200,
+  'displayName': 'S46',
+  'realTime': realTime,
+  'from': {
+    'name': 'Berlin Hauptbahnhof',
+    'lat': 52.525,
+    'lon': 13.369,
+    'stopId': 'stop-hbf',
+  },
+  'to': {'name': 'S Westend', 'lat': 52.51, 'lon': 13.28, 'stopId': 'stop-wes'},
+});
+
+/// A ride arriving at this node at [arrives] past the hour.
+Leg _arriving(Duration arrives, {bool realTime = true}) => Leg.fromJson({
+  'mode': 'HIGHSPEED_RAIL',
+  'startTime': _at(Duration.zero),
+  'endTime': _at(arrives),
+  'duration': arrives.inSeconds,
+  'realTime': realTime,
+  'from': {'name': 'München Hbf', 'lat': 48.1, 'lon': 11.5},
+  'to': {
+    'name': 'Naturkundemuseum',
+    'lat': 52.53,
+    'lon': 13.38,
+    'stopId': 'stop-nat',
+  },
+});
+
+/// The change from the report: the train is ten minutes down and gets in on
+/// the very minute the walk was scheduled to start.
+Leg _lateChange() => Leg.fromJson({
+  'mode': 'WALK',
+  'startTime': _at(const Duration(minutes: 24)),
+  'scheduledStartTime': _at(const Duration(minutes: 24)),
+  'endTime': _at(const Duration(minutes: 26)),
+  'duration': 120,
+  'distance': 50.0,
+  'from': {
+    'name': 'S Südkreuz',
+    'lat': 52.475,
+    'lon': 13.365,
+    'stopId': 'stop-sxf',
+    'track': '6',
+    'arrival': _at(const Duration(minutes: 24)),
+    'scheduledArrival': _at(const Duration(minutes: 14)),
+    'departure': _at(const Duration(minutes: 24)),
+    'scheduledDeparture': _at(const Duration(minutes: 24)),
+  },
+  'to': {
+    'name': 'S Südkreuz',
+    'lat': 52.475,
+    'lon': 13.365,
+    'stopId': 'stop-sxf',
+    'track': '11',
+  },
+});
+
+/// The change in the report: five minutes of walking, three minutes to do it.
+Changeover _missed() => Changeover(
+  transfer: _change(),
+  arriving: _arriving(const Duration(minutes: 5)),
+  departing: _onward(const Duration(minutes: 8)),
+);
+
+Changeover _made() => Changeover(
+  transfer: _change(),
+  arriving: _arriving(const Duration(minutes: 1)),
+  departing: _onward(const Duration(minutes: 30)),
+);
+
+Itinerary _journey() => Itinerary(
+  duration: 3600,
+  startTime: _t0,
+  endTime: _t0.add(const Duration(minutes: 60)),
+  transfers: 1,
+  legs: [_ride()],
+);
+
+/// The 1px line the header ends on.
+Rect _ruleRect(WidgetTester tester) {
+  final rects = <Rect>[];
+  for (final element
+      in find
+          .descendant(
+            of: find.byType(JourneyOverviewWidget),
+            matching: find.byType(Container),
+          )
+          .evaluate()) {
+    final box = element.renderObject as RenderBox;
+    final rect = box.localToGlobal(Offset.zero) & box.size;
+    if (rect.height == 1) rects.add(rect);
+  }
+  return rects.single;
+}
 
 Future<void> _pump(WidgetTester tester, Widget child) async {
   tester.view.physicalSize = const Size(420, 2000);
@@ -302,6 +406,178 @@ void main() {
         TransferLegCard(leg: _change(), openStopSheet: _noop),
       );
       expect(find.textContaining('0.26 km walk'), findsOneWidget);
+    });
+  });
+
+  group('a change keeps the delay it was told about', () {
+    Future<void> pumpLate(WidgetTester tester) => _pump(
+      tester,
+      TransferLegCard(
+        leg: _lateChange(),
+        previousLeg: _arriving(const Duration(minutes: 24)),
+        openStopSheet: _noop,
+      ),
+    );
+
+    testWidgets('a late arrival is not overwritten by the walk beside it', (
+      tester,
+    ) async {
+      // The two land on the same minute, and the walk has no real-time. The
+      // reading that came from an observation is the one worth keeping — this
+      // is why a train ten minutes down used to print calm and black.
+      await pumpLate(tester);
+
+      final shown = tester.widget<Text>(
+        find.text(formatTime(_t0.add(const Duration(minutes: 24)))),
+      );
+      expect(shown.style!.color, kLateDeparture);
+    });
+
+    testWidgets('and says how late it is', (tester) async {
+      await pumpLate(tester);
+      expect(find.text('+10m'), findsOneWidget);
+    });
+
+    testWidgets('the scheduled time it beat is not printed as well', (
+      tester,
+    ) async {
+      // One number, the real one. The rider wants the time the train is at
+      // the platform, not two numbers and a subtraction.
+      await pumpLate(tester);
+      expect(
+        find.text(formatTime(_t0.add(const Duration(minutes: 14)))),
+        findsNothing,
+      );
+    });
+  });
+
+  group('a change the journey cannot make', () {
+    testWidgets('the row says so, in words as well as in red', (tester) async {
+      // Colour alone reaches nobody using a screen reader, and a rider
+      // scrolling past needs the sentence to know what the red means.
+      await _pump(
+        tester,
+        TransferLegCard(
+          leg: _change(),
+          openStopSheet: _noop,
+          changeover: _missed(),
+        ),
+      );
+
+      expect(find.text(kMissedChangeMessage), findsOneWidget);
+      final node = tester.widget<SpineNode>(find.byType(SpineNode));
+      expect(node.icon, LucideIcons.triangleAlert);
+      expect(node.color, kMissedChangeColor);
+    });
+
+    testWidgets('a change that works says nothing at all', (tester) async {
+      await _pump(
+        tester,
+        TransferLegCard(
+          leg: _change(),
+          openStopSheet: _noop,
+          changeover: _made(),
+        ),
+      );
+
+      expect(find.text(kMissedChangeMessage), findsNothing);
+      final node = tester.widget<SpineNode>(find.byType(SpineNode));
+      expect(node.icon, LucideIcons.arrowLeftRight);
+      expect(node.color, kStreetLegColor);
+    });
+
+    testWidgets('the walking time and the platforms are still there', (
+      tester,
+    ) async {
+      // The warning replaces nothing: which platform and how far is exactly
+      // what you need in order to try anyway.
+      await _pump(
+        tester,
+        TransferLegCard(
+          leg: _change(),
+          openStopSheet: _noop,
+          changeover: _missed(),
+        ),
+      );
+
+      expect(find.textContaining('Change'), findsOneWidget);
+      expect(find.text('Track 2 → Track 7'), findsOneWidget);
+      expect(find.textContaining('0.26 km walk'), findsOneWidget);
+    });
+  });
+
+  group('the warning at the head of the journey', () {
+    testWidgets('names the station, above the rule', (tester) async {
+      // Above, because it is a fact about the journey rather than a note
+      // appended to it: the times below stop being true there.
+      await _pump(
+        tester,
+        JourneyOverviewWidget(
+          itinerary: _journey(),
+          changeovers: [_missed()],
+          onFindAlternatives: () {},
+        ),
+      );
+
+      final warning = find.textContaining('Naturkundemuseum');
+      expect(warning, findsOneWidget);
+      expect(tester.getRect(warning).bottom, lessThan(_ruleRect(tester).top));
+    });
+
+    testWidgets('offers the search, and reports it once', (tester) async {
+      var asked = 0;
+      await _pump(
+        tester,
+        JourneyOverviewWidget(
+          itinerary: _journey(),
+          changeovers: [_missed()],
+          onFindAlternatives: () => asked++,
+        ),
+      );
+
+      await tester.tap(find.text('Find alternatives'));
+      await tester.pump();
+      expect(asked, 1);
+    });
+
+    testWidgets('a journey that still connects carries no warning', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        JourneyOverviewWidget(
+          itinerary: _journey(),
+          changeovers: [_made()],
+          onFindAlternatives: () {},
+        ),
+      );
+
+      expect(find.text('Find alternatives'), findsNothing);
+      // Not by icon: the header's own alerts chip is a triangle too.
+      expect(find.textContaining('You will not make'), findsNothing);
+    });
+
+    testWidgets('more than one break names the first and counts the rest', (
+      tester,
+    ) async {
+      // Naming every station would list places nobody has reached yet; the
+      // first is the one you get to, and the one the search starts from.
+      expect(
+        JourneyOverviewWidget.missedChangeMessage([_missed(), _missed()]),
+        contains('1 more change'),
+      );
+      expect(
+        JourneyOverviewWidget.missedChangeMessage([
+          _missed(),
+          _missed(),
+          _missed(),
+        ]),
+        contains('2 more changes'),
+      );
+      expect(
+        JourneyOverviewWidget.missedChangeMessage([_missed()]),
+        isNot(contains('more change')),
+      );
     });
   });
 
@@ -620,27 +896,32 @@ void main() {
   });
 
   group('the platform column mirrors the times', () {
-    testWidgets('the arrival platform shows, above the departure one', (
+    testWidgets('a platform arrived at and left from is printed once', (
       tester,
     ) async {
-      // Only the departure's used to be printed; the change arrives at
-      // Track 7 and the ride leaves from it, so both belong on the node.
+      // The walk ends on the platform the ride leaves from, so the column
+      // read "Track 7" over "Track 7" — true twice and useful once.
       await _pumpRide(tester, previous: _change());
 
-      expect(find.text('Track 7'), findsNWidgets(2));
-      final rects = find
-          .text('Track 7')
-          .evaluate()
-          .map((e) => tester.getRect(find.byWidget(e.widget)))
-          .toList();
-      rects.sort((a, b) => a.top.compareTo(b.top));
-      expect(rects.first.bottom, lessThanOrEqualTo(rects.last.top + 1));
+      expect(find.text('Track 7'), findsOneWidget);
+    });
+
+    testWidgets('two different platforms are both printed, in order', (
+      tester,
+    ) async {
+      // Arriving at one and leaving from another is the whole of what this
+      // column is for, and the arrival belongs above.
+      await _pumpRide(tester, previous: _change(arrivesAtTrack: '4'));
+
+      final arrival = tester.getRect(find.text('Track 4'));
+      final departure = tester.getRect(find.text('Track 7'));
+      expect(arrival.bottom, lessThanOrEqualTo(departure.top + 1));
     });
 
     testWidgets('the platforms line up with the times beside them', (
       tester,
     ) async {
-      await _pumpRide(tester, previous: _change());
+      await _pumpRide(tester, previous: _change(arrivesAtTrack: '4'));
 
       final arrivalTime = tester.getRect(
         find.text(formatTime(_t0.add(const Duration(minutes: 8)))),
@@ -648,16 +929,27 @@ void main() {
       final departureTime = tester.getRect(
         find.text(formatTime(_t0.add(const Duration(minutes: 10)))),
       );
-      final tracks =
-          find
-              .text('Track 7')
-              .evaluate()
-              .map((e) => tester.getRect(find.byWidget(e.widget)))
-              .toList()
-            ..sort((a, b) => a.top.compareTo(b.top));
 
-      expect(tracks.first.center.dy, closeTo(arrivalTime.center.dy, 2.0));
-      expect(tracks.last.center.dy, closeTo(departureTime.center.dy, 2.0));
+      expect(
+        tester.getRect(find.text('Track 4')).center.dy,
+        closeTo(arrivalTime.center.dy, 2.0),
+      );
+      expect(
+        tester.getRect(find.text('Track 7')).center.dy,
+        closeTo(departureTime.center.dy, 2.0),
+      );
+    });
+
+    testWidgets('dropping the repeat does not move the row', (tester) async {
+      // The empty slot is kept, or the platform column would ride up and
+      // stop being level with the times it mirrors.
+      await _pumpRide(tester, previous: _change());
+      final same = tester.getRect(find.text('Track 7'));
+
+      await _pumpRide(tester, previous: _change(arrivesAtTrack: '4'));
+      final differing = tester.getRect(find.text('Track 7'));
+
+      expect(same.center.dy, closeTo(differing.center.dy, 0.5));
     });
   });
 

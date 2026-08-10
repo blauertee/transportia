@@ -22,6 +22,14 @@ const Color kLateArrival = Color(0xFFE57373);
 const Color kOnTimeDeparture = Color(0xFF2E7D32);
 const Color kOnTimeArrival = Color(0xFF81C784);
 
+/// A change the journey can no longer make.
+///
+/// The same red as a late departure, named separately because it says
+/// something else: late is a number, this is a journey that stops working.
+/// Should the late reds ever be retuned, this must not follow them by
+/// accident.
+const Color kMissedChangeColor = Color(0xFFD32F2F);
+
 /// What a time on the spine is printed in.
 ///
 /// The colour says who is speaking, not just whether the service is late.

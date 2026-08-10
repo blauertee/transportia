@@ -14,12 +14,14 @@ import '../models/saved_trip.dart';
 import '../models/time_selection.dart';
 import '../providers/theme_provider.dart';
 import '../services/itinerary_refresh_service.dart';
+import '../services/plan_request.dart';
 import '../services/saved_trips_service.dart';
 import '../utils/haptics.dart';
 import '../services/routing_options_service.dart';
 import '../services/transitous_geocode_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/journey_metrics.dart';
+import '../utils/changeover.dart';
 import '../utils/color_utils.dart';
 import '../utils/custom_page_route.dart';
 import '../utils/duration_formatter.dart';
@@ -78,6 +80,10 @@ const TextStyle kSpineStopStyle = TextStyle(
   height: kSpineStopLineHeight / 15,
 );
 
+/// Said on the change itself and again at the head of the journey, in the same
+/// words, so the banner and the row it points at read as one statement.
+const String kMissedChangeMessage = 'You will not make this change.';
+
 /// One point on the line: what gets here, and what leaves.
 ///
 /// Both columns that flank the spine — the times and the platforms — are built
@@ -110,8 +116,16 @@ class SpinePoint {
     );
     // Arriving and leaving at the same moment is passing through, not waiting;
     // printing the number twice would say nothing.
+    //
+    // Which of the two to keep is not arbitrary. At a change, a live and late
+    // arrival lands on the same minute as the walk that follows it, and a walk
+    // has no real-time at all — so keeping the departure threw away the one
+    // reading that came from an observation, and the row printed a plain
+    // black time over a train that was ten minutes down. The same moment
+    // described twice keeps the description that was observed.
     if (gotHere != null && leaves != null && gotHere.shown == leaves.shown) {
-      return SpinePoint._(null, leaves);
+      final observed = gotHere.isLive && !leaves.isLive ? gotHere : leaves;
+      return SpinePoint._(null, observed);
     }
     // A point with only an arrival is an end of the line: that time takes the
     // anchor, because there is no departure to give it to.
@@ -283,8 +297,13 @@ class SpineTracks extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final lineHeight = compact ? kSpineStopLineHeight : kSpineNameLineHeight;
-    final arrival = _clean(this.arrival);
     final departure = _clean(this.departure);
+    // The platform walked to is the platform departed from, so a change put
+    // the same number on both lines — "Track 11" over "Track 11", true twice
+    // and useful once. Where they really differ, both stay.
+    final arrival = _clean(this.arrival) == departure
+        ? null
+        : _clean(this.arrival);
 
     if (arrival == null && departure == null && !placeholderForDeparture) {
       return const SizedBox.shrink();
@@ -378,16 +397,19 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
     super.initState();
     _itinerary = widget.itinerary;
 
-    if (widget.savedTrip == null) {
-      // A search result was fetched moments ago, so it is current.
-      _lastUpdated = DateTime.now();
-    } else {
-      // A saved trip carries whatever the last live check folded into it, so
-      // the screen opens on those times and says how old they are — rather
-      // than showing the plan and claiming to know nothing.
-      _lastUpdated = widget.savedTrip!.liveUpdatedAt;
-      unawaited(_refreshRealTimeInfo());
-    }
+    // What the screen opens on, before the check below answers. A search
+    // result was fetched moments ago; a saved trip carries whatever the last
+    // live check folded into it, so it opens on those times and says how old
+    // they are rather than showing the plan and claiming to know nothing.
+    _lastUpdated = widget.savedTrip == null
+        ? DateTime.now()
+        : widget.savedTrip!.liveUpdatedAt;
+
+    // Every open re-checks, not only a pull. Whether a change can still be
+    // made is a claim about right now, and a screen that had been sat in
+    // front of for twenty minutes was making it from whatever the list
+    // screen had fetched. `_refreshRealTimeInfo` guards its own re-entry.
+    unawaited(_refreshRealTimeInfo());
 
     _agoTicker = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() {});
@@ -522,6 +544,40 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
     );
   }
 
+  /// Hands the routing screen a journey that still works, and stops there.
+  ///
+  /// Deliberately not a search. A rider whose connection has just broken is
+  /// the last person to hand a fixed answer to — they may want a different
+  /// destination, a later train, or to give up and walk. The fields arrive
+  /// filled in and the Search button is theirs to press.
+  void _replanFromHere() {
+    final replan = replanFor(_itinerary.legs, DateTime.now());
+    if (replan == null) return;
+
+    PlanRequests.ask(
+      PlanRequest(
+        from: _suggestionFor(replan.from, 'replan-from'),
+        to: _suggestionFor(replan.to, 'replan-to'),
+        time: TimeSelection(dateTime: replan.departAt, isArriveBy: false),
+      ),
+    );
+    // Back to the tabs, where the routing screen is waiting with it.
+    Navigator.of(context).popUntil((route) => route.isFirst);
+  }
+
+  /// A place from the itinerary, in the shape the route fields take.
+  ///
+  /// The stop's own id where it has one, so the field reads as a station
+  /// rather than a pair of coordinates.
+  TransitousLocationSuggestion _suggestionFor(TransitPlace place, String tag) =>
+      TransitousLocationSuggestion(
+        id: place.stopId ?? '$tag-${place.lat},${place.lon}',
+        name: place.name,
+        lat: place.lat,
+        lon: place.lon,
+        type: place.isStop ? 'STOP' : 'PLACE',
+      );
+
   /// The next time today or tomorrow that this trip's departure comes
   /// round, for repeating a journey already taken.
   DateTime _nextOccurrence(DateTime departure) {
@@ -544,7 +600,7 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
     if (trip == null) return null;
 
     if (trip.isPast) {
-      return _SavedTripNotice(
+      return _JourneyNotice(
         icon: LucideIcons.history,
         message: 'This trip has already happened.',
         actionLabel: 'Search again',
@@ -559,7 +615,7 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
         _freshness == ItineraryFreshness.changed ||
         _itinerary.legs.any((leg) => leg.cancelled);
     if (isCancelled) {
-      return _SavedTripNotice(
+      return _JourneyNotice(
         icon: LucideIcons.triangleAlert,
         message: 'This connection has changed.',
         actionLabel: 'Find alternatives',
@@ -569,7 +625,7 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
     }
 
     if (_freshness == ItineraryFreshness.scheduled) {
-      return _SavedTripNotice(
+      return _JourneyNotice(
         icon: LucideIcons.calendarClock,
         message: "Scheduled times — live data isn't available yet.",
       );
@@ -582,6 +638,7 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
   Widget build(BuildContext context) {
     context.watch<ThemeProvider>();
     final displayLegs = buildDisplayLegs(_itinerary.legs);
+    final changeovers = changeoversOf(displayLegs);
     final savedTripNotice = _savedTripNotice();
 
     return Container(
@@ -599,7 +656,11 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
                 toName: widget.toName ?? widget.savedTrip?.toName,
               ),
             ),
-            JourneyOverviewWidget(itinerary: _itinerary),
+            JourneyOverviewWidget(
+              itinerary: _itinerary,
+              changeovers: changeovers,
+              onFindAlternatives: _replanFromHere,
+            ),
             if (savedTripNotice != null) savedTripNotice,
             Expanded(
               child: Builder(
@@ -672,6 +733,11 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
                                 return TransferLegCard(
                                   leg: entry.leg,
                                   previousLeg: previous,
+                                  changeover: changeovers
+                                      .where(
+                                        (c) => identical(c.transfer, entry.leg),
+                                      )
+                                      .firstOrNull,
                                   openStopSheet: _openStopSheet,
                                   onShowOnMap: () => _showLegOnMap(legIndex),
                                 );
@@ -760,15 +826,17 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
   }
 }
 
-/// A single line about a saved trip's current state, with the one action
-/// that makes sense for it.
-class _SavedTripNotice extends StatelessWidget {
-  const _SavedTripNotice({
+/// A short line about the journey's current state, with the one action that
+/// makes sense for it: it has already happened, its connection has changed,
+/// or a change on it can no longer be made.
+class _JourneyNotice extends StatelessWidget {
+  const _JourneyNotice({
     required this.icon,
     required this.message,
     this.actionLabel,
     this.onAction,
     this.tint,
+    this.margin = const EdgeInsets.fromLTRB(12, 0, 12, 8),
   });
 
   final IconData icon;
@@ -777,13 +845,16 @@ class _SavedTripNotice extends StatelessWidget {
   final VoidCallback? onAction;
   final Color? tint;
 
+  /// Zero inside the overview, which supplies its own padding.
+  final EdgeInsets margin;
+
   @override
   Widget build(BuildContext context) {
     final color = tint ?? AppColors.accentOf(context);
     final actionLabel = this.actionLabel;
 
     return CustomCard.filled(
-      margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      margin: margin,
       padding: const EdgeInsets.all(12),
       backgroundColor: color.withValues(alpha: 0.1),
       borderRadius: BorderRadius.circular(12),
@@ -832,7 +903,33 @@ class _SavedTripNotice extends StatelessWidget {
 class JourneyOverviewWidget extends StatelessWidget {
   final Itinerary itinerary;
 
-  const JourneyOverviewWidget({super.key, required this.itinerary});
+  /// Every change in the journey, already judged.
+  ///
+  /// Passed in rather than worked out here, so the banner and the row it
+  /// points at cannot end up disagreeing about which change is broken.
+  final List<Changeover> changeovers;
+
+  final VoidCallback? onFindAlternatives;
+
+  const JourneyOverviewWidget({
+    super.key,
+    required this.itinerary,
+    this.changeovers = const [],
+    this.onFindAlternatives,
+  });
+
+  /// The heading over a journey that no longer connects.
+  ///
+  /// Names the first break, because that is the one you reach and the one the
+  /// search below starts from; a count carries the rest without listing
+  /// stations nobody has got to yet.
+  static String missedChangeMessage(List<Changeover> missed) {
+    final first = 'You will not make the change at ${missed.first.placeName}.';
+    if (missed.length == 1) return first;
+    final rest = missed.length - 1;
+    return '$first ${rest == 1 ? '1 more change' : '$rest more changes'} '
+        'after it will not be made either.';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -972,6 +1069,28 @@ class JourneyOverviewWidget extends StatelessWidget {
               ),
             ],
           ),
+          // Above the rule, because it is a fact about this journey rather
+          // than a note appended to it: whatever the times below say, they
+          // stop being true here.
+          if ([
+                for (final c in changeovers)
+                  if (c.isMissed) c,
+              ]
+              case final missed when missed.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            _JourneyNotice(
+              icon: LucideIcons.triangleAlert,
+              message: missedChangeMessage(missed),
+              tint: kMissedChangeColor,
+              margin: EdgeInsets.zero,
+              // The same words the cancelled-trip notice uses, since it is
+              // the same offer.
+              actionLabel: onFindAlternatives == null
+                  ? null
+                  : 'Find alternatives',
+              onAction: onFindAlternatives,
+            ),
+          ],
           const SizedBox(height: 14),
           Container(height: 1, color: AppColors.black.withValues(alpha: 0.08)),
           const SizedBox(height: 18),
@@ -1742,32 +1861,48 @@ class TransferLegCard extends StatelessWidget {
   /// The leg that arrives at this change. See [LegDetailsWidget.previousLeg].
   final Leg? previousLeg;
 
+  /// What is known about whether this change can be made. Null on a change
+  /// nobody is reporting on, which is most of them.
+  final Changeover? changeover;
+
   const TransferLegCard({
     super.key,
     required this.leg,
     required this.openStopSheet,
     this.onShowOnMap,
     this.previousLeg,
+    this.changeover,
   });
 
   @override
   Widget build(BuildContext context) {
+    // Both sides of this node come off the transfer leg's own `from` place,
+    // which MOTIS fills with the arriving service's real times as well as the
+    // walk's. The leg's `startTime` carries none of that — it is a walk, and
+    // a walk is never late — so reading the arrival from it was how a train
+    // ten minutes down came out looking punctual. It is the same source the
+    // intermediate stops read, which is why they were right and this was not.
+    final node = leg.from;
     final point = SpinePoint(
-      arrival: previousLeg?.endTime,
-      scheduledArrival: previousLeg?.scheduledEndTime,
+      arrival: node.arrival ?? previousLeg?.endTime,
+      scheduledArrival: node.scheduledArrival ?? previousLeg?.scheduledEndTime,
       arrivalIsLive: previousLeg?.realTime ?? false,
-      departure: leg.startTime,
-      scheduledDeparture: leg.scheduledStartTime,
+      departure: node.departure ?? leg.startTime,
+      scheduledDeparture: node.scheduledDeparture ?? leg.scheduledStartTime,
       departureIsLive: leg.realTime,
     );
 
+    final missed = changeover?.isMissed ?? false;
+    // A break has to be findable while scrolling, before a word is read.
+    final changeColor = missed ? kMissedChangeColor : kStreetLegColor;
+
     return SpineRow(
-      node: const SpineNode(
-        icon: LucideIcons.arrowLeftRight,
-        color: kStreetLegColor,
-        semanticLabel: 'Change',
+      node: SpineNode(
+        icon: missed ? LucideIcons.triangleAlert : LucideIcons.arrowLeftRight,
+        color: changeColor,
+        semanticLabel: missed ? 'Change you will not make' : 'Change',
       ),
-      railColor: kStreetLegColor,
+      railColor: changeColor,
       railDashed: true,
       aboveAnchor: point.showsArrival ? kSpineNameLineHeight : 0,
       railTopInset:
@@ -1823,6 +1958,24 @@ class TransferLegCard extends StatelessWidget {
                 color: AppColors.black.withValues(alpha: 0.75),
               ),
             ),
+            // The two times are already on screen — this row's arrival and the
+            // next row's departure — so the sentence does not repeat them.
+            // Said in words as well as in red, because the colour alone
+            // reaches nobody using a screen reader.
+            if (missed) ...[
+              const SizedBox(height: 3),
+              Semantics(
+                liveRegion: true,
+                child: Text(
+                  kMissedChangeMessage,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: kMissedChangeColor,
+                  ),
+                ),
+              ),
+            ],
             if (_platforms() case final platforms?) ...[
               const SizedBox(height: 3),
               Text(

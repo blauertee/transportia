@@ -32,6 +32,7 @@ import '../screens/location_search_screen.dart';
 import '../screens/via_stops_screen.dart';
 import '../services/favorites_service.dart';
 import '../services/location_service.dart';
+import '../services/plan_request.dart';
 import '../services/recent_trips_service.dart';
 import '../services/routing_options_service.dart';
 import '../services/saved_places_service.dart';
@@ -251,6 +252,10 @@ class _MapScreenState extends State<MapScreen>
   void initState() {
     super.initState();
     unawaited(_initStartup());
+    PlanRequests.pending.addListener(_applyPlanRequest);
+    // One may already be waiting: the shell brings this tab forward in the
+    // same frame the request is made, so the listener can miss it.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _applyPlanRequest());
     FavoritesService.favoritesListenable.addListener(_onFavoritesChanged);
     _favorites = FavoritesService.favoritesListenable.value;
     ServerCapabilitiesService.capabilities.addListener(_onCapabilitiesChanged);
@@ -395,6 +400,7 @@ class _MapScreenState extends State<MapScreen>
 
   @override
   void dispose() {
+    PlanRequests.pending.removeListener(_applyPlanRequest);
     FavoritesService.favoritesListenable.removeListener(_onFavoritesChanged);
     ServerCapabilitiesService.capabilities.removeListener(
       _onCapabilitiesChanged,
@@ -2494,6 +2500,36 @@ class _MapScreenState extends State<MapScreen>
     if (field != RouteFieldKind.from) return;
     if (_toCtrl.text.trim().isNotEmpty) return;
     unawaited(_openLocationSearch(RouteFieldKind.to));
+  }
+
+  /// Fills the route fields with a journey another screen asked for.
+  ///
+  /// The search is not fired. Whoever sent this — an itinerary whose
+  /// connection has just broken — knows where the rider is, not what they now
+  /// want: a later train, a different destination, or to give up and walk.
+  /// The fields arrive ready and the Search button stays theirs.
+  void _applyPlanRequest() {
+    // Read only when there is somewhere to put it: taking it first would
+    // consume the request and drop it on the floor.
+    if (!mounted || PlanRequests.pending.value == null) return;
+    final request = PlanRequests.take()!;
+
+    _setControllerText(RouteFieldKind.from, request.from.name);
+    _setControllerText(RouteFieldKind.to, request.to.name);
+    _setSelection(RouteFieldKind.from, request.from);
+    _setSelection(RouteFieldKind.to, request.to);
+    setState(() => _timeSelection = request.time);
+    // Fields nobody can see are not filled in as far as the rider is
+    // concerned, and the card may have been left down over the map.
+    _expandSheetToCard();
+  }
+
+  /// Raises the route card, the counterpart of [_collapseSheetToMap].
+  void _expandSheetToCard() {
+    final expandedTop = _lastComputedExpandedTop;
+    final collapsedTop = _lastComputedCollapsedTop;
+    if (expandedTop == null || collapsedTop == null) return;
+    _animateTo(expandedTop, collapsedTop);
   }
 
   void _setControllerText(RouteFieldKind kind, String value) {
