@@ -9,18 +9,25 @@ Leg _leg({
   String? tripId,
   String? fromStopId,
   String? toStopId,
+  double toLat = 52.4,
+  double toLon = 13.5,
 }) {
   final start = DateTime.parse('2026-08-05T07:00:00Z');
   return Leg(
     mode: mode,
     from: TransitPlace(name: from, lat: 52.5, lon: 13.4, stopId: fromStopId),
-    to: TransitPlace(name: to, lat: 52.4, lon: 13.5, stopId: toStopId),
+    to: TransitPlace(name: to, lat: toLat, lon: toLon, stopId: toStopId),
     startTime: start,
     endTime: start.add(const Duration(minutes: 10)),
     duration: 600,
     tripId: tripId,
   );
 }
+
+/// A walk whose ends are metres apart, which is what the planner returns for
+/// stepping across a platform.
+Leg _shortWalk({required String from, required String to}) =>
+    _leg(mode: 'WALK', from: from, to: to, toLat: 52.50005, toLon: 13.40005);
 
 /// The shape the planner actually returns for a journey between two
 /// coordinates: placeholder edges wrapping the real stops.
@@ -144,6 +151,74 @@ void main() {
 
       expect(resolveOriginName(legs), 'Rathaus');
       expect(resolveDestinationName(legs), 'Rathaus');
+    });
+  });
+
+  group('buildDisplayLegs marks the changes', () {
+    /// Walk → metro → walk between stations → train → walk.
+    List<Leg> journey({required Leg middle}) => [
+      _leg(mode: 'WALK', from: 'START', to: 'Alexanderplatz'),
+      _leg(mode: 'METRO', from: 'Alexanderplatz', to: 'Hbf', tripId: 'a'),
+      middle,
+      _leg(mode: 'REGIONAL_RAIL', from: 'Hbf', to: 'BER', tripId: 'b'),
+      _leg(mode: 'WALK', from: 'BER', to: 'END'),
+    ];
+
+    test('a long walk between two rides is a change', () {
+      // It used to need to be under 35m, which told a rider nothing: getting
+      // between two services is one act however far it is.
+      final legs = journey(
+        middle: _leg(mode: 'WALK', from: 'Hbf', to: 'Hbf (S)'),
+      );
+
+      expect(buildDisplayLegs(legs)[2].isTransfer, isTrue);
+    });
+
+    test('a step across a platform is still a change', () {
+      final legs = journey(
+        middle: _shortWalk(from: 'Hbf', to: 'Hbf'),
+      );
+      final display = buildDisplayLegs(legs);
+
+      expect(
+        display.firstWhere((e) => e.originalIndex == 2).isTransfer,
+        isTrue,
+      );
+    });
+
+    test('the legs to and from the station stay your own', () {
+      final legs = journey(
+        middle: _leg(mode: 'WALK', from: 'Hbf', to: 'Hbf (S)'),
+      );
+      final display = buildDisplayLegs(legs);
+
+      expect(display.first.isTransfer, isFalse);
+      expect(display.last.isTransfer, isFalse);
+    });
+
+    test('a bike between two rides is a change too', () {
+      // The rule is about where the leg sits, not how you cover it.
+      final legs = journey(
+        middle: _leg(mode: 'BIKE', from: 'Hbf', to: 'Hbf (S)'),
+      );
+
+      expect(buildDisplayLegs(legs)[2].isTransfer, isTrue);
+    });
+
+    test('a ride is never a change', () {
+      final legs = journey(
+        middle: _leg(mode: 'BUS', from: 'Hbf', to: 'Hbf (S)', tripId: 'c'),
+      );
+
+      expect(buildDisplayLegs(legs)[2].isTransfer, isFalse);
+    });
+
+    test('a journey that is only a walk is left alone', () {
+      final display = buildDisplayLegs([
+        _leg(mode: 'WALK', from: 'START', to: 'END'),
+      ]);
+
+      expect(display.single.isTransfer, isFalse);
     });
   });
 }

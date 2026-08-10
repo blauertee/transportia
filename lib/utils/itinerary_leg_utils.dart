@@ -1,5 +1,6 @@
 import '../models/itinerary.dart';
 import 'geo_utils.dart';
+import 'journey_colors.dart' show isStreetLeg;
 
 const double kSmallWalkSegmentThresholdMeters = 35.0;
 
@@ -55,11 +56,21 @@ bool _shouldHideEdgeWalk(Leg leg, int index, int total) {
   return isShortWalkLeg(leg);
 }
 
+/// A street leg with a ride on either side of it is a change, whatever the
+/// distance.
+///
+/// Getting between two services is one act to the traveller — the question is
+/// "have I time, and which platform", not "how far". A 300m walk across a
+/// station used to render as an ordinary walk simply because it cleared a
+/// 35m threshold, which said nothing a rider wanted to know.
+///
+/// The edge test stays, and is the whole of the distinction: the leg that
+/// gets you *to* the first stop, or home from the last, is your own journey
+/// rather than a change between someone else's services.
 bool _shouldShowAsTransfer(Leg leg, int index, int total) {
-  if (leg.mode != 'WALK') return false;
+  if (!isStreetLeg(leg.mode)) return false;
   final isEdge = index == 0 || index == total - 1;
-  if (isEdge) return false;
-  return isShortWalkLeg(leg);
+  return !isEdge;
 }
 
 /// Names the planner uses for the query's own origin and destination when
