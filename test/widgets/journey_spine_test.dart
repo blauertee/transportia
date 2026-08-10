@@ -6,6 +6,9 @@ import 'package:transportia/models/transit_mode_group.dart';
 import 'package:transportia/models/transitous/enums.dart';
 import 'package:transportia/models/transitous/server_config.dart';
 import 'package:transportia/widgets/options/icon_controls.dart';
+import 'package:transportia/theme/journey_metrics.dart';
+import 'package:transportia/widgets/journey/spine_node.dart';
+import 'package:transportia/widgets/search/journey_segment.dart';
 import 'package:transportia/widgets/search/journey_spine.dart';
 import 'package:transportia/widgets/search/street_leg_section.dart';
 
@@ -529,5 +532,60 @@ void main() {
     for (final mode in TransitModeGroup.allSelectable) {
       expect(TransitModeGroup.modeLabel(mode), isNotEmpty);
     }
+  });
+
+  group('the stages read as one line', () {
+    testWidgets('every stage puts its node on the same centre', (tester) async {
+      // The rings and the two endpoint markers share one gutter, which is what
+      // makes the card the top and bottom of a single drawing.
+      await _pumpSpine(tester);
+
+      final centres = {
+        for (final node in find.byType(SpineNode).evaluate())
+          tester.getRect(find.byWidget(node.widget)).center.dx.roundToDouble(),
+      };
+      expect(centres, hasLength(1));
+    });
+
+    testWidgets('the three stages leave no gap for the line to fall down', (
+      tester,
+    ) async {
+      // Each row paints its own stretch, so a gap between rows is a gap in the
+      // line. The rows have to touch.
+      await _pumpSpine(tester);
+
+      final rects = find
+          .byType(JourneySegment)
+          .evaluate()
+          .map((e) => tester.getRect(find.byWidget(e.widget)))
+          .toList();
+
+      expect(rects, hasLength(3));
+      for (var i = 1; i < rects.length; i++) {
+        expect(rects[i].top, closeTo(rects[i - 1].bottom, 0.5));
+      }
+    });
+
+    testWidgets('a street stage is dotted and a ride is not', (tester) async {
+      await _pumpSpine(tester);
+
+      final stages = find
+          .byType(JourneySegment)
+          .evaluate()
+          .map((e) => e.widget as JourneySegment)
+          .toList();
+
+      expect(stages[0].dashed, isTrue);
+      expect(stages[1].dashed, isFalse);
+      expect(stages[2].dashed, isTrue);
+    });
+
+    testWidgets('a ring is wide enough to hold its glyph', (tester) async {
+      await _pumpSpine(tester);
+
+      final ring = tester.getRect(find.byType(SpineNode).first);
+      expect(ring.width, JourneyMetrics.ring);
+      expect(ring.height, JourneyMetrics.ring);
+    });
   });
 }

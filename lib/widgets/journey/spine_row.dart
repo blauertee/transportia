@@ -33,6 +33,7 @@ class SpineRow extends StatelessWidget {
     this.railBottomInset = 0,
     this.firstLineHeight = 20,
     this.padding = const EdgeInsets.symmetric(horizontal: 16),
+    this.timeColumn = JourneyMetrics.timeColumn,
     this.onTap,
   });
 
@@ -67,6 +68,11 @@ class SpineRow extends StatelessWidget {
   final double firstLineHeight;
 
   final EdgeInsets padding;
+
+  /// Width of the times column. Zero on the search screen, which plans a
+  /// journey rather than reporting one and so has no times to align.
+  final double timeColumn;
+
   final VoidCallback? onTap;
 
   @override
@@ -82,7 +88,7 @@ class SpineRow extends StatelessWidget {
         // would be asked for.
         if (railColor != null)
           Positioned(
-            left: padding.left + JourneyMetrics.timeColumn,
+            left: padding.left + timeColumn,
             width: JourneyMetrics.gutter,
             top: 0,
             bottom: 0,
@@ -98,16 +104,17 @@ class SpineRow extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SizedBox(
-                width: JourneyMetrics.timeColumn,
-                child: Padding(
-                  padding: EdgeInsets.only(top: textTop, right: 10),
-                  child: Align(
-                    alignment: Alignment.topRight,
-                    child: time ?? const SizedBox.shrink(),
+              if (timeColumn > 0)
+                SizedBox(
+                  width: timeColumn,
+                  child: Padding(
+                    padding: EdgeInsets.only(top: textTop, right: 10),
+                    child: Align(
+                      alignment: Alignment.topRight,
+                      child: time ?? const SizedBox.shrink(),
+                    ),
                   ),
                 ),
-              ),
               SizedBox(
                 width: JourneyMetrics.gutter,
                 height: nodeCenter * 2,

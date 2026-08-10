@@ -5,7 +5,9 @@ import '../widgets/validation_toast.dart';
 import '../utils/haptics.dart';
 import '../theme/app_colors.dart';
 import '../models/my_location.dart';
-import 'search/journey_segment.dart';
+import '../theme/journey_metrics.dart';
+import '../utils/journey_colors.dart';
+import 'journey/spine_rail.dart';
 import 'skeletons/skeleton_shimmer.dart';
 
 /// The origin and destination of a search, stacked in travel order.
@@ -119,6 +121,7 @@ class _RouteFieldBoxState extends State<RouteFieldBox> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _EndpointRow(
+              railFrom: _EndpointRailFrom.marker,
               marker: _EndpointDot(color: widget.accentColor, filled: false),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -144,14 +147,12 @@ class _RouteFieldBoxState extends State<RouteFieldBox> {
                 onPressed: widget.onFromPressed,
               ),
             ),
-            if (widget.middle case final middle?) ...[
-              const SizedBox(height: 14),
-              middle,
-              const SizedBox(height: 14),
-            ] else
+            if (widget.middle case final middle?)
+              middle
+            else
               Padding(
                 padding: const EdgeInsets.only(
-                  left: journeyGutterWidth,
+                  left: JourneyMetrics.gutter,
                   top: 2,
                   bottom: 2,
                 ),
@@ -161,6 +162,7 @@ class _RouteFieldBoxState extends State<RouteFieldBox> {
                 ),
               ),
             _EndpointRow(
+              railFrom: _EndpointRailFrom.top,
               marker: _EndpointDot(color: widget.accentColor, filled: true),
               trailing: _HeartButton(
                 filled: widget.isToFavourite,
@@ -239,42 +241,69 @@ class _RouteFieldBoxState extends State<RouteFieldBox> {
   }
 }
 
+/// Which part of an endpoint row its stretch of line covers.
+enum _EndpointRailFrom {
+  /// The origin: the line leaves its marker and runs on to the first stage.
+  marker,
+
+  /// The destination: the line arrives from the last stage and stops there.
+  top,
+}
+
 /// One endpoint: its marker in the shared gutter, its field, and whatever
 /// sits at the trailing edge.
+///
+/// The gutter is the spine's, so the two markers, the three stage rings and
+/// the line all sit on one centre line — the card reads as the top and bottom
+/// of the same drawing rather than as a box with a diagram inside it.
 class _EndpointRow extends StatelessWidget {
   const _EndpointRow({
     required this.marker,
     required this.child,
+    required this.railFrom,
     this.trailing,
   });
 
   final Widget marker;
   final Widget child;
   final Widget? trailing;
+  final _EndpointRailFrom railFrom;
+
+  /// Half the height of a field row, which is where the marker sits.
+  static const double _markerCenter = 22;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    final fromMarker = railFrom == _EndpointRailFrom.marker;
+
+    return Stack(
       children: [
-        SizedBox(
-          width: journeyGutterWidth,
-          child: Center(
-            // Onto the rail's centre line rather than the gutter's, so the
-            // markers and the rail sit on one straight line.
-            child: Transform.translate(
-              offset: const Offset(
-                -(journeyGutterWidth - journeyRailWidth) / 2,
-                0,
-              ),
-              child: marker,
-            ),
+        Positioned(
+          left: 0,
+          width: JourneyMetrics.gutter,
+          top: 0,
+          bottom: 0,
+          child: SpineRail(
+            color: kStreetLegColor,
+            dashed: true,
+            topInset: fromMarker ? _markerCenter : 0,
+            bottomInset: fromMarker ? 0 : _markerCenter,
           ),
         ),
-        Expanded(child: child),
-        if (trailing case final trailing?) ...[
-          const SizedBox(width: 8),
-          trailing,
-        ],
+        Row(
+          children: [
+            SizedBox(
+              width: JourneyMetrics.gutter,
+              height: _markerCenter * 2,
+              child: Center(child: marker),
+            ),
+            Expanded(child: child),
+            if (trailing case final trailing?) ...[
+              const SizedBox(width: 8),
+              trailing,
+            ],
+          ],
+        ),
       ],
     );
   }

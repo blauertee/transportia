@@ -4,6 +4,8 @@ import 'package:flutter/widgets.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../models/routing_options.dart';
+import '../../theme/app_colors.dart';
+import '../../utils/journey_colors.dart';
 import '../../models/transitous/enums.dart';
 import '../../models/transitous/server_config.dart';
 import '../options/icon_controls.dart';
@@ -134,10 +136,17 @@ class _JourneySpineState extends State<JourneySpine> {
   }
 
   Widget _buildStages(RoutingOptions options) {
+    // The street stages take the same neutral the itinerary gives a walk, and
+    // the ride takes the accent: the search is a picture of the trip's shape
+    // before there is a route to colour it with.
+    final accent = AppColors.accentOf(context);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         JourneySegment(
+          color: kStreetLegColor,
+          dashed: true,
           icon: mileModesIcon(options.firstMileModes),
           headline: 'To the station',
           summary:
@@ -178,8 +187,8 @@ class _JourneySpineState extends State<JourneySpine> {
                 _apply(options.copyWith(maxFirstMileTime: budget)),
           ),
         ),
-        const SizedBox(height: 20),
         JourneySegment(
+          color: accent,
           icon: LucideIcons.trainFront,
           headline: 'Public transport',
           summary:
@@ -207,8 +216,9 @@ class _JourneySpineState extends State<JourneySpine> {
             },
           ),
         ),
-        const SizedBox(height: 20),
         JourneySegment(
+          color: kStreetLegColor,
+          dashed: true,
           icon: mileModesIcon(options.lastMileModes),
           headline: 'From the station',
           summary:

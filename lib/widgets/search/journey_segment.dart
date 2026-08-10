@@ -2,21 +2,22 @@ import 'package:flutter/widgets.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../theme/app_colors.dart';
+import '../../theme/journey_metrics.dart';
 import '../../utils/haptics.dart';
+import '../journey/spine_node.dart';
+import '../journey/spine_row.dart';
 
-/// The rail itself.
-const double journeyRailWidth = 3;
+/// The first line of a stage's text, stated so [SpineRow] can centre it.
+const double kStageLineHeight = 16;
 
-/// The gutter the rail shares with the origin and destination dots, so the
-/// line reads as one route from the first marker to the last.
-const double journeyGutterWidth = journeyRailWidth + 17;
-
-/// One stage of the journey, with its own stretch of the rail on the left.
+/// One stage of the journey being planned, as a node on the same spine the
+/// itinerary is drawn with.
 ///
-/// The three stages are separated by the rail breaking between them, by the
-/// spacing around them and by the headline, rather than by a box each. Boxes
-/// inside a card that is itself a box read as clutter, and the rail carries
-/// the sequence — which is the point of laying the options out this way.
+/// The three stages used to be separated by the rail *breaking* between them,
+/// which made the search read as a settings list that happened to have a line
+/// beside it. Unbroken, with the stage's own mode in a ring and street stages
+/// dotted, it reads as the shape of the trip you are asking for — which is
+/// what laying the options out in journey order was for.
 class JourneySegment extends StatelessWidget {
   const JourneySegment({
     super.key,
@@ -26,6 +27,8 @@ class JourneySegment extends StatelessWidget {
     required this.isOpen,
     required this.onToggle,
     required this.child,
+    required this.color,
+    this.dashed = false,
   });
 
   /// Reflects the current choice, e.g. a bike once a bike is picked.
@@ -43,97 +46,48 @@ class JourneySegment extends StatelessWidget {
   /// Controls shown once the stage is expanded.
   final Widget child;
 
+  /// The stage's stretch of the line.
+  final Color color;
+
+  /// Street stages are dotted: you are not on rails.
+  final bool dashed;
+
   @override
   Widget build(BuildContext context) {
-    final accent = AppColors.accentOf(context);
-
-    // The rail is stacked behind the content rather than laid beside it in a
-    // stretched Row: that would need an IntrinsicHeight, and the height of an
-    // expanding section is mid-animation exactly when it is asked for.
-    return Stack(
-      children: [
-        // Full accent while open, so the line itself says which stage you
-        // are editing.
-        Positioned(
-          left: 0,
-          top: 3,
-          bottom: 3,
-          width: journeyRailWidth,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 160),
-            decoration: BoxDecoration(
-              color: isOpen ? accent : accent.withValues(alpha: 0.26),
-              borderRadius: BorderRadius.circular(999),
-            ),
-          ),
+    return SpineRow(
+      timeColumn: 0,
+      padding: EdgeInsets.zero,
+      node: SpineNode(icon: icon, color: color, semanticLabel: headline),
+      railColor: color,
+      railDashed: dashed,
+      railTopInset: JourneyMetrics.ring,
+      firstLineHeight: kStageLineHeight,
+      meta: AnimatedRotation(
+        turns: isOpen ? 0.25 : 0,
+        duration: const Duration(milliseconds: 180),
+        child: Icon(
+          LucideIcons.chevronRight,
+          size: 14,
+          color: AppColors.black.withValues(alpha: 0.45),
         ),
-        Padding(
-          padding: const EdgeInsets.only(left: journeyGutterWidth),
+      ),
+      body: Semantics(
+        button: true,
+        expanded: isOpen,
+        label: '$headline. $summary',
+        child: Padding(
+          // The gap between stages lives inside the row, so the rails of
+          // adjacent stages touch and the line stays unbroken.
+          padding: const EdgeInsets.only(bottom: 18),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _SegmentHeader(
-                icon: icon,
-                headline: headline,
-                summary: summary,
-                isOpen: isOpen,
-                onToggle: onToggle,
-              ),
-              AnimatedCrossFade(
-                duration: const Duration(milliseconds: 180),
-                crossFadeState: isOpen
-                    ? CrossFadeState.showSecond
-                    : CrossFadeState.showFirst,
-                firstChild: const SizedBox(width: double.infinity),
-                secondChild: Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: child,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _SegmentHeader extends StatelessWidget {
-  const _SegmentHeader({
-    required this.icon,
-    required this.headline,
-    required this.summary,
-    required this.isOpen,
-    required this.onToggle,
-  });
-
-  final IconData icon;
-  final String headline;
-  final String summary;
-  final bool isOpen;
-  final VoidCallback onToggle;
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = AppColors.accentOf(context);
-
-    return Semantics(
-      button: true,
-      expanded: isOpen,
-      label: '$headline. $summary',
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () {
-          Haptics.lightTick();
-          onToggle();
-        },
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 2),
-          child: Row(
-            children: [
-              Icon(icon, size: 16, color: accent),
-              const SizedBox(width: 11),
-              Expanded(
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  Haptics.lightTick();
+                  onToggle();
+                },
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -141,9 +95,10 @@ class _SegmentHeader extends StatelessWidget {
                       headline.toUpperCase(),
                       style: TextStyle(
                         fontSize: 11.5,
+                        height: kStageLineHeight / 11.5,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0.8,
-                        color: accent,
+                        color: color,
                       ),
                     ),
                     const SizedBox(height: 1),
@@ -156,14 +111,15 @@ class _SegmentHeader extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
-              AnimatedRotation(
-                turns: isOpen ? 0.25 : 0,
+              AnimatedCrossFade(
                 duration: const Duration(milliseconds: 180),
-                child: Icon(
-                  LucideIcons.chevronRight,
-                  size: 14,
-                  color: AppColors.black.withValues(alpha: 0.45),
+                crossFadeState: isOpen
+                    ? CrossFadeState.showSecond
+                    : CrossFadeState.showFirst,
+                firstChild: const SizedBox(width: double.infinity),
+                secondChild: Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: child,
                 ),
               ),
             ],
