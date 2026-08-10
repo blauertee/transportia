@@ -20,6 +20,7 @@ import '../models/routing_options.dart';
 import '../models/transitous/server_config.dart';
 import '../models/itinerary.dart';
 import '../models/journey_stop.dart';
+import '../models/my_location.dart';
 import '../models/saved_place.dart';
 import '../models/stop_time.dart';
 import '../models/time_selection.dart';
@@ -2409,36 +2410,90 @@ class _MapScreenState extends State<MapScreen>
               bucket: SavedPlacesBucket.search,
               initialQuery: _controllerFor(field).text,
               placeBias: _placeBiasLatLng(),
+              // Offered on both endpoints, and whether or not location has
+              // been permitted yet: the row is how a rider finds out the app
+              // can do this, and tapping it is what asks.
+              showMyLocation: true,
             ),
           ),
         );
     if (!mounted) return;
     _notifyOverlayVisibility();
     if (picked == null) return;
-    _onSuggestionSelected(field, picked);
+    await _onSuggestionSelected(field, picked);
   }
 
-  void _onSuggestionSelected(
+  Future<void> _onSuggestionSelected(
     RouteFieldKind field,
     TransitousLocationSuggestion suggestion,
-  ) {
-    // An empty field already means "from where I am", resolved at search time
-    // so the trip starts where you are when you press Search. Clearing it is
-    // therefore the whole of picking My Location.
+  ) async {
     if (suggestion.id == myLocationSuggestion.id) {
-      _setControllerText(field, '');
-      _setSelection(field, null, notify: true);
-      if (field == RouteFieldKind.from && _toCtrl.text.trim().isEmpty) {
-        unawaited(_openLocationSearch(RouteFieldKind.to));
-      }
+      await _applyMyLocation(field);
       return;
     }
     unawaited(_recordSavedPlace(suggestion));
     _setControllerText(field, suggestion.name);
     _setSelection(field, suggestion, notify: true);
-    if (field == RouteFieldKind.from && _toCtrl.text.trim().isEmpty) {
-      unawaited(_openLocationSearch(RouteFieldKind.to));
+    _openDestinationIfStillEmpty(field);
+  }
+
+  /// Puts the rider's own position into [field].
+  ///
+  /// Not recorded as a recent place: a recent is replayed by its coordinates,
+  /// and yesterday's position filed under "My Location" would be a misleading
+  /// row in tomorrow's list.
+  Future<void> _applyMyLocation(RouteFieldKind field) async {
+    if (!await _ensurePermissionOnDemand()) {
+      if (!mounted) return;
+      showValidationToast(
+        context,
+        'Location permission required to use My Location',
+      );
+      return;
     }
+
+    final position = await _bestKnownLatLng();
+    if (!mounted) return;
+    if (position == null) {
+      showValidationToast(context, "Couldn't find where you are");
+      return;
+    }
+
+    final selection = myLocationSelectionFor(
+      field,
+      position.latitude,
+      position.longitude,
+    );
+    _setControllerText(field, selection?.name ?? '');
+    _setSelection(field, selection, notify: true);
+    _openDestinationIfStillEmpty(field);
+  }
+
+  /// Where the rider is, cheapest source first.
+  ///
+  /// The picker has already closed by the time this runs, so a bare
+  /// [LocationService.currentPosition] would be several seconds of a screen
+  /// that looks like it ignored the tap. The live fix and the OS's cached one
+  /// are both immediate, and a fresh fix is only asked for when neither
+  /// exists.
+  Future<LatLng?> _bestKnownLatLng() async {
+    if (_lastUserLatLng != null) return _lastUserLatLng;
+    try {
+      final cached = await LocationService.lastKnownPosition();
+      if (cached != null) return LatLng(cached.latitude, cached.longitude);
+      final fresh = await LocationService.currentPosition();
+      return LatLng(fresh.latitude, fresh.longitude);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Picking an origin first is the common order, so the destination picker
+  /// follows on rather than making the rider tap the field themselves.
+  void _openDestinationIfStillEmpty(RouteFieldKind field) {
+    if (field != RouteFieldKind.from) return;
+    if (_toCtrl.text.trim().isNotEmpty) return;
+    unawaited(_openLocationSearch(RouteFieldKind.to));
   }
 
   void _setControllerText(RouteFieldKind kind, String value) {

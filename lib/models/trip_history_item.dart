@@ -1,5 +1,5 @@
-import '../screens/location_search_screen.dart';
 import '../services/transitous_geocode_service.dart';
+import 'my_location.dart';
 
 class TripHistoryItem {
   TripHistoryItem({

@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
+import 'package:transportia/models/my_location.dart';
 import 'package:transportia/screens/location_search_screen.dart';
 import 'package:transportia/services/favorites_service.dart';
 import 'package:transportia/services/saved_places_service.dart';

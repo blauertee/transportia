@@ -4,6 +4,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
 
+import '../models/my_location.dart';
 import '../models/saved_place.dart';
 import '../services/favorites_service.dart';
 import '../services/saved_places_service.dart';
@@ -15,24 +16,6 @@ import '../utils/haptics.dart';
 import '../widgets/app_page_scaffold.dart';
 import '../widgets/edit_favorite_overlay.dart';
 import 'favourites_map_screen.dart';
-
-/// What the app calls the rider's current position.
-///
-/// The origin field leaves itself empty for this and resolves the position at
-/// search time, so the trip is planned from where you are when you press
-/// Search rather than where you were when you picked.
-const String myLocationName = 'My Location';
-
-/// The answer the picker returns for it — recognised by id, so a place that
-/// happens to share the name is not mistaken for it.
-final TransitousLocationSuggestion myLocationSuggestion =
-    TransitousLocationSuggestion(
-      id: 'my-location',
-      name: myLocationName,
-      lat: 0,
-      lon: 0,
-      type: 'PLACE',
-    );
 
 /// Picks a place, full screen.
 ///
@@ -70,10 +53,9 @@ class LocationSearchScreen extends StatefulWidget {
   /// Offers where the rider is standing as the first answer.
   ///
   /// Only for a route endpoint: a coordinate is not a stop, so a timetable
-  /// search has nothing to do with one. The caller passes this rather than
-  /// the screen asking, because the caller already knows whether location is
-  /// permitted — offering a row that cannot answer would be worse than not
-  /// offering it.
+  /// search has nothing to do with one. Not gated on location permission —
+  /// the row is how a rider finds out the app can do this at all, and the
+  /// caller asks for permission when it is tapped.
   final bool showMyLocation;
 
   @override
