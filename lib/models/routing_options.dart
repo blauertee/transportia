@@ -67,7 +67,8 @@ class RoutingOptions {
     this.maxLastMileTime = const Duration(minutes: 15),
     this.directModes = const [TransitMode.walk],
     this.maxDirectTime = const Duration(minutes: 30),
-    this.rentalFormFactors = const [],
+    this.firstMileRentalFormFactors = const [],
+    this.lastMileRentalFormFactors = const [],
     this.walkingSpeedKmh = _defaultWalkingSpeedKmh,
     this.cyclingSpeedKmh = _defaultCyclingSpeedKmh,
     this.elevationCosts = ElevationCosts.none,
@@ -155,12 +156,20 @@ class RoutingOptions {
   final List<TransitMode> directModes;
   final Duration maxDirectTime;
 
-  /// Which shared vehicles a rental leg may use. Empty means any.
+  /// Which shared vehicles each mile's rental leg may use.
   ///
-  /// One set covers both miles: picking a shared cargo bike to the station
-  /// and a shared moped back is a distinction nobody draws, and two sets
-  /// would double the control.
-  final List<RentalFormFactor> rentalFormFactors;
+  /// One list per mile, because the server takes one per mile: the filters go
+  /// out as `preTransitRentalFormFactors` and `postTransitRentalFormFactors`,
+  /// and a single shared list made picking a vehicle for the way there
+  /// silently change the way back.
+  ///
+  /// Empty means the mile has no rentals — every control that offers a
+  /// vehicle also puts [TransitMode.rental] in that mile's modes, and taking
+  /// the last vehicle away takes the mode with it. So an empty list never
+  /// travels with rentals switched on, and the permissive "no filter at all"
+  /// state the server would read from one is not reachable.
+  final List<RentalFormFactor> firstMileRentalFormFactors;
+  final List<RentalFormFactor> lastMileRentalFormFactors;
 
   /// Stored in km/h because that is what the UI shows; converted to m/s on
   /// the way out.
@@ -219,6 +228,42 @@ class RoutingOptions {
     TransitMode.flex,
   ];
 
+  /// What a plain "rentals, please" means, with no vehicle named.
+  ///
+  /// Rentals are the vehicles picked for them, so a control that offers the
+  /// mode without offering vehicles needs a set to stand for. These three are
+  /// the ones you would actually grab for a mile; anything larger has to be
+  /// asked for by name.
+  static const List<RentalFormFactor> defaultRentalFormFactors = [
+    RentalFormFactor.bicycle,
+    RentalFormFactor.scooterStanding,
+    RentalFormFactor.other,
+  ];
+
+  /// Sets one mile's modes, keeping its rentals in step.
+  ///
+  /// For screens that offer the rental mode but no vehicle picker. Ticking
+  /// Rental takes [defaultRentalFormFactors]; unticking it hands them back,
+  /// so no saved default can carry rentals over a mile with nothing to rent.
+  /// The search screen picks vehicles directly and has no use for this.
+  RoutingOptions withFirstMileModes(List<TransitMode> modes) => copyWith(
+    firstMileModes: modes,
+    firstMileRentalFormFactors: _rentalsFor(modes, firstMileRentalFormFactors),
+  );
+
+  RoutingOptions withLastMileModes(List<TransitMode> modes) => copyWith(
+    lastMileModes: modes,
+    lastMileRentalFormFactors: _rentalsFor(modes, lastMileRentalFormFactors),
+  );
+
+  static List<RentalFormFactor> _rentalsFor(
+    List<TransitMode> modes,
+    List<RentalFormFactor> current,
+  ) {
+    if (!modes.contains(TransitMode.rental)) return const [];
+    return current.isEmpty ? defaultRentalFormFactors : current;
+  }
+
   RoutingOptions copyWith({
     List<TransitMode>? transitModes,
     bool? useRoutedTransfers,
@@ -237,7 +282,8 @@ class RoutingOptions {
     Duration? maxLastMileTime,
     List<TransitMode>? directModes,
     Duration? maxDirectTime,
-    List<RentalFormFactor>? rentalFormFactors,
+    List<RentalFormFactor>? firstMileRentalFormFactors,
+    List<RentalFormFactor>? lastMileRentalFormFactors,
     double? walkingSpeedKmh,
     double? cyclingSpeedKmh,
     ElevationCosts? elevationCosts,
@@ -272,7 +318,10 @@ class RoutingOptions {
       maxLastMileTime: maxLastMileTime ?? this.maxLastMileTime,
       directModes: _atLeastWalking(directModes ?? this.directModes),
       maxDirectTime: maxDirectTime ?? this.maxDirectTime,
-      rentalFormFactors: rentalFormFactors ?? this.rentalFormFactors,
+      firstMileRentalFormFactors:
+          firstMileRentalFormFactors ?? this.firstMileRentalFormFactors,
+      lastMileRentalFormFactors:
+          lastMileRentalFormFactors ?? this.lastMileRentalFormFactors,
       walkingSpeedKmh: walkingSpeedKmh ?? this.walkingSpeedKmh,
       cyclingSpeedKmh: cyclingSpeedKmh ?? this.cyclingSpeedKmh,
       elevationCosts: elevationCosts ?? this.elevationCosts,
@@ -319,8 +368,8 @@ class RoutingOptions {
       maxPostTransitTime: maxLastMileTime,
       directModes: directModes,
       maxDirectTime: maxDirectTime,
-      preTransitRentals: _rentalFilters,
-      postTransitRentals: _rentalFilters,
+      preTransitRentals: _rentalFilters(firstMileRentalFormFactors),
+      postTransitRentals: _rentalFilters(lastMileRentalFormFactors),
       pedestrianSpeed: _msFrom(walkingSpeedKmh, _defaultWalkingSpeedKmh),
       cyclingSpeed: _msFrom(cyclingSpeedKmh, _defaultCyclingSpeedKmh),
       elevationCosts: elevationCosts == ElevationCosts.none
@@ -365,10 +414,9 @@ class RoutingOptions {
         : elevationCosts,
   );
 
-  /// Form-factor filter for whichever leg asks, or none when any vehicle
-  /// will do.
-  RentalFilters get _rentalFilters =>
-      RentalFilters(formFactors: rentalFormFactors);
+  /// One mile's form-factor filter, or none when that mile has no rentals.
+  static RentalFilters _rentalFilters(List<RentalFormFactor> factors) =>
+      RentalFilters(formFactors: factors);
 
   /// A mile always has somewhere to start from.
   static List<TransitMode> _atLeastWalking(List<TransitMode> modes) =>
@@ -396,7 +444,12 @@ class RoutingOptions {
     'maxLastMileTimeMinutes': maxLastMileTime.inMinutes,
     'directModes': [for (final mode in directModes) mode.wireName],
     'maxDirectTimeMinutes': maxDirectTime.inMinutes,
-    'rentalFormFactors': [for (final f in rentalFormFactors) f.wireName],
+    'firstMileRentalFormFactors': [
+      for (final f in firstMileRentalFormFactors) f.wireName,
+    ],
+    'lastMileRentalFormFactors': [
+      for (final f in lastMileRentalFormFactors) f.wireName,
+    ],
     'walkingSpeedKmh': walkingSpeedKmh,
     'cyclingSpeedKmh': cyclingSpeedKmh,
     'elevationCosts': elevationCosts.wireName,
@@ -451,7 +504,12 @@ class RoutingOptions {
       elevationCosts:
           ElevationCosts.fromWire(json['elevationCosts']) ??
           fallback.elevationCosts,
-      rentalFormFactors: _formFactors(json['rentalFormFactors']),
+      firstMileRentalFormFactors: _formFactors(
+        json['firstMileRentalFormFactors'],
+      ),
+      lastMileRentalFormFactors: _formFactors(
+        json['lastMileRentalFormFactors'],
+      ),
     );
   }
 

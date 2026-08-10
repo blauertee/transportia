@@ -176,7 +176,7 @@ class _JourneySpineState extends State<JourneySpine> {
             modes: options.firstMileModes,
             budget: options.maxFirstMileTime,
             maxBudget: _mileCeiling,
-            formFactors: options.rentalFormFactors,
+            formFactors: options.firstMileRentalFormFactors,
             tooltips: _tooltips,
             budgetOpen: _fromBudgetOpen,
             modesOpen: _fromModesOpen,
@@ -192,7 +192,7 @@ class _JourneySpineState extends State<JourneySpine> {
               _apply(
                 options.copyWith(
                   firstMileModes: choice.modes,
-                  rentalFormFactors: choice.formFactors,
+                  firstMileRentalFormFactors: choice.formFactors,
                 ),
               );
               _announceMileChange(
@@ -248,7 +248,7 @@ class _JourneySpineState extends State<JourneySpine> {
             modes: options.lastMileModes,
             budget: options.maxLastMileTime,
             maxBudget: _mileCeiling,
-            formFactors: options.rentalFormFactors,
+            formFactors: options.lastMileRentalFormFactors,
             tooltips: _tooltips,
             budgetOpen: _toBudgetOpen,
             modesOpen: _toModesOpen,
@@ -264,7 +264,7 @@ class _JourneySpineState extends State<JourneySpine> {
               _apply(
                 options.copyWith(
                   lastMileModes: choice.modes,
-                  rentalFormFactors: choice.formFactors,
+                  lastMileRentalFormFactors: choice.formFactors,
                 ),
               );
               _announceMileChange(

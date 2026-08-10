@@ -137,19 +137,93 @@ void main() {
       );
     });
 
-    test('a chosen kind reaches both street legs', () {
+    test('a chosen kind reaches its own street leg', () {
       const options = RoutingOptions(
         firstMileModes: [TransitMode.rental],
         lastMileModes: [TransitMode.rental],
-        rentalFormFactors: [
+        firstMileRentalFormFactors: [
           RentalFormFactor.cargoBicycle,
           RentalFormFactor.moped,
         ],
+        lastMileRentalFormFactors: [RentalFormFactor.bicycle],
       );
       final query = _query(options);
 
       expect(query['preTransitRentalFormFactors'], 'CARGO_BICYCLE,MOPED');
-      expect(query['postTransitRentalFormFactors'], 'CARGO_BICYCLE,MOPED');
+      expect(query['postTransitRentalFormFactors'], 'BICYCLE');
+    });
+
+    test('the two miles filter independently', () {
+      // The server has always taken these separately. Holding one list for
+      // both meant asking for a cargo bike to the station silently asked for
+      // one on the way back too — and refusing one back refused it there.
+      const options = RoutingOptions(
+        firstMileModes: [TransitMode.rental],
+        lastMileModes: [TransitMode.walk],
+        firstMileRentalFormFactors: [RentalFormFactor.cargoBicycle],
+      );
+      final query = _query(options);
+
+      expect(query['preTransitRentalFormFactors'], 'CARGO_BICYCLE');
+      expect(query.containsKey('postTransitRentalFormFactors'), isFalse);
+    });
+  });
+
+  group('rentals follow the vehicles picked for them', () {
+    test('ticking the mode alone still leaves something to rent', () {
+      // The defaults editor offers the mode with no vehicle picker, so it
+      // stands for the same set the search screen's Rental icon does.
+      final options = RoutingOptions.defaults.withFirstMileModes(const [
+        TransitMode.walk,
+        TransitMode.rental,
+      ]);
+
+      expect(
+        options.firstMileRentalFormFactors,
+        RoutingOptions.defaultRentalFormFactors,
+      );
+      expect(
+        _query(options)['preTransitRentalFormFactors'],
+        'BICYCLE,SCOOTER_STANDING,OTHER',
+      );
+    });
+
+    test('a vehicle already chosen is not overwritten', () {
+      const picked = RoutingOptions(
+        firstMileModes: [TransitMode.rental],
+        firstMileRentalFormFactors: [RentalFormFactor.car],
+      );
+      final again = picked.withFirstMileModes(const [
+        TransitMode.walk,
+        TransitMode.rental,
+      ]);
+
+      expect(again.firstMileRentalFormFactors, [RentalFormFactor.car]);
+    });
+
+    test('dropping the mode drops its vehicles', () {
+      // Otherwise the filter would sit in storage describing a leg that can
+      // no longer be rented, and come back the next time rentals were on.
+      const picked = RoutingOptions(
+        firstMileModes: [TransitMode.rental],
+        firstMileRentalFormFactors: [RentalFormFactor.car],
+      );
+      final walked = picked.withFirstMileModes(const [TransitMode.walk]);
+
+      expect(walked.firstMileRentalFormFactors, isEmpty);
+    });
+
+    test('the two miles keep their own vehicles', () {
+      const both = RoutingOptions(
+        firstMileModes: [TransitMode.rental],
+        lastMileModes: [TransitMode.rental],
+        firstMileRentalFormFactors: [RentalFormFactor.car],
+        lastMileRentalFormFactors: [RentalFormFactor.moped],
+      );
+      final firstWalksNow = both.withFirstMileModes(const [TransitMode.walk]);
+
+      expect(firstWalksNow.firstMileRentalFormFactors, isEmpty);
+      expect(firstWalksNow.lastMileRentalFormFactors, [RentalFormFactor.moped]);
     });
   });
 
@@ -157,14 +231,17 @@ void main() {
     test('mile modes round-trip', () {
       const options = RoutingOptions(
         firstMileModes: [TransitMode.walk, TransitMode.rental],
-        lastMileModes: [TransitMode.carParking],
-        rentalFormFactors: [RentalFormFactor.bicycle],
+        lastMileModes: [TransitMode.carParking, TransitMode.rental],
+        firstMileRentalFormFactors: [RentalFormFactor.bicycle],
+        lastMileRentalFormFactors: [RentalFormFactor.moped],
       );
       final restored = RoutingOptions.fromJson(options.toJson());
 
       expect(restored.firstMileModes, options.firstMileModes);
       expect(restored.lastMileModes, options.lastMileModes);
-      expect(restored.rentalFormFactors, options.rentalFormFactors);
+      // Stored apart, or a restart would put the two miles back on one list.
+      expect(restored.firstMileRentalFormFactors, [RentalFormFactor.bicycle]);
+      expect(restored.lastMileRentalFormFactors, [RentalFormFactor.moped]);
     });
 
     test('a manual carriage choice round-trips', () {

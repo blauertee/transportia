@@ -231,11 +231,123 @@ void main() {
     await tester.pump();
 
     expect(
-      host.options.rentalFormFactors,
+      host.options.firstMileRentalFormFactors,
       contains(RentalFormFactor.cargoBicycle),
     );
     expect(host.options.firstMileModes, contains(TransitMode.rental));
+
+    // And it stays this mile's business. One list held for both meant a
+    // cargo bike to the station asked for one on the way back as well.
+    expect(host.options.lastMileRentalFormFactors, isEmpty);
+    expect(host.options.lastMileModes, isNot(contains(TransitMode.rental)));
     await _quiet(tester);
+  });
+
+  group('the rental icon', () {
+    /// Whether the icon reads as lit, which is what the rider goes by.
+    bool selected(WidgetTester tester) =>
+        tester.widget<IconPick>(_pick('Rental')).selected;
+
+    testWidgets('ticks the vehicles it stands for', (tester) async {
+      // It used to toggle the mode and nothing else, so the expanded list
+      // looked identical before and after.
+      final host = await _pumpSpine(tester);
+      await _open(tester, 'TO THE STATION');
+
+      await tester.tap(_pick('Rental'));
+      await tester.pump();
+
+      expect(host.options.firstMileRentalFormFactors, kRentalIconFactors);
+      expect(host.options.firstMileModes, contains(TransitMode.rental));
+      expect(selected(tester), isTrue);
+      await _quiet(tester);
+    });
+
+    testWidgets('turning it off leaves a separate pick alone', (tester) async {
+      final host = await _pumpSpine(
+        tester,
+        initial: RoutingOptions.defaults.copyWith(
+          firstMileModes: const [TransitMode.walk, TransitMode.rental],
+          firstMileRentalFormFactors: const [
+            RentalFormFactor.bicycle,
+            RentalFormFactor.car,
+            RentalFormFactor.scooterStanding,
+            RentalFormFactor.other,
+          ],
+        ),
+      );
+      await _open(tester, 'TO THE STATION');
+      expect(selected(tester), isTrue);
+
+      await tester.tap(_pick('Rental'));
+      await tester.pump();
+
+      // Only its own three go. A shared car was asked for by name and is
+      // still shown by name, so it survives.
+      expect(host.options.firstMileRentalFormFactors, [RentalFormFactor.car]);
+      expect(host.options.firstMileModes, contains(TransitMode.rental));
+      expect(selected(tester), isFalse);
+      expect(_modeChip('Shared car'), findsOneWidget);
+      await _quiet(tester);
+    });
+
+    testWidgets('dropping the last vehicle drops rentals', (tester) async {
+      final host = await _pumpSpine(
+        tester,
+        initial: RoutingOptions.defaults.copyWith(
+          firstMileModes: const [TransitMode.walk, TransitMode.rental],
+          firstMileRentalFormFactors: kRentalIconFactors,
+        ),
+      );
+      await _open(tester, 'TO THE STATION');
+
+      await tester.tap(_pick('Rental'));
+      await tester.pump();
+
+      // Rentals lit over a mile with nothing to rent is the state that
+      // started this. No control may reach it.
+      expect(host.options.firstMileRentalFormFactors, isEmpty);
+      expect(host.options.firstMileModes, isNot(contains(TransitMode.rental)));
+      await _quiet(tester);
+    });
+
+    testWidgets('says its vehicles once, not twice', (tester) async {
+      await _pumpSpine(tester);
+      await _open(tester, 'TO THE STATION');
+
+      await tester.tap(_pick('Rental'));
+      await tester.pump();
+
+      // Chips carry what the icons cannot say, so a lit icon's own three
+      // have no business appearing beside it as well.
+      for (final factor in kRentalIconFactors) {
+        expect(
+          _modeChip(rentalFormFactorLabels[factor]!),
+          findsNothing,
+          reason: '${factor.wireName} is reported twice',
+        );
+      }
+      await _quiet(tester);
+    });
+
+    testWidgets('one vehicle of its own is not enough to light it', (
+      tester,
+    ) async {
+      final host = await _pumpSpine(tester);
+      await _open(tester, 'TO THE STATION');
+
+      await tester.tap(_pick('More ways to travel'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Shared bike').hitTestable());
+      await tester.pump();
+
+      // Rentals are on, but not the set the icon stands for — so the icon
+      // stays dark and the bike says itself.
+      expect(host.options.firstMileModes, contains(TransitMode.rental));
+      expect(selected(tester), isFalse);
+      expect(_modeChip('Shared bike'), findsOneWidget);
+      await _quiet(tester);
+    });
   });
 
   testWidgets('the stage icon follows the last mode picked, left to right', (

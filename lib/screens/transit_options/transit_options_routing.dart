@@ -208,7 +208,7 @@ class TransitOptionsStreetLegsCard extends StatelessWidget {
                 maxBudget: prePostCap,
                 budgetChoices: _budgetChoices,
                 onModesChanged: (modes) =>
-                    onChanged(options.copyWith(firstMileModes: modes)),
+                    onChanged(options.withFirstMileModes(modes)),
                 onBudgetChanged: (budget) =>
                     onChanged(options.copyWith(maxFirstMileTime: budget)),
               ),
@@ -221,7 +221,7 @@ class TransitOptionsStreetLegsCard extends StatelessWidget {
                 maxBudget: prePostCap,
                 budgetChoices: _budgetChoices,
                 onModesChanged: (modes) =>
-                    onChanged(options.copyWith(lastMileModes: modes)),
+                    onChanged(options.withLastMileModes(modes)),
                 onBudgetChanged: (budget) =>
                     onChanged(options.copyWith(maxLastMileTime: budget)),
               ),

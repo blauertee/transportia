@@ -30,6 +30,18 @@ const Map<TransitMode, String> mileModeExtras = {
   TransitMode.flex: 'Flexible',
 };
 
+/// The vehicles the Rental icon stands for.
+///
+/// The icon sets these directly rather than switching rentals on and leaving
+/// the vehicles to a list nobody has opened: an icon that only enables other
+/// buttons says nothing about what it did, and rentals with no vehicle picked
+/// looked identical to rentals with one.
+///
+/// The same set the defaults editor gives a mile when Rental is ticked there,
+/// so Rental means one thing across both screens.
+const List<RentalFormFactor> kRentalIconFactors =
+    RoutingOptions.defaultRentalFormFactors;
+
 /// What each shared vehicle is called, for the rental filter.
 const Map<RentalFormFactor, String> rentalFormFactorLabels = {
   RentalFormFactor.bicycle: 'Shared bike',
@@ -127,7 +139,8 @@ class StreetLegSection extends StatelessWidget {
   /// clamped away.
   final Duration maxBudget;
 
-  /// Which shared vehicles a rental leg may use. Shared by both miles.
+  /// Which shared vehicles this mile's rental leg may use. Empty means this
+  /// mile has no rentals — see [_applyFormFactors].
   final List<RentalFormFactor> formFactors;
 
   final OptionTooltipController tooltips;
@@ -143,6 +156,10 @@ class StreetLegSection extends StatelessWidget {
 
   /// Adds or removes a mode, keeping the list in pick order.
   void _toggleMode(TransitMode mode) {
+    // Rental is not a mode of its own here: it is the vehicles it stands for,
+    // and the mode follows them.
+    if (mode == TransitMode.rental) return _toggleRentalIcon();
+
     final next = modes.contains(mode)
         ? [
             for (final m in modes)
@@ -157,18 +174,51 @@ class StreetLegSection extends StatelessWidget {
       if (m == mode || modes.contains(m)) m,
   ];
 
-  void _toggleFormFactor(RentalFormFactor factor) {
-    final next = formFactors.contains(factor)
+  /// The Rental icon is lit exactly when it has nothing left to add: it
+  /// stands for [kRentalIconFactors] and for nothing else, so a lone shared
+  /// bike leaves it dark and shows as a chip instead.
+  bool get _rentalIconSelected =>
+      kRentalIconFactors.every(formFactors.contains);
+
+  /// Ticks the icon's three vehicles, or unticks exactly those three.
+  ///
+  /// Anything picked from the list beyond them survives being turned off,
+  /// because it is already reported on its own as a chip.
+  void _toggleRentalIcon() => _applyFormFactors(
+    _rentalIconSelected
+        ? [
+            for (final f in formFactors)
+              if (!kRentalIconFactors.contains(f)) f,
+          ]
+        : [...formFactors, ...kRentalIconFactors],
+  );
+
+  void _toggleFormFactor(RentalFormFactor factor) => _applyFormFactors(
+    formFactors.contains(factor)
         ? [
             for (final f in formFactors)
               if (f != factor) f,
           ]
-        : [...formFactors, factor];
-    // Filtering shared vehicles only says anything once rentals are in play,
-    // so picking one brings them along.
-    final nextModes = next.isNotEmpty && !modes.contains(TransitMode.rental)
-        ? _withMode(TransitMode.rental)
-        : modes;
+        : [...formFactors, factor],
+  );
+
+  /// Applies a new set of vehicles, and moves the rental mode with it.
+  ///
+  /// Rentals are exactly the vehicles picked for them: choosing the first one
+  /// turns them on, dropping the last turns them off. That is what keeps the
+  /// icon honest — it cannot light up over a mile that has no vehicle to
+  /// rent, which is the state that used to look identical to a real pick.
+  void _applyFormFactors(Iterable<RentalFormFactor> factors) {
+    final next = [
+      for (final factor in rentalFormFactorLabels.keys)
+        if (factors.contains(factor)) factor,
+    ];
+    final nextModes = next.isEmpty
+        ? [
+            for (final m in modes)
+              if (m != TransitMode.rental) m,
+          ]
+        : _withMode(TransitMode.rental);
     onChanged((modes: nextModes, formFactors: next));
   }
 
@@ -217,7 +267,9 @@ class StreetLegSection extends StatelessWidget {
             child: IconPick(
               icon: entry.value.icon,
               label: entry.value.label,
-              selected: modes.contains(entry.key),
+              selected: entry.key == TransitMode.rental
+                  ? _rentalIconSelected
+                  : modes.contains(entry.key),
               tooltips: tooltips,
               onPressed: () => _toggleMode(entry.key),
             ),
@@ -240,11 +292,14 @@ class StreetLegSection extends StatelessWidget {
               label: mileModeExtras[mode]!,
               onRemove: () => _toggleMode(mode),
             ),
+        // Chips carry what the icons cannot say, so the ones the lit Rental
+        // icon already stands for are not repeated beside it.
         for (final factor in formFactors)
-          ModeChip(
-            label: rentalFormFactorLabels[factor] ?? 'Shared',
-            onRemove: () => _toggleFormFactor(factor),
-          ),
+          if (!(_rentalIconSelected && kRentalIconFactors.contains(factor)))
+            ModeChip(
+              label: rentalFormFactorLabels[factor] ?? 'Shared',
+              onRemove: () => _toggleFormFactor(factor),
+            ),
       ],
     );
   }
@@ -272,7 +327,7 @@ class StreetLegSection extends StatelessWidget {
         const SizedBox(height: 6),
         Text(
           formFactors.isEmpty
-              ? 'Any vehicle a rental provider offers.'
+              ? 'Pick a vehicle to travel part of the way by rental.'
               : 'Only the kinds picked here.',
           style: TextStyle(
             fontSize: 11.5,
