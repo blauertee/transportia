@@ -387,6 +387,25 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
     _onSuggestionSelected(picked);
   }
 
+  /// Puts the screen back to the stops you keep and the ones you use.
+  ///
+  /// Clearing used to empty the field and nothing else, so the departures and
+  /// the stop behind them stayed and the two lists this screen opens with
+  /// were unreachable until the app restarted.
+  void _clearStop() {
+    _searchFocus.unfocus();
+    setState(() {
+      _searchController.clear();
+      _selectedStop = null;
+      _stopTimes = null;
+      _nextPageCursor = null;
+      _previousPageCursor = null;
+      _isLoadingStopTimes = false;
+      _isLoadingMore = false;
+      _isLoadingPrevious = false;
+    });
+  }
+
   void _onSuggestionSelected(TransitousLocationSuggestion suggestion) {
     unawaited(_recordSavedPlace(suggestion));
     setState(() {
@@ -437,7 +456,10 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
         arriveBy: _timeSelection.isArriveBy,
       );
 
-      if (!mounted) return;
+      // The stop can have been cleared or swapped while this was in flight,
+      // and a late answer would put the departures back over a screen the
+      // rider has already left.
+      if (!mounted || _selectedStop?.id != stopId) return;
 
       setState(() {
         _stopTimes = deduplicateStopTimes(response.stopTimes);
@@ -448,7 +470,7 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
       });
       _maybeApplyInitialPreviousOffset();
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || _selectedStop?.id != stopId) return;
 
       setState(() {
         _isLoadingStopTimes = false;
@@ -751,9 +773,7 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
                                     ),
                                     if (_searchController.text.isNotEmpty)
                                       GestureDetector(
-                                        onTap: () {
-                                          _searchController.clear();
-                                        },
+                                        onTap: _clearStop,
                                         child: Padding(
                                           padding: const EdgeInsets.only(
                                             left: 8,

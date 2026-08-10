@@ -110,6 +110,21 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
     setState(() => _recents = places);
   }
 
+  /// True when this search can only answer with a timetabled stop.
+  ///
+  /// The geocoder is already told, but the two lists below the field were
+  /// not, so a timetable search offered addresses it could not open a
+  /// departure board for. Same predicate the timetable screen uses on its own
+  /// lists — [FavoritePlace.isStation] and the saved place's own type.
+  bool get _stopsOnly => widget.type?.toUpperCase() == 'STOP';
+
+  List<FavoritePlace> get _offerableFavourites =>
+      _stopsOnly ? _favourites.where((f) => f.isStation).toList() : _favourites;
+
+  List<SavedPlace> get _offerableRecents => _stopsOnly
+      ? _recents.where((p) => p.type.toUpperCase() == 'STOP').toList()
+      : _recents;
+
   String get _query => _controller.text.trim();
 
   void _onQueryChanged() {
@@ -354,6 +369,8 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
     final hasFullQuery = query.length >= 3;
 
     if (!hasFullQuery) {
+      final favourites = _offerableFavourites;
+      final recents = _offerableRecents;
       return ListView(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
         children: [
@@ -368,10 +385,14 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
           ],
           if (widget.showFavourites) ...[
             _sectionHeading('Favourites'),
-            if (_favourites.isEmpty)
-              _hint('Tap the heart on a place to keep it here.')
+            if (favourites.isEmpty)
+              _hint(
+                _stopsOnly
+                    ? 'None of your favourites is a stop.'
+                    : 'Tap the heart on a place to keep it here.',
+              )
             else
-              for (final favourite in _favourites)
+              for (final favourite in favourites)
                 _FavouriteRow(
                   favourite: favourite,
                   onTap: () => _pick(_favouriteToSuggestion(favourite)),
@@ -379,9 +400,9 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
                 ),
             const SizedBox(height: 20),
           ],
-          if (_recents.isNotEmpty) ...[
+          if (recents.isNotEmpty) ...[
             _sectionHeading('Recent'),
-            for (final place in _recents.take(8))
+            for (final place in recents.take(8))
               _ResultRow(
                 icon: _iconForType(place.type),
                 title: place.name,
@@ -389,7 +410,7 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
                 onTap: () => _pick(_savedToSuggestion(place)),
               ),
           ],
-          if (_favourites.isEmpty && _recents.isEmpty && !widget.showFavourites)
+          if (favourites.isEmpty && recents.isEmpty && !widget.showFavourites)
             _hint('Start typing to search for a place.'),
         ],
       );

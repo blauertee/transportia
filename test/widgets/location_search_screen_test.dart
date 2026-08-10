@@ -5,18 +5,21 @@ import 'package:shared_preferences_platform_interface/shared_preferences_async_p
 import 'package:transportia/models/my_location.dart';
 import 'package:transportia/screens/location_search_screen.dart';
 import 'package:transportia/services/favorites_service.dart';
+import 'package:transportia/models/saved_place.dart';
 import 'package:transportia/services/saved_places_service.dart';
 
 FavoritePlace _favourite({
   required String id,
   required String name,
   String? label,
+  String type = 'STOP',
   double lat = 52.5,
   double lon = 13.4,
 }) => FavoritePlace(
   id: id,
   name: name,
   label: label,
+  type: type,
   lat: lat,
   lon: lon,
   addedAt: DateTime.utc(2026, 1, 1),
@@ -28,7 +31,12 @@ Future<void> _keep(List<FavoritePlace> favourites) async {
   }
 }
 
-Future<void> _pump(WidgetTester tester, {bool showMyLocation = false}) async {
+Future<void> _pump(
+  WidgetTester tester, {
+  bool showMyLocation = false,
+  String? type,
+  SavedPlacesBucket bucket = SavedPlacesBucket.search,
+}) async {
   tester.view.physicalSize = const Size(420, 1000);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
@@ -51,7 +59,8 @@ Future<void> _pump(WidgetTester tester, {bool showMyLocation = false}) async {
         settings: settings,
         pageBuilder: (_, _, _) => LocationSearchScreen(
           title: 'Destination',
-          bucket: SavedPlacesBucket.search,
+          bucket: bucket,
+          type: type,
           showMyLocation: showMyLocation,
         ),
       ),
@@ -164,5 +173,77 @@ void main() {
     // A coordinate is not a stop, so it could not answer a timetable.
     await _pump(tester);
     expect(find.text(myLocationName), findsNothing);
+  });
+
+  group('a stop search offers only stops', () {
+    Future<void> keepBoth() async {
+      await _keep([
+        _favourite(id: 'a', name: 'Hauptbahnhof'),
+        _favourite(
+          id: 'b',
+          name: 'Chausseestraße 12',
+          type: 'ADDRESS',
+          lat: 52.53,
+          lon: 13.38,
+        ),
+      ]);
+      await SavedPlacesService.savePlaces(
+        bucket: SavedPlacesBucket.timetable,
+        places: [
+          SavedPlace(
+            name: 'Ostkreuz',
+            type: 'STOP',
+            lat: 52.5,
+            lon: 13.46,
+            importance: SavedPlacesService.initialImportance,
+          ),
+          SavedPlace(
+            name: 'Museumsinsel 2',
+            type: 'ADDRESS',
+            lat: 52.52,
+            lon: 13.4,
+            importance: SavedPlacesService.initialImportance,
+          ),
+        ],
+      );
+    }
+
+    testWidgets('a favourite that is not a stop is left out', (tester) async {
+      // Picking it could not answer a departure board, so offering it is a
+      // dead end.
+      await keepBoth();
+      await _pump(tester, type: 'STOP', bucket: SavedPlacesBucket.timetable);
+
+      expect(find.text('Hauptbahnhof'), findsOneWidget);
+      expect(find.text('Chausseestraße 12'), findsNothing);
+    });
+
+    testWidgets('a recent that is not a stop is left out', (tester) async {
+      await keepBoth();
+      await _pump(tester, type: 'STOP', bucket: SavedPlacesBucket.timetable);
+
+      expect(find.text('Ostkreuz'), findsOneWidget);
+      expect(find.text('Museumsinsel 2'), findsNothing);
+    });
+
+    testWidgets('a route search still offers everything', (tester) async {
+      // No type, so nothing is filtered — this is the picker the map screen
+      // opens, where an address is a perfectly good answer.
+      await _keep([
+        _favourite(id: 'b', name: 'Chausseestraße 12', type: 'ADDRESS'),
+      ]);
+      await _pump(tester);
+
+      expect(find.text('Chausseestraße 12'), findsOneWidget);
+    });
+
+    testWidgets('with no stop among the favourites it says so', (tester) async {
+      await _keep([
+        _favourite(id: 'b', name: 'Chausseestraße 12', type: 'ADDRESS'),
+      ]);
+      await _pump(tester, type: 'STOP', bucket: SavedPlacesBucket.timetable);
+
+      expect(find.text('None of your favourites is a stop.'), findsOne);
+    });
   });
 }
