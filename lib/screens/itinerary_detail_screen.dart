@@ -77,107 +77,261 @@ const TextStyle kSpineStopStyle = TextStyle(
   height: kSpineStopLineHeight / 15,
 );
 
-/// When a service is at a point on the line, and when it leaves again.
+/// One point on the line: what gets here, and what leaves.
 ///
-/// Where the two differ the service waited there, and both are worth printing.
-/// The **departure** is the one that carries the row: it is what you can still
-/// catch, so it takes the row's anchor and its weight, and the arrival hangs
-/// above it in grey. Where only one time is known, that one is the departure's
-/// place.
-class SpineTimes extends StatelessWidget {
-  const SpineTimes({
+/// Both columns that flank the spine — the times and the platforms — are built
+/// from the same point, so they agree on whether there is an arrival line at
+/// all. Without that agreement a row with an arrival *time* but no arrival
+/// *platform* would print its two columns one line out of step.
+class SpinePoint {
+  final _StopTime? arrival;
+  final _StopTime? departure;
+
+  const SpinePoint._(this.arrival, this.departure);
+
+  factory SpinePoint({
+    DateTime? arrival,
+    DateTime? departure,
+    DateTime? scheduledArrival,
+    DateTime? scheduledDeparture,
+    bool arrivalIsLive = false,
+    bool departureIsLive = false,
+  }) {
+    final gotHere = _StopTime.from(
+      arrival,
+      scheduledArrival,
+      isLive: arrivalIsLive,
+    );
+    final leaves = _StopTime.from(
+      departure,
+      scheduledDeparture,
+      isLive: departureIsLive,
+    );
+    // Arriving and leaving at the same moment is passing through, not waiting;
+    // printing the number twice would say nothing.
+    if (gotHere != null && leaves != null && gotHere.shown == leaves.shown) {
+      return SpinePoint._(null, leaves);
+    }
+    // A point with only an arrival is an end of the line: that time takes the
+    // anchor, because there is no departure to give it to.
+    if (leaves == null) return SpinePoint._(null, gotHere);
+    return SpinePoint._(gotHere, leaves);
+  }
+
+  /// True when something is printed above the anchor, and therefore when the
+  /// row has to reserve room for it.
+  bool get showsArrival => arrival != null;
+
+  bool get isEmpty => arrival == null && departure == null;
+
+  /// The delay worth naming under the station: the one you act on, which is
+  /// the departure's whenever there is one.
+  Duration? get delayToShow => departure?.delay ?? arrival?.delay;
+}
+
+/// Two lines that mirror each other down the row: what arrives, light and
+/// above the anchor, and what leaves, on it.
+///
+/// [reserveAbove] keeps the upper slot empty rather than collapsing it, so a
+/// column with nothing to say up there still lines up with one that has.
+class SpineStack extends StatelessWidget {
+  const SpineStack({
     super.key,
-    this.arrival,
-    this.departure,
-    this.scheduledArrival,
-    this.scheduledDeparture,
-    this.compact = false,
+    required this.anchor,
+    required this.lineHeight,
+    this.above,
+    this.reserveAbove = false,
   });
 
-  final DateTime? arrival;
-  final DateTime? departure;
-  final DateTime? scheduledArrival;
-  final DateTime? scheduledDeparture;
+  final Widget anchor;
+  final Widget? above;
+  final bool reserveAbove;
+  final double lineHeight;
 
-  /// Stacks the two times instead of running them across, for the narrow
-  /// column an intermediate stop gets.
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (above case final above?)
+          above
+        else if (reserveAbove)
+          SizedBox(height: lineHeight),
+        anchor,
+      ],
+    );
+  }
+}
+
+/// When a service gets to a point on the line, and when it leaves again.
+///
+/// Both are the *real* times wherever the operator reports them; the planned
+/// time is never printed beside them. Colour says which is which — see
+/// [spineTimeColor].
+class SpineTimes extends StatelessWidget {
+  const SpineTimes({super.key, required this.point, this.compact = false});
+
+  final SpinePoint point;
+
+  /// The tighter type an intermediate stop gets.
   final bool compact;
 
   @override
   Widget build(BuildContext context) {
-    final arrival = _StopTime.from(this.arrival, scheduledArrival);
-    final departure = _StopTime.from(this.departure, scheduledDeparture);
-
-    final showBoth =
-        arrival != null &&
-        departure != null &&
-        arrival.scheduled != departure.scheduled;
-
-    // The last entry is the one that leaves, whether or not an arrival came
-    // before it.
-    final times = showBoth
-        ? [arrival, departure]
-        : [if (departure != null) departure else if (arrival != null) arrival];
-    if (times.isEmpty) return const SizedBox.shrink();
-
+    if (point.isEmpty) return const SizedBox.shrink();
     final lineHeight = compact ? kSpineStopLineHeight : kSpineNameLineHeight;
 
-    // On a leg, everything above the departure is lifted out of the row so the
-    // departure — not the arrival — ends up level with the node and the stop
-    // name. Height rather than layout, because the row cannot afford an
-    // intrinsic pass; every style here sets an explicit height so this is
-    // exact.
-    //
-    // A stop between two ends of a leg is left alone. Lifting there would
-    // float its arrival up towards the station above, which is the one place
-    // the pair must not look like it belongs.
-    var above = 0.0;
-    if (!compact) {
-      for (final time in times.take(times.length - 1)) {
-        above += lineHeight;
-        if (time.delay != null) above += kSpineDelayLineHeight;
-      }
+    return SpineStack(
+      lineHeight: lineHeight,
+      above: point.arrival == null
+          ? null
+          : _time(point.arrival!, isArrival: true, lineHeight: lineHeight),
+      anchor: point.departure == null
+          ? SizedBox(height: lineHeight)
+          : _time(point.departure!, isArrival: false, lineHeight: lineHeight),
+    );
+  }
+
+  Widget _time(
+    _StopTime time, {
+    required bool isArrival,
+    required double lineHeight,
+  }) {
+    final size = compact ? 13.0 : 14.0;
+    return Text(
+      formatTime(time.shown),
+      // A time is one line. Half a clock reading over two would be worse than
+      // a tight fit, and it would put the columns out of step.
+      maxLines: 1,
+      softWrap: false,
+      style: TextStyle(
+        fontSize: size,
+        fontWeight: isArrival ? FontWeight.w500 : FontWeight.w700,
+        height: lineHeight / size,
+        color: spineTimeColor(
+          isLive: time.isLive,
+          delay: time.delay,
+          isArrival: isArrival,
+        ),
+      ),
+    );
+  }
+}
+
+/// How late the service is, under the name of the station it is late at.
+///
+/// Grey, always — never the red or green of the time above it. That time is
+/// already the real one, so a coloured "+5 min" reads as five minutes still to
+/// add to a number that has had them added. Grey makes it what it is: why the
+/// time moved, not a correction to apply to it.
+///
+/// One line, and the departure's whenever there is one: a station with an
+/// arrival delay, a departure delay and both of their times stacked against it
+/// is four numbers where a rider wanted one.
+Widget? buildSpineDelay(SpinePoint point, {bool compact = false}) {
+  final delay = point.delayToShow;
+  if (delay == null) return null;
+  final size = compact ? 11.5 : 12.5;
+  return Padding(
+    padding: const EdgeInsets.only(top: 1),
+    child: Text(
+      formatDelay(delay),
+      maxLines: 1,
+      softWrap: false,
+      style: TextStyle(
+        fontSize: size,
+        fontWeight: FontWeight.w600,
+        height: kSpineDelayLineHeight / size,
+        color: AppColors.black.withValues(alpha: 0.45),
+      ),
+    ),
+  );
+}
+
+/// The platforms, laid out to mirror [SpineTimes] line for line.
+///
+/// The one you arrive at sits above in grey, the one you leave from on the
+/// anchor in black — the same shape as the times beside them, so the eye can
+/// read across.
+class SpineTracks extends StatelessWidget {
+  const SpineTracks({
+    super.key,
+    this.arrival,
+    this.departure,
+    this.placeholderForDeparture = false,
+    required this.reserveAbove,
+    this.compact = false,
+  });
+
+  final String? arrival;
+  final String? departure;
+
+  /// Marks an absent departure platform on the modes that run to numbered
+  /// ones, where not knowing is itself worth saying.
+  final bool placeholderForDeparture;
+
+  final bool reserveAbove;
+  final bool compact;
+
+  static String? _clean(String? track) {
+    final trimmed = track?.trim();
+    return (trimmed == null || trimmed.isEmpty) ? null : trimmed;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final lineHeight = compact ? kSpineStopLineHeight : kSpineNameLineHeight;
+    final arrival = _clean(this.arrival);
+    final departure = _clean(this.departure);
+
+    if (arrival == null && departure == null && !placeholderForDeparture) {
+      return const SizedBox.shrink();
     }
 
-    return Transform.translate(
-      offset: Offset(0, -above),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final time in times) ...[
-            Text(
-              formatTime(time.scheduled),
-              // A time is one line. Wrapping it would break the arithmetic
-              // that puts the departure on the row's anchor, and half a clock
-              // reading over two lines is worse than a tight fit.
-              maxLines: 1,
-              softWrap: false,
-              style: TextStyle(
-                fontSize: compact ? 13 : 14,
-                fontWeight: time == times.last
-                    ? FontWeight.w700
-                    : FontWeight.w500,
-                height: lineHeight / (compact ? 13 : 14),
-                color: AppColors.black.withValues(
-                  alpha: time == times.last ? 0.9 : 0.45,
-                ),
-              ),
+    return SpineStack(
+      lineHeight: lineHeight,
+      reserveAbove: reserveAbove,
+      above: arrival == null
+          ? null
+          : _track(
+              arrival,
+              lineHeight: lineHeight,
+              alpha: 0.4,
+              weight: FontWeight.w500,
             ),
-            if (time.delay case final delay?)
-              Text(
-                formatDelay(delay),
-                maxLines: 1,
-                softWrap: false,
-                style: TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w700,
-                  height: kSpineDelayLineHeight / 11.5,
-                  color: delayColor(delay),
-                ),
-              ),
-          ],
-        ],
+      anchor: departure != null
+          ? _track(
+              departure,
+              lineHeight: lineHeight,
+              alpha: 0.8,
+              weight: FontWeight.w700,
+            )
+          : _track(
+              '—',
+              lineHeight: lineHeight,
+              alpha: 0.3,
+              weight: FontWeight.w500,
+            ),
+    );
+  }
+
+  Widget _track(
+    String track, {
+    required double lineHeight,
+    required double alpha,
+    required FontWeight weight,
+  }) {
+    final size = compact ? 12.0 : 13.0;
+    return Text(
+      track == '—' ? 'Track —' : 'Track $track',
+      maxLines: 1,
+      softWrap: false,
+      style: TextStyle(
+        fontSize: size,
+        fontWeight: weight,
+        height: lineHeight / size,
+        color: AppColors.black.withValues(alpha: alpha),
       ),
     );
   }
@@ -1026,6 +1180,8 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
   Widget build(BuildContext context) {
     final isStreet = isStreetLeg(widget.leg.mode);
     final color = _legColor(context);
+    final point = _point;
+    final previous = widget.previousLeg;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1040,12 +1196,24 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
           ),
           railColor: color,
           railDashed: isStreet,
-          // The leg owns the line from its own ring down to the next one.
-          railTopInset: JourneyMetrics.ring,
+          // The leg owns the line from its own ring down to the next one; the
+          // stretch above the ring belongs to whatever arrived here.
+          aboveAnchor: point.showsArrival ? kSpineNameLineHeight : 0,
+          railTopInset:
+              (point.showsArrival ? kSpineNameLineHeight : 0) +
+              JourneyMetrics.ring,
+          railAboveColor: previous == null
+              ? null
+              : legSpineColor(
+                  leg: previous,
+                  background: AppColors.white,
+                  accent: AppColors.accentOf(context),
+                ),
+          railAboveDashed: previous != null && isStreetLeg(previous.mode),
           firstLineHeight: kSpineNameLineHeight,
-          time: _buildDepartureTimes(),
-          meta: _buildMeta(context, isStreet: isStreet),
-          body: _buildBody(context, isStreet: isStreet),
+          time: SpineTimes(point: point),
+          meta: _buildMeta(context, isStreet: isStreet, point: point),
+          body: _buildBody(context, isStreet: isStreet, point: point),
           // A street leg has no stops to unfold, so its tap is free for the
           // map; a transit leg's tap unfolds the stops it calls at.
           onTap: isStreet
@@ -1068,18 +1236,22 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
   /// A node is shared between the leg arriving at it and the leg leaving it.
   /// Where the two differ you waited there, and both are worth printing —
   /// dropping either would lose a time the old two-row card showed.
-  Widget _buildDepartureTimes() {
-    final previous = widget.previousLeg;
-    return SpineTimes(
-      arrival: previous?.endTime,
-      scheduledArrival: previous?.scheduledEndTime,
-      departure: widget.leg.startTime,
-      scheduledDeparture: widget.leg.scheduledStartTime,
-    );
-  }
+  SpinePoint get _point => SpinePoint(
+    arrival: widget.previousLeg?.endTime,
+    scheduledArrival: widget.previousLeg?.scheduledEndTime,
+    arrivalIsLive: widget.previousLeg?.realTime ?? false,
+    departure: widget.leg.startTime,
+    scheduledDeparture: widget.leg.scheduledStartTime,
+    departureIsLive: widget.leg.realTime,
+  );
 
-  /// The right-hand column: the platform to stand on, or the way to the map.
-  Widget? _buildMeta(BuildContext context, {required bool isStreet}) {
+  /// The right-hand column: the platforms, laid out to mirror the times, or
+  /// the way to the map on a leg that has no platform to give.
+  Widget? _buildMeta(
+    BuildContext context, {
+    required bool isStreet,
+    required SpinePoint point,
+  }) {
     if (isStreet) {
       // The whole row has always opened the map; nothing said so.
       if (widget.onShowOnMap == null) return null;
@@ -1093,10 +1265,22 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
         ),
       );
     }
-    return _buildDepartureTrack();
+    return SpineTracks(
+      arrival: widget.previousLeg?.toTrack,
+      departure: widget.leg.fromTrack,
+      // Only for the modes that run to numbered platforms: an absent one
+      // there is a gap in the data rather than a mode that simply has none,
+      // and a permanent dash on every tram would say nothing.
+      placeholderForDeparture: _expectsATrack,
+      reserveAbove: point.showsArrival,
+    );
   }
 
-  Widget _buildBody(BuildContext context, {required bool isStreet}) {
+  Widget _buildBody(
+    BuildContext context, {
+    required bool isStreet,
+    required SpinePoint point,
+  }) {
     final alerts = widget.leg.alerts;
 
     return Column(
@@ -1116,6 +1300,7 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
             maxLines: 2,
           ),
         ),
+        if (buildSpineDelay(point) case final delay?) delay,
         const SizedBox(height: 6),
         Row(
           children: [
@@ -1229,28 +1414,6 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
     return null;
   }
 
-  /// The platform to stand on, or a mark that it is not known.
-  ///
-  /// Shown whenever the feed gives one, whatever the mode — a bus stop can
-  /// have a bay number and it is just as useful. The placeholder is only for
-  /// rail and metro, where an absent platform is a gap in the data rather
-  /// than a mode that simply has none; a permanent grey dash on every tram
-  /// would say nothing.
-  Widget? _buildDepartureTrack() {
-    final track = widget.leg.fromTrack?.trim();
-    final hasTrack = track != null && track.isNotEmpty;
-    if (!hasTrack && !_expectsATrack) return null;
-
-    return Text(
-      hasTrack ? 'Track $track' : 'Track —',
-      style: TextStyle(
-        fontSize: 13,
-        fontWeight: hasTrack ? FontWeight.w600 : FontWeight.w500,
-        color: AppColors.black.withValues(alpha: hasTrack ? 0.75 : 0.35),
-      ),
-    );
-  }
-
   /// True for the modes that run to numbered platforms.
   bool get _expectsATrack {
     final mode = TransitMode.fromWire(widget.leg.mode);
@@ -1285,32 +1448,43 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
 
     return [
       for (final stop in stops)
-        SpineRow(
-          node: SpineDot(color: color),
-          nodeCenter: kSpineMinorNodeCenter,
-          railColor: color,
-          firstLineHeight: kSpineStopLineHeight,
-          time: SpineTimes(
-            arrival: stop.arrival,
-            scheduledArrival: stop.scheduledArrival,
-            departure: stop.departure,
-            scheduledDeparture: stop.scheduledDeparture,
-            compact: true,
+        if (SpinePoint(
+              arrival: stop.arrival,
+              scheduledArrival: stop.scheduledArrival,
+              departure: stop.departure,
+              scheduledDeparture: stop.scheduledDeparture,
+              arrivalIsLive: widget.leg.realTime,
+              departureIsLive: widget.leg.realTime,
+            )
+            case final point)
+          SpineRow(
+            node: SpineDot(color: color),
+            nodeCenter: kSpineMinorNodeCenter,
+            railColor: color,
+            // A stop waited at reserves room for its arrival the same way a
+            // leg's node does; the line through that room is this leg's, so
+            // no separate colour is needed above it.
+            aboveAnchor: point.showsArrival ? kSpineStopLineHeight : 0,
+            firstLineHeight: kSpineStopLineHeight,
+            time: SpineTimes(point: point, compact: true),
+            meta: SpineTracks(
+              departure: stop.track,
+              reserveAbove: point.showsArrival,
+              compact: true,
+            ),
+            body: _buildStopBody(stop, point),
+            onTap: stop.stopId == null
+                ? null
+                : () => widget.openStopSheet(
+                    stopId: stop.stopId,
+                    stopName: stop.name,
+                    referenceTime: stop.time ?? widget.leg.startTime,
+                  ),
           ),
-          meta: _buildStopTrack(stop),
-          body: _buildStopBody(stop),
-          onTap: stop.stopId == null
-              ? null
-              : () => widget.openStopSheet(
-                  stopId: stop.stopId,
-                  stopName: stop.name,
-                  referenceTime: stop.time ?? widget.leg.startTime,
-                ),
-        ),
     ];
   }
 
-  Widget _buildStopBody(_TimelineStop stop) {
+  Widget _buildStopBody(_TimelineStop stop, SpinePoint point) {
     return Padding(
       // Roomy enough that a stop's arrival and departure read as belonging to
       // the name above them rather than to the stop below.
@@ -1324,6 +1498,7 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
             overflow: TextOverflow.ellipsis,
             maxLines: 2,
           ),
+          if (buildSpineDelay(point, compact: true) case final delay?) delay,
           if (stop.cancelled) ...[
             const SizedBox(height: 2),
             Text(
@@ -1336,21 +1511,6 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
             ),
           ],
         ],
-      ),
-    );
-  }
-
-  /// No placeholder here: a dozen grey dashes down a timeline would be noise,
-  /// and the node above already answers whether the platform you stand on is
-  /// known.
-  Widget? _buildStopTrack(_TimelineStop stop) {
-    final track = stop.track?.trim();
-    if (track == null || track.isEmpty) return null;
-    return Text(
-      'Track $track',
-      style: TextStyle(
-        fontSize: 12,
-        color: AppColors.black.withValues(alpha: 0.5),
       ),
     );
   }
@@ -1573,6 +1733,15 @@ class TransferLegCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final point = SpinePoint(
+      arrival: previousLeg?.endTime,
+      scheduledArrival: previousLeg?.scheduledEndTime,
+      arrivalIsLive: previousLeg?.realTime ?? false,
+      departure: leg.startTime,
+      scheduledDeparture: leg.scheduledStartTime,
+      departureIsLive: leg.realTime,
+    );
+
     return SpineRow(
       node: const SpineNode(
         icon: LucideIcons.arrowLeftRight,
@@ -1581,14 +1750,19 @@ class TransferLegCard extends StatelessWidget {
       ),
       railColor: kStreetLegColor,
       railDashed: true,
-      railTopInset: JourneyMetrics.ring,
+      aboveAnchor: point.showsArrival ? kSpineNameLineHeight : 0,
+      railTopInset:
+          (point.showsArrival ? kSpineNameLineHeight : 0) + JourneyMetrics.ring,
+      railAboveColor: previousLeg == null
+          ? null
+          : legSpineColor(
+              leg: previousLeg!,
+              background: AppColors.white,
+              accent: AppColors.accentOf(context),
+            ),
+      railAboveDashed: previousLeg != null && isStreetLeg(previousLeg!.mode),
       firstLineHeight: kSpineNameLineHeight,
-      time: SpineTimes(
-        arrival: previousLeg?.endTime,
-        scheduledArrival: previousLeg?.scheduledEndTime,
-        departure: leg.startTime,
-        scheduledDeparture: leg.scheduledStartTime,
-      ),
+      time: SpineTimes(point: point),
       meta: onShowOnMap == null
           ? null
           : Semantics(
@@ -1620,6 +1794,7 @@ class TransferLegCard extends StatelessWidget {
                 maxLines: 2,
               ),
             ),
+            if (buildSpineDelay(point) case final delay?) delay,
             const SizedBox(height: 6),
             Text(
               'Change · ${formatDuration(leg.duration)}',
@@ -1699,11 +1874,16 @@ class FinishLegCard extends StatelessWidget {
         semanticLabel: 'Journey end',
       ),
       firstLineHeight: kSpineNameLineHeight,
+      // Nothing departs from the end of the line, so its arrival takes the
+      // anchor rather than hanging above one.
       time: SpineTimes(
-        arrival: arrivalTime,
-        scheduledArrival: leg.scheduledEndTime,
+        point: SpinePoint(
+          arrival: arrivalTime,
+          scheduledArrival: leg.scheduledEndTime,
+          arrivalIsLive: leg.realTime,
+        ),
       ),
-      meta: _buildTrack(),
+      meta: SpineTracks(departure: leg.toTrack, reserveAbove: false),
       onTap: () => openStopSheet(
         stopId: leg.toStopId,
         stopName: leg.toName,
@@ -1730,19 +1910,6 @@ class FinishLegCard extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget? _buildTrack() {
-    final track = leg.toTrack?.trim();
-    if (track == null || track.isEmpty) return null;
-    return Text(
-      'Track $track',
-      style: TextStyle(
-        fontSize: 13,
-        fontWeight: FontWeight.w600,
-        color: AppColors.black.withValues(alpha: 0.75),
       ),
     );
   }
@@ -1780,19 +1947,43 @@ class _TimelineStop {
 }
 
 /// One printable time: what the timetable promised, and how far off it is.
+/// One printable moment on the spine.
+///
+/// [shown] is what the rider reads: the real time when the operator is
+/// reporting one, the timetable's otherwise. The planned time is never
+/// printed alongside it — a rider wants the time the train is at the
+/// platform, not two numbers and a subtraction.
 class _StopTime {
-  final DateTime scheduled;
+  final DateTime shown;
   final Duration? delay;
 
-  const _StopTime(this.scheduled, this.delay);
+  /// True when the operator is actually reporting this leg, so [shown] is an
+  /// observation rather than a promise. Drives the colour.
+  ///
+  /// It comes from the leg's own `realTime` flag rather than from a time
+  /// merely existing — the planner always fills a start and an end in, so
+  /// "we have a number" says nothing about where the number came from.
+  final bool isLive;
+
+  const _StopTime({
+    required this.shown,
+    required this.delay,
+    required this.isLive,
+  });
 
   /// Null when the feed gave neither a real-time nor a scheduled value.
-  ///
-  /// A stop with only a real-time value still prints — that time is simply
-  /// both the promise and the fact, so there is no delay to show against it.
-  static _StopTime? from(DateTime? actual, DateTime? scheduled) {
-    final base = scheduled ?? actual;
-    if (base == null) return null;
-    return _StopTime(base, actual == null ? null : computeDelay(base, actual));
+  static _StopTime? from(
+    DateTime? actual,
+    DateTime? scheduled, {
+    required bool isLive,
+  }) {
+    if (actual == null && scheduled == null) return null;
+    // Real-time wins outright. Where only one exists it is both the promise
+    // and the fact, so there is nothing to be late against.
+    final shown = actual ?? scheduled!;
+    final delay = (actual != null && scheduled != null)
+        ? computeDelay(scheduled, actual)
+        : null;
+    return _StopTime(shown: shown, delay: delay, isLive: isLive);
   }
 }

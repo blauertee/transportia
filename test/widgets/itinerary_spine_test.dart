@@ -7,6 +7,7 @@ import 'package:transportia/models/itinerary.dart';
 import 'package:transportia/providers/theme_provider.dart';
 import 'package:transportia/screens/itinerary_detail_screen.dart';
 import 'package:transportia/theme/journey_metrics.dart';
+import 'package:transportia/utils/journey_colors.dart';
 import 'package:transportia/widgets/custom_card.dart';
 import 'package:transportia/widgets/journey/spine_node.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -155,11 +156,17 @@ void main() {
       expect(find.text('Track 7'), findsOneWidget);
     });
 
-    testWidgets('the departure time and its delay', (tester) async {
+    testWidgets('the real departure time, and how late it is', (tester) async {
+      // The timetable said :38; the train is leaving at :40 and that is the
+      // number a rider needs. The delay explains it, under the station name.
       await _pumpRide(tester);
       expect(
-        find.text(formatTime(_t0.add(const Duration(minutes: 8)))),
+        find.text(formatTime(_t0.add(const Duration(minutes: 10)))),
         findsOneWidget,
+      );
+      expect(
+        find.text(formatTime(_t0.add(const Duration(minutes: 8)))),
+        findsNothing,
       );
       expect(find.text('+2m'), findsOneWidget);
     });
@@ -210,11 +217,11 @@ void main() {
 
       expect(find.text('Ostkreuz'), findsOneWidget);
       expect(
-        find.text(formatTime(_t0.add(const Duration(minutes: 25)))),
+        find.text(formatTime(_t0.add(const Duration(minutes: 27)))),
         findsOneWidget,
       );
       expect(
-        find.text(formatTime(_t0.add(const Duration(minutes: 28)))),
+        find.text(formatTime(_t0.add(const Duration(minutes: 30)))),
         findsOneWidget,
       );
       expect(find.text('Track 9'), findsOneWidget);
@@ -245,7 +252,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.text(formatTime(_t0.add(const Duration(minutes: 8)))),
+      find.text(formatTime(_t0.add(const Duration(minutes: 10)))),
       findsOneWidget,
     );
   });
@@ -253,9 +260,15 @@ void main() {
   testWidgets('a node reached and left at the same moment prints one time', (
     tester,
   ) async {
+    // The change gets in at :38 and the ride leaves at :40, so the two are
+    // still distinct — what must not happen is one number printed twice.
     await _pumpRide(tester, previous: _change());
     expect(
       find.text(formatTime(_t0.add(const Duration(minutes: 8)))),
+      findsOneWidget,
+    );
+    expect(
+      find.text(formatTime(_t0.add(const Duration(minutes: 10)))),
       findsOneWidget,
     );
   });
@@ -370,7 +383,7 @@ void main() {
         find.text(formatTime(_t0.add(const Duration(minutes: 4)))),
       );
       final departure = tester.getRect(
-        find.text(formatTime(_t0.add(const Duration(minutes: 8)))),
+        find.text(formatTime(_t0.add(const Duration(minutes: 10)))),
       );
       final ring = tester.getRect(find.byType(SpineNode));
 
@@ -379,25 +392,63 @@ void main() {
       expect(arrival.bottom, lessThanOrEqualTo(departure.top));
     });
 
-    testWidgets('the departure is the darker of the two', (tester) async {
+    testWidgets('lateness and liveness are in the colour', (tester) async {
+      // A reported service arriving on the minute, into a reported one
+      // leaving two minutes late.
       final arrivesEarly = Leg.fromJson({
-        'mode': 'WALK',
+        'mode': 'BUS',
         'startTime': _at(const Duration(minutes: 1)),
         'endTime': _at(const Duration(minutes: 4)),
         'scheduledEndTime': _at(const Duration(minutes: 4)),
+        'realTime': true,
         'duration': 180,
         'from': {'name': 'Naturkundemuseum', 'lat': 52.53, 'lon': 13.38},
         'to': {'name': 'Berlin Hauptbahnhof', 'lat': 52.525, 'lon': 13.369},
       });
       await _pumpRide(tester, previous: arrivesEarly);
 
-      double alphaOf(String time) =>
-          tester.widget<Text>(find.text(time)).style!.color!.a;
+      Color colourOf(String time) =>
+          tester.widget<Text>(find.text(time)).style!.color!;
 
+      // The ride is two minutes late, so its departure is the strong red;
+      // the walk got in on the minute, so its arrival is the light green.
       expect(
-        alphaOf(formatTime(_t0.add(const Duration(minutes: 8)))),
-        greaterThan(alphaOf(formatTime(_t0.add(const Duration(minutes: 4))))),
+        colourOf(formatTime(_t0.add(const Duration(minutes: 10)))),
+        kLateDeparture,
       );
+      expect(
+        colourOf(formatTime(_t0.add(const Duration(minutes: 4)))),
+        kOnTimeArrival,
+      );
+    });
+
+    testWidgets('a leg nobody is reporting on stays black', (tester) async {
+      // Green has to mean "the operator is saying this". A purely planned
+      // time must look no different from how it always did.
+      await _pump(
+        tester,
+        LegDetailsWidget(
+          leg: Leg.fromJson({
+            'mode': 'BUS',
+            'startTime': _at(const Duration(minutes: 5)),
+            'endTime': _at(const Duration(minutes: 20)),
+            'duration': 900,
+            'displayName': 'M4',
+            'from': {'name': 'Alexanderplatz', 'lat': 52.5, 'lon': 13.4},
+            'to': {'name': 'Rathaus', 'lat': 52.5, 'lon': 13.4},
+          }),
+          openStopSheet: _noop,
+        ),
+      );
+
+      final colour = tester
+          .widget<Text>(
+            find.text(formatTime(_t0.add(const Duration(minutes: 5)))),
+          )
+          .style!
+          .color!;
+      expect(colour, isNot(kOnTimeDeparture));
+      expect(colour, isNot(kLateDeparture));
     });
 
     testWidgets('a stop keeps its own times, and clears the next stop', (
@@ -447,13 +498,11 @@ void main() {
         find.text(formatTime(_t0.add(const Duration(minutes: 22)))),
       );
 
-      // A stop's times hang off its own name: the arrival level with it, the
-      // departure just under. A leg's node lifts its arrival clear so the
-      // departure can hold the anchor — doing that here would float the
-      // arrival up towards the station above, which is the one place the pair
-      // must not look like it belongs.
-      expect(arrival.center.dy, closeTo(first.center.dy, 2.0));
-      expect(departure.top, greaterThanOrEqualTo(arrival.bottom - 1));
+      // Every point on the spine reads the same way now: the departure is
+      // level with the station name, the arrival hangs above it, and the
+      // spacing to the next station is what says which one they belong to.
+      expect(departure.center.dy, closeTo(first.center.dy, 2.0));
+      expect(arrival.bottom, lessThanOrEqualTo(departure.top + 1));
 
       // And the next station is far enough off that the pair reads as this
       // one's rather than as floating between the two.
@@ -512,5 +561,116 @@ void main() {
       expect(header.width, closeTo(leg.width, 0.5));
       expect(header.right, closeTo(420 - JourneyMetrics.screenPadding, 0.5));
     });
+  });
+
+  testWidgets('nothing a row prints lands on the row above it', (tester) async {
+    // The bug this rework started from: the arrival was raised with a paint
+    // transform, which moves pixels without reserving layout, so on a stop
+    // with a delay it landed on top of the times of the station before.
+    //
+    // A guard rather than a proof. What actually cured that case was the
+    // delay leaving the time column, which shrank the lift to one line;
+    // reserving the space in layout is what stops it coming back whatever
+    // else grows. This catches the class of fault, not the instance — see
+    // the delay tests for the instance.
+    await _pump(
+      tester,
+      Column(
+        children: [
+          LegDetailsWidget(
+            leg: _ride(),
+            previousLeg: _change(),
+            openStopSheet: _noop,
+          ),
+          TransferLegCard(
+            leg: _change(),
+            previousLeg: _ride(),
+            openStopSheet: _noop,
+          ),
+        ],
+      ),
+    );
+    await tester.tap(find.text('Show stops'));
+    await tester.pumpAndSettle();
+
+    final texts = find.byType(Text).evaluate().toList();
+    final boxes = <String, Rect>{};
+    for (final element in texts) {
+      final widget = element.widget as Text;
+      final label = widget.data;
+      if (label == null || label.isEmpty) continue;
+      final rect = tester.getRect(find.byWidget(widget));
+      if (rect.isEmpty) continue;
+      boxes['\$label@\${rect.top}'] = rect;
+    }
+
+    final entries = boxes.entries.toList();
+    for (var i = 0; i < entries.length; i++) {
+      for (var j = i + 1; j < entries.length; j++) {
+        final a = entries[i].value;
+        final b = entries[j].value;
+        final overlap = a.intersect(b);
+        expect(
+          overlap.width <= 0 || overlap.height <= 0,
+          isTrue,
+          reason: '\${entries[i].key} overlaps \${entries[j].key}',
+        );
+      }
+    }
+  });
+
+  group('the platform column mirrors the times', () {
+    testWidgets('the arrival platform shows, above the departure one', (
+      tester,
+    ) async {
+      // Only the departure's used to be printed; the change arrives at
+      // Track 7 and the ride leaves from it, so both belong on the node.
+      await _pumpRide(tester, previous: _change());
+
+      expect(find.text('Track 7'), findsNWidgets(2));
+      final rects = find
+          .text('Track 7')
+          .evaluate()
+          .map((e) => tester.getRect(find.byWidget(e.widget)))
+          .toList();
+      rects.sort((a, b) => a.top.compareTo(b.top));
+      expect(rects.first.bottom, lessThanOrEqualTo(rects.last.top + 1));
+    });
+
+    testWidgets('the platforms line up with the times beside them', (
+      tester,
+    ) async {
+      await _pumpRide(tester, previous: _change());
+
+      final arrivalTime = tester.getRect(
+        find.text(formatTime(_t0.add(const Duration(minutes: 8)))),
+      );
+      final departureTime = tester.getRect(
+        find.text(formatTime(_t0.add(const Duration(minutes: 10)))),
+      );
+      final tracks =
+          find
+              .text('Track 7')
+              .evaluate()
+              .map((e) => tester.getRect(find.byWidget(e.widget)))
+              .toList()
+            ..sort((a, b) => a.top.compareTo(b.top));
+
+      expect(tracks.first.center.dy, closeTo(arrivalTime.center.dy, 2.0));
+      expect(tracks.last.center.dy, closeTo(departureTime.center.dy, 2.0));
+    });
+  });
+
+  testWidgets('the delay is grey, not the colour of its time', (tester) async {
+    // The time above it is already the real one. A red "+2m" reads as two
+    // minutes still to add to a number that has had them added.
+    await _pumpRide(tester);
+
+    final delay = tester.widget<Text>(find.text('+2m')).style!.color!;
+    expect(delay, isNot(kLateDeparture));
+    expect(delay, isNot(kLateArrival));
+    // Grey: no hue of its own.
+    expect(delay.r, closeTo(delay.g, 0.01));
+    expect(delay.g, closeTo(delay.b, 0.01));
   });
 }

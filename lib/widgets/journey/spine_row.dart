@@ -31,6 +31,9 @@ class SpineRow extends StatelessWidget {
     this.railDashed = false,
     this.railTopInset = 0,
     this.railBottomInset = 0,
+    this.aboveAnchor = 0,
+    this.railAboveColor,
+    this.railAboveDashed = false,
     this.firstLineHeight = 20,
     this.padding = const EdgeInsets.symmetric(
       horizontal: JourneyMetrics.screenPadding,
@@ -60,6 +63,22 @@ class SpineRow extends StatelessWidget {
   final double railTopInset;
   final double railBottomInset;
 
+  /// Room kept above the anchor line for what *arrives* here.
+  ///
+  /// The anchor is where the node, the station name and the departure all sit.
+  /// An arrival belongs above them, and reserving its height in layout — not
+  /// lifting it at paint time — is what stops it landing on top of the row
+  /// before. Rows grow to hold it, so nothing can collide.
+  final double aboveAnchor;
+
+  /// The line arriving into this row's node, drawn across [aboveAnchor].
+  ///
+  /// That stretch belongs to the leg that got here, not the one leaving, so
+  /// it takes the previous leg's colour. Without it the spine breaks at every
+  /// node by exactly [aboveAnchor].
+  final Color? railAboveColor;
+  final bool railAboveDashed;
+
   /// Height of the first line of [body], used to centre it on [nodeCenter].
   ///
   /// Passed in rather than measured: laying the columns out against the text's
@@ -83,14 +102,19 @@ class SpineRow extends StatelessWidget {
     final railColor = this.railColor;
 
     final row = Stack(
-      // The times column lifts an arrival above the row's top edge so the
-      // departure can hold the anchor; hard-edge clipping would cut it off.
-      clipBehavior: Clip.none,
       children: [
         // Behind the content and stretched to it. Positioned rather than a
         // stretched Row child, because that would need an IntrinsicHeight and
         // the height of an expanding leg is mid-animation exactly when it
         // would be asked for.
+        if (railAboveColor case final aboveColor?)
+          Positioned(
+            left: padding.left + timeColumn,
+            width: JourneyMetrics.gutter,
+            top: 0,
+            height: aboveAnchor,
+            child: SpineRail(color: aboveColor, dashed: railAboveDashed),
+          ),
         if (railColor != null)
           Positioned(
             left: padding.left + timeColumn,
@@ -122,14 +146,17 @@ class SpineRow extends StatelessWidget {
                 ),
               SizedBox(
                 width: JourneyMetrics.gutter,
-                height: nodeCenter * 2,
-                child: Center(child: node),
+                height: aboveAnchor + nodeCenter * 2,
+                child: Padding(
+                  padding: EdgeInsets.only(top: aboveAnchor),
+                  child: Center(child: node),
+                ),
               ),
               Expanded(
                 child: Padding(
                   padding: EdgeInsets.only(
                     left: JourneyMetrics.gap,
-                    top: textTop,
+                    top: textTop + aboveAnchor,
                   ),
                   child: body,
                 ),

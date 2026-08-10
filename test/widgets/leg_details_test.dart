@@ -217,16 +217,18 @@ void main() {
     );
     await _expand(tester);
 
+    // The real times, not the timetable's: two minutes late in and two
+    // minutes late out again.
     expect(
-      find.text(formatTime(_departure.add(const Duration(minutes: 10)))),
+      find.text(formatTime(_departure.add(const Duration(minutes: 12)))),
       findsOneWidget,
     );
     expect(
-      find.text(formatTime(_departure.add(const Duration(minutes: 13)))),
+      find.text(formatTime(_departure.add(const Duration(minutes: 15)))),
       findsOneWidget,
     );
-    // One delay against each, not one shared between them.
-    expect(find.text('+2m'), findsNWidgets(2));
+    // One delay for the station, under its name — not one against each time.
+    expect(find.text('+2m'), findsOneWidget);
   });
 
   testWidgets('a stop the service only calls at shows one time', (

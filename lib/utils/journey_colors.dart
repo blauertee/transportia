@@ -11,6 +11,38 @@ import 'color_utils.dart';
 /// white and on the app's near-black alike.
 const Color kStreetLegColor = Color(0xFF8A9299);
 
+/// A time nobody is reporting on: the plan, and only the plan.
+const Color _kPlannedDeparture = Color(0xE6000000);
+const Color _kPlannedArrival = Color(0x73000000);
+
+/// Running late, and running to time or early — the strong pair for a
+/// departure, the light pair for an arrival.
+const Color kLateDeparture = Color(0xFFD32F2F);
+const Color kLateArrival = Color(0xFFE57373);
+const Color kOnTimeDeparture = Color(0xFF2E7D32);
+const Color kOnTimeArrival = Color(0xFF81C784);
+
+/// What a time on the spine is printed in.
+///
+/// The colour says who is speaking, not just whether the service is late.
+/// Green means the operator is reporting this time; black means nobody is and
+/// the number is the timetable's. Without that difference a green clock would
+/// be indistinguishable from having no information at all, which is the more
+/// useful of the two things to know.
+///
+/// The delay itself is never coloured — see the note where it is drawn.
+Color spineTimeColor({
+  required bool isLive,
+  required Duration? delay,
+  required bool isArrival,
+}) {
+  if (!isLive) return isArrival ? _kPlannedArrival : _kPlannedDeparture;
+  // A delay under the threshold comes back null, which is "to the minute".
+  final late = delay != null && !delay.isNegative;
+  if (late) return isArrival ? kLateArrival : kLateDeparture;
+  return isArrival ? kOnTimeArrival : kOnTimeDeparture;
+}
+
 /// Contrast ratio between two opaque colours, per WCAG.
 double contrastRatio(Color a, Color b) {
   final la = a.computeLuminance();
