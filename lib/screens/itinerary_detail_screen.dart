@@ -10,6 +10,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:timelines_plus/timelines_plus.dart';
 
 import '../models/itinerary.dart';
+import '../models/transit_mode_group.dart';
 import '../models/saved_trip.dart';
 import '../models/time_selection.dart';
 import '../providers/theme_provider.dart';
@@ -876,25 +877,37 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
                 const SizedBox(width: 8),
                 Expanded(child: _buildTitleWidget()),
                 const SizedBox(width: 8),
-                Row(
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (widget.leg.alerts.isNotEmpty)
-                      const Padding(
-                        padding: EdgeInsets.only(right: 4),
-                        child: Icon(
-                          LucideIcons.triangleAlert,
-                          size: 16,
-                          color: Color(0xFFFF8A00),
+                    // Above the duration, because it is the one thing on this
+                    // card you have to act on before the leg starts.
+                    if (_buildDepartureTrack() case final track?) ...[
+                      track,
+                      const SizedBox(height: 2),
+                    ],
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (widget.leg.alerts.isNotEmpty)
+                          const Padding(
+                            padding: EdgeInsets.only(right: 4),
+                            child: Icon(
+                              LucideIcons.triangleAlert,
+                              size: 16,
+                              color: Color(0xFFFF8A00),
+                            ),
+                          ),
+                        Text(
+                          formatDuration(widget.leg.duration),
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.black,
+                          ),
                         ),
-                      ),
-                    Text(
-                      formatDuration(widget.leg.duration),
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.black,
-                      ),
+                      ],
                     ),
                   ],
                 ),
@@ -910,15 +923,17 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
                 ],
               ],
             ),
-            const SizedBox(height: 8),
-            Text(
-              _buildModeText(),
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: AppColors.black,
+            if (_buildSubtitle() case final subtitle?) ...[
+              const SizedBox(height: 8),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.black,
+                ),
               ),
-            ),
+            ],
 
             if (!_isExpanded) ...[
               const SizedBox(height: 8),
@@ -996,6 +1011,49 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
     );
   }
 
+  /// The line under the title.
+  ///
+  /// Collapsed, a transit leg gives only where it is going: which class of
+  /// train it is rarely changes what you do, and the destination is what you
+  /// check you are on the right one by. The class joins it once the card is
+  /// open. Null drops the line rather than leaving an empty band.
+  String? _buildSubtitle() {
+    if (widget.leg.mode == 'WALK' || _isExpanded) return _buildModeText();
+    final headsign = widget.leg.headsign?.trim();
+    return (headsign == null || headsign.isEmpty) ? null : headsign;
+  }
+
+  /// The platform to stand on, or a mark that it is not known.
+  ///
+  /// Shown whenever the feed gives one, whatever the mode — a bus stop can
+  /// have a bay number and it is just as useful. The placeholder is only for
+  /// rail and metro, where an absent platform is a gap in the data rather
+  /// than a mode that simply has none; a permanent grey dash on every tram
+  /// would say nothing.
+  Widget? _buildDepartureTrack() {
+    final track = widget.leg.fromTrack?.trim();
+    final hasTrack = track != null && track.isNotEmpty;
+    if (!hasTrack && !_expectsATrack) return null;
+
+    return Text(
+      hasTrack ? 'Track $track' : 'Track —',
+      style: TextStyle(
+        fontSize: 13,
+        fontWeight: hasTrack ? FontWeight.w600 : FontWeight.w500,
+        color: AppColors.black.withValues(alpha: hasTrack ? 0.75 : 0.35),
+      ),
+    );
+  }
+
+  /// True for the modes that run to numbered platforms.
+  bool get _expectsATrack {
+    final mode = TransitMode.fromWire(widget.leg.mode);
+    if (mode == null) return false;
+    return TransitModeGroup.rail.modes.contains(mode) ||
+        TransitModeGroup.metro.modes.contains(mode) ||
+        mode == TransitMode.rail;
+  }
+
   String _buildModeText() {
     final modeName = getTransitModeName(widget.leg.mode);
 
@@ -1020,9 +1078,9 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
       _TimelineStop(
         name: widget.leg.fromName,
         stopId: widget.leg.fromStopId,
-        time: widget.leg.startTime,
         track: widget.leg.fromTrack,
-        scheduledTime: widget.leg.scheduledStartTime,
+        departure: widget.leg.startTime,
+        scheduledDeparture: widget.leg.scheduledStartTime,
         cancelled: widget.leg.cancelled,
         isFirst: true,
         isLast: false,
@@ -1034,9 +1092,11 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
         _TimelineStop(
           name: stop.name,
           stopId: stop.stopId,
-          time: stop.arrival ?? stop.departure,
           track: stop.track,
-          scheduledTime: stop.scheduledArrival ?? stop.scheduledDeparture,
+          arrival: stop.arrival,
+          departure: stop.departure,
+          scheduledArrival: stop.scheduledArrival,
+          scheduledDeparture: stop.scheduledDeparture,
           cancelled: stop.cancelled,
           isFirst: false,
           isLast: false,
@@ -1048,9 +1108,9 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
       _TimelineStop(
         name: widget.leg.toName,
         stopId: widget.leg.toStopId,
-        time: widget.leg.endTime,
         track: widget.leg.toTrack,
-        scheduledTime: widget.leg.scheduledEndTime,
+        arrival: widget.leg.endTime,
+        scheduledArrival: widget.leg.scheduledEndTime,
         cancelled: widget.leg.cancelled,
         isFirst: false,
         isLast: true,
@@ -1131,14 +1191,9 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
       );
     }
 
-    if (widget.leg.fromTrack != null) {
-      metadata.add(
-        InfoChip(
-          icon: LucideIcons.trainTrack,
-          label: 'Track ${widget.leg.fromTrack}',
-        ),
-      );
-    }
+    // No track chip: the departure platform now sits on the card's own row
+    // and again against the first stop of the timeline, so a chip here would
+    // be the third copy of one number.
 
     if (widget.leg.realTime) {
       metadata.add(const InfoChip(icon: LucideIcons.radio, label: 'Real-time'));
@@ -1203,69 +1258,112 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
   }
 
   Widget _buildStopInfo(_TimelineStop stop) {
-    final scheduledTime = stop.scheduledTime ?? stop.time;
-    final actualTime = stop.time;
-    final delay = (scheduledTime != null && actualTime != null)
-        ? computeDelay(scheduledTime, actualTime)
-        : null;
-    return Column(
+    final track = stop.track?.trim();
+    return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          stop.name,
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: stop.isFirst || stop.isLast
-                ? FontWeight.w600
-                : FontWeight.normal,
-            color: AppColors.black,
-          ),
-        ),
-        if (scheduledTime != null) ...[
-          const SizedBox(height: 2),
-          Row(
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                formatTime(scheduledTime),
+                stop.name,
                 style: TextStyle(
-                  fontSize: 13,
-                  color: AppColors.black.withValues(alpha: 0.6),
+                  fontSize: 14,
+                  fontWeight: stop.isFirst || stop.isLast
+                      ? FontWeight.w600
+                      : FontWeight.normal,
+                  color: AppColors.black,
                 ),
               ),
-              if (delay != null) ...[
-                const SizedBox(width: 6),
+              if (_buildStopTimes(stop) case final times?) ...[
+                const SizedBox(height: 2),
+                times,
+              ],
+              if (stop.cancelled) ...[
+                const SizedBox(height: 2),
                 Text(
-                  formatDelay(delay),
+                  'CANCELLED',
                   style: TextStyle(
                     fontSize: 12,
+                    color: const Color(0xFFD32F2F),
                     fontWeight: FontWeight.w600,
-                    color: delayColor(delay),
                   ),
                 ),
               ],
             ],
           ),
-        ],
-        if (stop.track != null && !stop.isFirst) ...[
-          const SizedBox(height: 2),
-          Text(
-            'Track ${stop.track}',
-            style: TextStyle(
-              fontSize: 12,
-              color: AppColors.black.withValues(alpha: 0.5),
+        ),
+        // Its own column rather than a third line: the platform is a short
+        // token and stacking it under the times made them compete. Nothing
+        // stands in for an unknown one here — a dozen grey dashes down a
+        // timeline say less than the one placeholder on the card above.
+        if (track != null && track.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(left: 8),
+            child: Text(
+              'Track $track',
+              style: TextStyle(
+                fontSize: 12,
+                color: AppColors.black.withValues(alpha: 0.5),
+              ),
             ),
           ),
-        ],
-        if (stop.cancelled) ...[
-          const SizedBox(height: 2),
+      ],
+    );
+  }
+
+  /// When the service is at the stop, and when it leaves again.
+  ///
+  /// Where it waits, both are worth printing — the departure is the one you
+  /// can still make — so they read `14:32 → 14:34`, each answering for its own
+  /// delay. Where it only passes through, the single time it has is enough.
+  Widget? _buildStopTimes(_TimelineStop stop) {
+    final arrival = _StopTime.from(stop.arrival, stop.scheduledArrival);
+    final departure = _StopTime.from(stop.departure, stop.scheduledDeparture);
+
+    final showBoth =
+        arrival != null &&
+        departure != null &&
+        arrival.scheduled != departure.scheduled;
+
+    final times = showBoth
+        ? [arrival, departure]
+        : [if (arrival != null) arrival else if (departure != null) departure];
+    if (times.isEmpty) return null;
+
+    return Row(
+      children: [
+        for (final (index, time) in times.indexed) ...[
+          if (index > 0)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Text(
+                '→',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: AppColors.black.withValues(alpha: 0.4),
+                ),
+              ),
+            ),
           Text(
-            'CANCELLED',
+            formatTime(time.scheduled),
             style: TextStyle(
-              fontSize: 12,
-              color: const Color(0xFFD32F2F),
-              fontWeight: FontWeight.w600,
+              fontSize: 13,
+              color: AppColors.black.withValues(alpha: 0.6),
             ),
           ),
+          if (time.delay case final delay?) ...[
+            const SizedBox(width: 4),
+            Text(
+              formatDelay(delay),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: delayColor(delay),
+              ),
+            ),
+          ],
         ],
       ],
     );
@@ -1562,21 +1660,52 @@ class FinishLegCard extends StatelessWidget {
 class _TimelineStop {
   final String name;
   final String? stopId;
-  final DateTime? time;
   final String? track;
-  final DateTime? scheduledTime;
   final bool cancelled;
   final bool isFirst;
   final bool isLast;
 
+  /// Both times, kept apart.
+  ///
+  /// At a stop where the service waits, when it gets in and when it leaves
+  /// again are different facts and the second is the one you can still catch.
+  /// The first stop has only a departure and the last only an arrival.
+  final DateTime? arrival;
+  final DateTime? departure;
+  final DateTime? scheduledArrival;
+  final DateTime? scheduledDeparture;
+
   _TimelineStop({
     required this.name,
     this.stopId,
-    this.time,
     this.track,
-    this.scheduledTime,
     this.cancelled = false,
     this.isFirst = false,
     this.isLast = false,
+    this.arrival,
+    this.departure,
+    this.scheduledArrival,
+    this.scheduledDeparture,
   });
+
+  /// What the row is keyed on when only one time is wanted.
+  DateTime? get time => departure ?? arrival;
+}
+
+/// One printable time: what the timetable promised, and how far off it is.
+class _StopTime {
+  final DateTime scheduled;
+  final Duration? delay;
+
+  const _StopTime(this.scheduled, this.delay);
+
+  /// Null when the feed gave neither a real-time nor a scheduled value.
+  ///
+  /// A stop with only a real-time value still prints — that time is simply
+  /// both the promise and the fact, so there is no delay to show against it.
+  static _StopTime? from(DateTime? actual, DateTime? scheduled) {
+    final base = scheduled ?? actual;
+    if (base == null) return null;
+    return _StopTime(base, actual == null ? null : computeDelay(base, actual));
+  }
 }

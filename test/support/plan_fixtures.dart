@@ -41,6 +41,7 @@ Map<String, dynamic> planItineraryJson({
     'tripId': tripId,
     'routeShortName': routeName,
     'displayName': routeName,
+    'headsign': toStop,
     'realTime': true,
     'cancelled': cancelled,
     'from': {
@@ -49,8 +50,43 @@ Map<String, dynamic> planItineraryJson({
       'lon': 13.369,
       'stopId': 'stop-from',
       'track': '12',
+      'scheduledDeparture': at(rideStart),
+      'departure': at(rideStart),
     },
-    'to': {'name': toStop, 'lat': 52.366, 'lon': 13.503, 'stopId': 'stop-to'},
+    'to': {
+      'name': toStop,
+      'lat': 52.366,
+      'lon': 13.503,
+      'stopId': 'stop-to',
+      'scheduledArrival': at(rideEnd),
+      'arrival': at(rideEnd),
+    },
+    // A stop the train stands at and one it only calls at, so the two-times
+    // and one-time cases are both represented, as is a stop with a platform
+    // and one without.
+    'intermediateStops': [
+      {
+        'name': 'Ostkreuz',
+        'lat': 52.503,
+        'lon': 13.469,
+        'stopId': 'stop-ostkreuz',
+        'track': '9',
+        'scheduledArrival': at(rideStart + const Duration(minutes: 5)),
+        'arrival': at(rideStart + const Duration(minutes: 7)),
+        'scheduledDeparture': at(rideStart + const Duration(minutes: 8)),
+        'departure': at(rideStart + const Duration(minutes: 8)),
+      },
+      {
+        'name': 'Schönefeld',
+        'lat': 52.389,
+        'lon': 13.514,
+        'stopId': 'stop-schoenefeld',
+        'scheduledArrival': at(rideStart + const Duration(minutes: 11)),
+        'arrival': at(rideStart + const Duration(minutes: 11)),
+        'scheduledDeparture': at(rideStart + const Duration(minutes: 11)),
+        'departure': at(rideStart + const Duration(minutes: 11)),
+      },
+    ],
   };
 
   final legs = <Map<String, dynamic>>[

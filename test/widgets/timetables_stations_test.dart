@@ -88,7 +88,10 @@ void main() {
     // picked here are the likeliest answers.
     await SavedPlacesService.savePlaces(
       bucket: SavedPlacesBucket.timetable,
-      places: [_stop(name: 'Alexanderplatz'), _stop(name: 'Hauptbahnhof')],
+      places: [
+        _stop(name: 'Alexanderplatz'),
+        _stop(name: 'Hauptbahnhof'),
+      ],
     );
 
     await _pump(tester);
