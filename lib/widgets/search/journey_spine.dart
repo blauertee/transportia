@@ -6,6 +6,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../models/routing_options.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/journey_colors.dart';
+import '../journey/spine_row.dart';
 import '../../models/transitous/enums.dart';
 import '../../models/transitous/server_config.dart';
 import '../options/icon_controls.dart';
@@ -107,28 +108,45 @@ class _JourneySpineState extends State<JourneySpine> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          TravellerStrip(
-            options: options,
-            tooltips: _tooltips,
-            paceOpen: _paceOpen,
-            onPacePressed: () {
-              _tooltips.hide();
-              setState(() => _paceOpen = !_paceOpen);
-            },
-            onChanged: (next) {
-              _apply(next);
-              if (next.wheelchairAccessibleOnly !=
-                  options.wheelchairAccessibleOnly) {
-                _announce(
-                  next.wheelchairAccessibleOnly
-                      ? 'Step-free only'
-                      : 'Step-free off',
-                  icon: LucideIcons.accessibility,
-                );
-              }
-            },
+          // On the spine, with no node of its own: who is travelling is not a
+          // stage of the journey, but the line still has to run past it. Left
+          // off the spine, the dotted rail from the origin marker stopped
+          // short of the first stage's ring by the height of this strip.
+          SpineRow(
+            timeColumn: 0,
+            padding: EdgeInsets.zero,
+            node: const SizedBox.shrink(),
+            nodeCenter: 0,
+            railColor: kStreetLegColor,
+            railDashed: true,
+            firstLineHeight: 0,
+            body: Padding(
+              // Inside the row, because a gap between rows is a gap in the
+              // line.
+              padding: const EdgeInsets.only(bottom: 16),
+              child: TravellerStrip(
+                options: options,
+                tooltips: _tooltips,
+                paceOpen: _paceOpen,
+                onPacePressed: () {
+                  _tooltips.hide();
+                  setState(() => _paceOpen = !_paceOpen);
+                },
+                onChanged: (next) {
+                  _apply(next);
+                  if (next.wheelchairAccessibleOnly !=
+                      options.wheelchairAccessibleOnly) {
+                    _announce(
+                      next.wheelchairAccessibleOnly
+                          ? 'Step-free only'
+                          : 'Step-free off',
+                      icon: LucideIcons.accessibility,
+                    );
+                  }
+                },
+              ),
+            ),
           ),
-          const SizedBox(height: 16),
           _buildStages(options),
         ],
       ),

@@ -9,6 +9,7 @@ import 'package:transportia/models/transitous/server_config.dart';
 import 'package:transportia/providers/theme_provider.dart';
 import 'package:transportia/widgets/floating_nav_bar.dart';
 import 'package:transportia/widgets/route_bottom_card.dart';
+import 'package:transportia/widgets/search/traveller_strip.dart';
 
 /// Counts the drag callbacks the card reports.
 ///
@@ -204,5 +205,18 @@ void main() {
       greaterThanOrEqualTo(FloatingNavBar.reservedHeight),
       reason: 'Search sits under the nav bar',
     );
+  });
+
+  testWidgets('the fields start where everything else on the card does', (
+    tester,
+  ) async {
+    // The origin field used to sit at the gutter while the stages sat a gap
+    // further in, which put two text edges on one card.
+    // Tall enough that the spine below the fields is laid out.
+    await _pump(tester, _DragLog(), viewSize: const Size(400, 900));
+
+    final field = tester.getRect(find.byType(EditableText).first);
+    final strip = tester.getRect(find.byType(TravellerStrip));
+    expect(field.left, closeTo(strip.left, 0.5));
   });
 }

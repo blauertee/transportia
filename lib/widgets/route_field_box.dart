@@ -297,6 +297,10 @@ class _EndpointRow extends StatelessWidget {
               height: _markerCenter * 2,
               child: Center(child: marker),
             ),
+            // The same gap the spine's rows keep between the rail and their
+            // text, so a field, a stage summary and the traveller controls
+            // all begin on one edge instead of three.
+            const SizedBox(width: JourneyMetrics.gap),
             Expanded(child: child),
             if (trailing case final trailing?) ...[
               const SizedBox(width: 8),

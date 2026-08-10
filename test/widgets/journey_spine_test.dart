@@ -8,8 +8,10 @@ import 'package:transportia/models/transitous/server_config.dart';
 import 'package:transportia/widgets/options/icon_controls.dart';
 import 'package:transportia/theme/journey_metrics.dart';
 import 'package:transportia/widgets/journey/spine_node.dart';
+import 'package:transportia/widgets/journey/spine_row.dart';
 import 'package:transportia/widgets/search/journey_segment.dart';
 import 'package:transportia/widgets/search/journey_spine.dart';
+import 'package:transportia/widgets/search/traveller_strip.dart';
 import 'package:transportia/widgets/search/street_leg_section.dart';
 
 /// Holds the options the way the search screen will, so a tap on a control
@@ -627,6 +629,43 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(_pick('Bike'), findsOneWidget);
+    });
+  });
+
+  group('the card has one text edge', () {
+    testWidgets('the traveller controls start where a stage summary does', (
+      tester,
+    ) async {
+      // Three edges before this: the strip at the card's own left, the fields
+      // at the gutter, the stages a gap further in.
+      await _pumpSpine(tester);
+
+      // The strip's own leading edge, not its chip's label, which sits
+      // inside that chip's icon and padding.
+      final strip = tester.getRect(find.byType(TravellerStrip));
+      final summary = tester.getRect(find.text('Walk · 15 min').first);
+      expect(strip.left, closeTo(summary.left, 0.5));
+    });
+
+    testWidgets('the line runs unbroken past the traveller strip', (
+      tester,
+    ) async {
+      // The dotted rail from the origin used to stop short of the first
+      // stage's ring by the height of this strip.
+      await _pumpSpine(tester);
+
+      final rows =
+          find
+              .byType(SpineRow)
+              .evaluate()
+              .map((e) => tester.getRect(find.byWidget(e.widget)))
+              .toList()
+            ..sort((a, b) => a.top.compareTo(b.top));
+
+      expect(rows.length, greaterThanOrEqualTo(4));
+      for (var i = 1; i < rows.length; i++) {
+        expect(rows[i].top, closeTo(rows[i - 1].bottom, 0.5));
+      }
     });
   });
 }
