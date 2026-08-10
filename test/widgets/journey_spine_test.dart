@@ -588,4 +588,45 @@ void main() {
       expect(ring.height, JourneyMetrics.ring);
     });
   });
+
+  group('a stage answers to the whole row', () {
+    testWidgets('a tap well clear of the title still opens it', (tester) async {
+      // The hit area used to be the width of the two lines of text, so most
+      // of a row looked pressable and did nothing.
+      await _pumpSpine(tester);
+      expect(_pick('Bike'), findsNothing);
+
+      final row = tester.getRect(find.byType(JourneySegment).first);
+      // Right-hand end of the row, past where any of the text reaches.
+      await tester.tapAt(Offset(row.right - 30, row.top + 12));
+      await tester.pumpAndSettle();
+
+      expect(_pick('Bike'), findsOneWidget);
+    });
+
+    testWidgets('the ring opens it too', (tester) async {
+      await _pumpSpine(tester);
+      await tester.tap(find.byType(SpineNode).first);
+      await tester.pumpAndSettle();
+
+      expect(_pick('Bike'), findsOneWidget);
+    });
+
+    testWidgets('a miss inside the controls does not fold it away', (
+      tester,
+    ) async {
+      await _pumpSpine(tester);
+      await tester.tap(find.byType(SpineNode).first);
+      await tester.pumpAndSettle();
+      expect(_pick('Bike'), findsOneWidget);
+
+      // Just under the row of icon controls: inside the expanded area, on no
+      // control in particular.
+      final walk = tester.getRect(_pick('Walk'));
+      await tester.tapAt(Offset(walk.right + 4, walk.center.dy));
+      await tester.pumpAndSettle();
+
+      expect(_pick('Bike'), findsOneWidget);
+    });
+  });
 }

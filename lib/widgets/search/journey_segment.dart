@@ -71,6 +71,14 @@ class JourneySegment extends StatelessWidget {
           color: AppColors.black.withValues(alpha: 0.45),
         ),
       ),
+      // The whole row toggles — the ring, the summary, the chevron and the
+      // space between them. It used to be only the two lines of text, whose
+      // Column was as wide as the words in it, so most of the row looked
+      // pressable and did nothing.
+      onTap: () {
+        Haptics.lightTick();
+        onToggle();
+      },
       body: Semantics(
         button: true,
         expanded: isOpen,
@@ -82,34 +90,22 @@ class JourneySegment extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () {
-                  Haptics.lightTick();
-                  onToggle();
-                },
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      headline.toUpperCase(),
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        height: kStageLineHeight / 11.5,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.8,
-                        color: color,
-                      ),
-                    ),
-                    const SizedBox(height: 1),
-                    Text(
-                      summary,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 14, color: AppColors.black),
-                    ),
-                  ],
+              Text(
+                headline.toUpperCase(),
+                style: TextStyle(
+                  fontSize: 11.5,
+                  height: kStageLineHeight / 11.5,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.8,
+                  color: color,
                 ),
+              ),
+              const SizedBox(height: 1),
+              Text(
+                summary,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 14, color: AppColors.black),
               ),
               AnimatedCrossFade(
                 duration: const Duration(milliseconds: 180),
@@ -119,7 +115,15 @@ class JourneySegment extends StatelessWidget {
                 firstChild: const SizedBox(width: double.infinity),
                 secondChild: Padding(
                   padding: const EdgeInsets.only(top: 12),
-                  child: child,
+                  // Swallows taps that land in the controls' own area without
+                  // hitting one. The controls sit deeper and take their taps
+                  // first; this only stops a miss between two of them from
+                  // folding the stage away mid-adjustment.
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {},
+                    child: child,
+                  ),
                 ),
               ),
             ],
