@@ -2,7 +2,9 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/prefs_keys.dart';
+import '../models/itinerary.dart';
 import '../models/saved_trip.dart';
+import 'itinerary_refresh_service.dart';
 
 /// Storage for connections the user chose to keep.
 ///
@@ -66,6 +68,49 @@ class SavedTripsService {
     trips[index] = trips[index].withLabel(
       trimmed == null || trimmed.isEmpty ? null : trimmed,
     );
+    await _persist(prefs, trips);
+  }
+
+  /// Whether a refresh result is worth storing over the saved snapshot.
+  ///
+  /// Only a check that actually reached live data, and only one that came
+  /// back with *this* connection. A refresh reporting a changed connection is
+  /// a different journey — overwriting with it would destroy the one the
+  /// rider chose to keep, which is the whole point of saving it.
+  static bool shouldStoreLiveResult({
+    required bool didRefresh,
+    required ItineraryFreshness freshness,
+  }) => didRefresh && freshness != ItineraryFreshness.changed;
+
+  /// Folds newly-refreshed real-time data into the stored trip, so reopening
+  /// the app shows the times the operator last reported rather than the plan
+  /// the trip was saved under.
+  ///
+  /// A no-op when the trip is not saved, or when [shouldStoreLiveResult] says
+  /// this result has no business overwriting it.
+  static Future<void> storeLiveItinerary({
+    required String id,
+    required Itinerary refreshed,
+    required bool didRefresh,
+    required ItineraryFreshness freshness,
+    DateTime? at,
+  }) async {
+    if (!shouldStoreLiveResult(didRefresh: didRefresh, freshness: freshness)) {
+      return;
+    }
+
+    final prefs = SharedPreferencesAsync();
+    final trips = await _readTrips(prefs: prefs);
+    final index = trips.indexWhere((t) => t.id == id);
+    if (index == -1) return;
+
+    final updated = trips[index].withLiveItinerary(
+      refreshed,
+      at: at ?? DateTime.now(),
+    );
+    if (identical(updated, trips[index])) return;
+
+    trips[index] = updated;
     await _persist(prefs, trips);
   }
 

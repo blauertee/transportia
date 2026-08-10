@@ -14,6 +14,7 @@ import '../models/saved_trip.dart';
 import '../models/time_selection.dart';
 import '../providers/theme_provider.dart';
 import '../services/itinerary_refresh_service.dart';
+import '../services/saved_trips_service.dart';
 import '../utils/haptics.dart';
 import '../services/routing_options_service.dart';
 import '../services/transitous_geocode_service.dart';
@@ -381,9 +382,10 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
       // A search result was fetched moments ago, so it is current.
       _lastUpdated = DateTime.now();
     } else {
-      // A saved trip has not been checked since it was stored. Say nothing
-      // about how fresh it is until a refresh comes back.
-      _lastUpdated = null;
+      // A saved trip carries whatever the last live check folded into it, so
+      // the screen opens on those times and says how old they are — rather
+      // than showing the plan and claiming to know nothing.
+      _lastUpdated = widget.savedTrip!.liveUpdatedAt;
       unawaited(_refreshRealTimeInfo());
     }
 
@@ -462,13 +464,30 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
 
     // Only move the timestamp when live data actually arrived, so a pull
     // that reached nothing does not read as a successful refresh.
+    final now = DateTime.now();
     setState(() {
       _freshness = result.freshness;
       if (result.didRefresh) {
         _itinerary = result.itinerary;
-        _lastUpdated = DateTime.now();
+        _lastUpdated = now;
       }
     });
+
+    // Keep what the check found, so a restart opens on it instead of on the
+    // plan. The service decides whether this result may overwrite the stored
+    // connection — a refresh that came back with a different one may not.
+    final saved = widget.savedTrip;
+    if (saved != null) {
+      unawaited(
+        SavedTripsService.storeLiveItinerary(
+          id: saved.id,
+          refreshed: result.itinerary,
+          didRefresh: result.didRefresh,
+          freshness: result.freshness,
+          at: now,
+        ),
+      );
+    }
 
     _isRefreshing = false;
   }
