@@ -22,7 +22,10 @@ import 'favourites_map_screen.dart';
 /// A screen rather than a dropdown under the field: the list has favourites,
 /// recent places and geocoder results to show, and an overlay capped at a few
 /// hundred pixels has to fight the card it hangs from for the room.
-class LocationSearchScreen extends StatefulWidget {
+///
+/// Thin on purpose — it is [LocationSearchBody] on a page that pops the
+/// answer. A screen that is itself a place search renders the body directly.
+class LocationSearchScreen extends StatelessWidget {
   const LocationSearchScreen({
     super.key,
     required this.title,
@@ -36,6 +39,57 @@ class LocationSearchScreen extends StatefulWidget {
 
   /// Names what is being picked: "Origin", "Destination", "Stop".
   final String title;
+
+  final SavedPlacesBucket bucket;
+  final String initialQuery;
+  final LatLng? placeBias;
+  final String? type;
+  final bool showFavourites;
+  final bool showMyLocation;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppPageScaffold(
+      title: title,
+      padding: EdgeInsets.zero,
+      body: LocationSearchBody(
+        bucket: bucket,
+        initialQuery: initialQuery,
+        placeBias: placeBias,
+        type: type,
+        showFavourites: showFavourites,
+        showMyLocation: showMyLocation,
+        onPicked: (suggestion) => Navigator.of(context).pop(suggestion),
+      ),
+    );
+  }
+}
+
+/// Picking a place: the field, the favourites, the recents and the results.
+///
+/// Everything except the page it sits on, so a screen that *is* a place
+/// search — the timetable tab — can render it directly instead of keeping its
+/// own field and its own copies of the same two lists.
+class LocationSearchBody extends StatefulWidget {
+  const LocationSearchBody({
+    super.key,
+    required this.bucket,
+    required this.onPicked,
+    this.autofocus = true,
+    this.initialQuery = '',
+    this.placeBias,
+    this.type,
+    this.showFavourites = true,
+    this.showMyLocation = false,
+  });
+
+  /// What to do with the place that was chosen. The pushed screen pops it;
+  /// the timetable tab opens its departures.
+  final ValueChanged<TransitousLocationSuggestion> onPicked;
+
+  /// The pushed screen opens for the sake of typing, so it takes the keyboard.
+  /// A tab that merely happens to start here should not.
+  final bool autofocus;
 
   /// Which recents to learn from and offer.
   final SavedPlacesBucket bucket;
@@ -59,10 +113,10 @@ class LocationSearchScreen extends StatefulWidget {
   final bool showMyLocation;
 
   @override
-  State<LocationSearchScreen> createState() => _LocationSearchScreenState();
+  State<LocationSearchBody> createState() => _LocationSearchBodyState();
 }
 
-class _LocationSearchScreenState extends State<LocationSearchScreen> {
+class _LocationSearchBodyState extends State<LocationSearchBody> {
   late final TextEditingController _controller = TextEditingController(
     text: widget.initialQuery,
   );
@@ -85,9 +139,14 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
     unawaited(FavoritesService.getFavorites());
     unawaited(_loadRecents());
     _controller.addListener(_onQueryChanged);
-    // The keyboard is why this screen opened; waiting for a second tap on the
-    // field it already put focus on would be a step for nothing.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _focus.requestFocus());
+    // The keyboard is why the pushed screen opened; waiting for a second tap
+    // on the field it already put focus on would be a step for nothing. A tab
+    // that starts here has its lists to offer first.
+    if (widget.autofocus) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _focus.requestFocus(),
+      );
+    }
   }
 
   @override
@@ -220,7 +279,7 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
     // Where you are is not a place you searched for, so it does not belong
     // in the list of places you did.
     if (suggestion.id == myLocationSuggestion.id) {
-      Navigator.of(context).pop(suggestion);
+      widget.onPicked(suggestion);
       return;
     }
     unawaited(
@@ -240,7 +299,7 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
         ),
       ),
     );
-    Navigator.of(context).pop(suggestion);
+    widget.onPicked(suggestion);
   }
 
   Future<void> _pickOnMap() async {
@@ -277,19 +336,15 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return AppPageScaffold(
-      title: widget.title,
-      padding: EdgeInsets.zero,
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
-            child: _buildSearchField(context),
-          ),
-          Expanded(child: _buildResults(context)),
-        ],
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+          child: _buildSearchField(context),
+        ),
+        Expanded(child: _buildResults(context)),
+      ],
     );
   }
 
@@ -340,26 +395,28 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
             textInputAction: TextInputAction.search,
           ),
         ),
-        const SizedBox(width: 10),
-        // Some places are easier to point at than to name.
-        Semantics(
-          button: true,
-          label: 'Pick a point on the map',
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: _pickOnMap,
-            child: Container(
-              width: 46,
-              height: 46,
-              decoration: BoxDecoration(
-                color: accent.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: accent.withValues(alpha: 0.35)),
+        if (!_stopsOnly) const SizedBox(width: 10),
+        // Some places are easier to point at than to name — but a point is not
+        // a stop, so a timetable search is not offered one.
+        if (!_stopsOnly)
+          Semantics(
+            button: true,
+            label: 'Pick a point on the map',
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _pickOnMap,
+              child: Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: accent.withValues(alpha: 0.35)),
+                ),
+                child: Icon(LucideIcons.mapPlus, size: 19, color: accent),
               ),
-              child: Icon(LucideIcons.mapPlus, size: 19, color: accent),
             ),
           ),
-        ),
       ],
     );
   }
@@ -386,8 +443,10 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
           if (widget.showFavourites) ...[
             _sectionHeading('Favourites'),
             if (favourites.isEmpty)
+              // Two different emptinesses: nothing kept at all, or things
+              // kept that this search cannot use.
               _hint(
-                _stopsOnly
+                _stopsOnly && _favourites.isNotEmpty
                     ? 'None of your favourites is a stop.'
                     : 'Tap the heart on a place to keep it here.',
               )

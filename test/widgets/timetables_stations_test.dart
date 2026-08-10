@@ -7,6 +7,7 @@ import 'package:transportia/models/saved_place.dart';
 import 'package:transportia/providers/theme_provider.dart';
 import 'package:transportia/screens/timetables_screen.dart';
 import 'package:transportia/services/favorites_service.dart';
+import 'package:transportia/screens/location_search_screen.dart';
 import 'package:transportia/services/saved_places_service.dart';
 
 FavoritePlace _favourite({
@@ -78,7 +79,7 @@ void main() {
     tester,
   ) async {
     await _pump(tester);
-    expect(find.text('Search for a stop'), findsOneWidget);
+    expect(find.text('Tap the heart on a place to keep it here.'), findsOne);
   });
 
   testWidgets('recent stops are offered before anything is searched for', (
@@ -96,10 +97,9 @@ void main() {
 
     await _pump(tester);
 
-    expect(find.text('RECENT STOPS'), findsOneWidget);
+    expect(find.text('RECENT'), findsOneWidget);
     expect(find.text('Alexanderplatz'), findsOneWidget);
     expect(find.text('Hauptbahnhof'), findsOneWidget);
-    expect(find.text('Search for a stop'), findsNothing);
   });
 
   testWidgets('a remembered place that is not a stop is left out', (
@@ -115,7 +115,6 @@ void main() {
     await _pump(tester);
 
     expect(find.text('Somewhere'), findsNothing);
-    expect(find.text('Search for a stop'), findsOneWidget);
   });
 
   testWidgets('favourite stations appear, and only the stations', (
@@ -130,7 +129,7 @@ void main() {
 
     await _pump(tester);
 
-    expect(find.text('FAVOURITE STOPS'), findsOneWidget);
+    expect(find.text('FAVOURITES'), findsOneWidget);
     // The alias leads, the searched name sits under it.
     expect(find.text('Home'), findsOneWidget);
     expect(find.text('Ostkreuz'), findsOneWidget);
@@ -146,6 +145,27 @@ void main() {
 
     await _pump(tester);
 
-    expect(find.text('FAVOURITE STOPS'), findsNothing);
+    // The heading stays — it is where you are told how to fill the list —
+    // but the address is not offered, because it cannot answer a departure
+    // board.
+    expect(find.text('A street'), findsNothing);
+    expect(find.text('None of your favourites is a stop.'), findsOne);
+  });
+
+  testWidgets('the screen is the stop search, not a door to one', (
+    tester,
+  ) async {
+    // It used to keep a read-only field that pushed a picker showing the same
+    // two lists. One search field, on this screen, and no route to push.
+    await _pump(tester);
+
+    expect(find.byType(LocationSearchBody), findsOneWidget);
+    expect(find.byType(EditableText), findsOneWidget);
+  });
+
+  testWidgets('a point on the map is not offered for a stop', (tester) async {
+    // A coordinate cannot answer a departure board.
+    await _pump(tester);
+    expect(find.bySemanticsLabel('Pick a point on the map'), findsNothing);
   });
 }
