@@ -7,7 +7,6 @@ import 'package:flutter/widgets.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:timelines_plus/timelines_plus.dart';
 
 import '../models/itinerary.dart';
 import '../models/transit_mode_group.dart';
@@ -19,14 +18,18 @@ import '../utils/haptics.dart';
 import '../services/routing_options_service.dart';
 import '../services/transitous_geocode_service.dart';
 import '../theme/app_colors.dart';
+import '../theme/journey_metrics.dart';
 import '../utils/color_utils.dart';
 import '../utils/custom_page_route.dart';
 import '../utils/duration_formatter.dart';
 import '../utils/itinerary_leg_utils.dart';
+import '../utils/journey_colors.dart';
 import '../utils/leg_helper.dart';
 import '../utils/time_utils.dart';
 import '../widgets/custom_app_bar.dart';
 import '../widgets/custom_card.dart';
+import '../widgets/journey/spine_node.dart';
+import '../widgets/journey/spine_row.dart';
 import '../widgets/info_chip.dart';
 import '../widgets/last_updated_footer.dart';
 import '../widgets/save_trip_button.dart';
@@ -43,6 +46,105 @@ typedef OpenStopSheet =
       required String stopName,
       required DateTime referenceTime,
     });
+
+/// The first line of a node's text, and the first line of a stop's.
+///
+/// Both carry an explicit `height` because [SpineRow] centres its columns on
+/// the node using a line height the caller states — measuring the real one
+/// would need an intrinsic pass, and the height of an expanding leg is
+/// mid-animation exactly when that would run.
+const double kSpineNameLineHeight = 20;
+const double kSpineStopLineHeight = 18;
+
+/// Where a minor stop's dot sits, measured from the row's top. Tighter than a
+/// node's, because a passed-through stop is a smaller mark and does not need
+/// a ring's worth of room.
+const double kSpineMinorNodeCenter = 11;
+
+const TextStyle kSpineNameStyle = TextStyle(
+  fontSize: 16,
+  fontWeight: FontWeight.w700,
+  height: kSpineNameLineHeight / 16,
+);
+
+const TextStyle kSpineStopStyle = TextStyle(
+  fontSize: 15,
+  fontWeight: FontWeight.w400,
+  height: kSpineStopLineHeight / 15,
+);
+
+/// When a service is at a point on the line, and when it leaves again.
+///
+/// Where the two differ the service waited there, and both are worth printing
+/// — the departure is the one you can still make. They read `14:32 → 14:34`,
+/// each answering for its own delay. Where only one is known, that one is
+/// enough.
+class SpineTimes extends StatelessWidget {
+  const SpineTimes({
+    super.key,
+    this.arrival,
+    this.departure,
+    this.scheduledArrival,
+    this.scheduledDeparture,
+    this.compact = false,
+  });
+
+  final DateTime? arrival;
+  final DateTime? departure;
+  final DateTime? scheduledArrival;
+  final DateTime? scheduledDeparture;
+
+  /// Stacks the two times instead of running them across, for the narrow
+  /// column an intermediate stop gets.
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final arrival = _StopTime.from(this.arrival, scheduledArrival);
+    final departure = _StopTime.from(this.departure, scheduledDeparture);
+
+    final showBoth =
+        arrival != null &&
+        departure != null &&
+        arrival.scheduled != departure.scheduled;
+
+    final times = showBoth
+        ? [arrival, departure]
+        : [if (arrival != null) arrival else if (departure != null) departure];
+    if (times.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final time in times) ...[
+          Text(
+            formatTime(time.scheduled),
+            style: TextStyle(
+              fontSize: compact ? 13 : 14,
+              fontWeight: FontWeight.w600,
+              height:
+                  (compact ? kSpineStopLineHeight : kSpineNameLineHeight) /
+                  (compact ? 13 : 14),
+              color: AppColors.black.withValues(
+                alpha: time == times.first ? 0.85 : 0.5,
+              ),
+            ),
+          ),
+          if (time.delay case final delay?)
+            Text(
+              formatDelay(delay),
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+                color: delayColor(delay),
+              ),
+            ),
+        ],
+      ],
+    );
+  }
+}
 
 class ItineraryDetailScreen extends StatefulWidget {
   final Itinerary itinerary;
@@ -350,15 +452,23 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
                                 index < legsEndIndex) {
                               final legIndex = index - legsInsertIndex;
                               final entry = displayLegs[legIndex];
+                              // A node belongs to the leg arriving at it as
+                              // well as the one leaving it, and where those
+                              // times differ you waited there.
+                              final previous = legIndex > 0
+                                  ? displayLegs[legIndex - 1].leg
+                                  : null;
                               if (entry.isTransfer) {
                                 return TransferLegCard(
                                   leg: entry.leg,
+                                  previousLeg: previous,
                                   openStopSheet: _openStopSheet,
                                   onShowOnMap: () => _showLegOnMap(legIndex),
                                 );
                               }
                               return LegDetailsWidget(
                                 leg: entry.leg,
+                                previousLeg: previous,
                                 openStopSheet: _openStopSheet,
                                 onShowOnMap: () => _showLegOnMap(legIndex),
                               );
@@ -834,11 +944,19 @@ class LegDetailsWidget extends StatefulWidget {
   /// Used by street legs, whose row cannot show which way they actually go.
   final VoidCallback? onShowOnMap;
 
+  /// The leg that arrives at this one's node.
+  ///
+  /// A node belongs to two legs at once — one gets in, the other leaves — and
+  /// where those times differ you waited there. Without this the row could
+  /// only show the departure, losing a time the old two-row card printed.
+  final Leg? previousLeg;
+
   const LegDetailsWidget({
     super.key,
     required this.leg,
     required this.openStopSheet,
     this.onShowOnMap,
+    this.previousLeg,
   });
 
   @override
@@ -850,177 +968,207 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final isWalkLeg = widget.leg.mode == 'WALK';
-    final scheduledStart =
-        widget.leg.scheduledStartTime ?? widget.leg.startTime;
-    final scheduledEnd = widget.leg.scheduledEndTime ?? widget.leg.endTime;
-    final departureDelay = _departureDelay;
-    final arrivalDelay = _arrivalDelay;
+    final isStreet = isStreetLeg(widget.leg.mode);
+    final color = _legColor(context);
 
-    return GestureDetector(
-      // A street leg has no stops to unfold, so its tap is free for the map;
-      // a transit leg's tap already unfolds the stops it calls at.
-      onTap: isWalkLeg
-          ? widget.onShowOnMap
-          : () {
-              setState(() {
-                _isExpanded = !_isExpanded;
-              });
-            },
-      child: CustomCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                _buildLegIcon(),
-                const SizedBox(width: 8),
-                Expanded(child: _buildTitleWidget()),
-                const SizedBox(width: 8),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Above the duration, because it is the one thing on this
-                    // card you have to act on before the leg starts.
-                    if (_buildDepartureTrack() case final track?) ...[
-                      track,
-                      const SizedBox(height: 2),
-                    ],
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (widget.leg.alerts.isNotEmpty)
-                          const Padding(
-                            padding: EdgeInsets.only(right: 4),
-                            child: Icon(
-                              LucideIcons.triangleAlert,
-                              size: 16,
-                              color: Color(0xFFFF8A00),
-                            ),
-                          ),
-                        Text(
-                          formatDuration(widget.leg.duration),
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.black,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                if (!isWalkLeg) ...[
-                  const SizedBox(width: 4),
-                  Icon(
-                    _isExpanded
-                        ? LucideIcons.chevronUp
-                        : LucideIcons.chevronDown,
-                    size: 16,
-                    color: AppColors.accentOf(context),
-                  ),
-                ],
-              ],
-            ),
-            if (_buildSubtitle() case final subtitle?) ...[
-              const SizedBox(height: 8),
-              Text(
-                subtitle,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.black,
-                ),
-              ),
-            ],
-
-            if (!_isExpanded) ...[
-              const SizedBox(height: 8),
-              GestureDetector(
-                onTap: () => widget.openStopSheet(
-                  stopId: widget.leg.fromStopId,
-                  stopName: widget.leg.fromName,
-                  referenceTime: widget.leg.startTime,
-                ),
-                child: Row(
-                  children: [
-                    const Icon(LucideIcons.arrowRight, size: 16),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Text(
-                        '${formatTime(scheduledStart)} - ${widget.leg.fromName}',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: AppColors.black.withValues(alpha: 0.5),
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 1,
-                      ),
-                    ),
-                    if (departureDelay != null)
-                      _DelayChip(label: formatDelay(departureDelay)),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 4),
-              GestureDetector(
-                onTap: () => widget.openStopSheet(
-                  stopId: widget.leg.toStopId,
-                  stopName: widget.leg.toName,
-                  referenceTime: widget.leg.endTime,
-                ),
-                child: Row(
-                  children: [
-                    const Icon(LucideIcons.arrowDown, size: 16),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Text(
-                        '${formatTime(scheduledEnd)} - ${widget.leg.toName}',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: AppColors.black.withValues(alpha: 0.5),
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 1,
-                      ),
-                    ),
-                    if (arrivalDelay != null)
-                      _DelayChip(label: formatDelay(arrivalDelay)),
-                  ],
-                ),
-              ),
-            ],
-
-            if (_isExpanded && !isWalkLeg) ...[
-              const SizedBox(height: 12),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
-                child: SizedBox(
-                  height: 1,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(color: Color(0x33000000)),
-                  ),
-                ),
-              ),
-              _buildTransitTimelineContent(),
-            ],
-          ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SpineRow(
+          // The ring is the node: it says what you board here, and the line
+          // grows out of its underside in that service's colour.
+          node: SpineNode(
+            icon: getLegIcon(widget.leg.mode),
+            color: color,
+            semanticLabel: getTransitModeName(widget.leg.mode),
+          ),
+          railColor: color,
+          railDashed: isStreet,
+          // The leg owns the line from its own ring down to the next one.
+          railTopInset: JourneyMetrics.ring,
+          firstLineHeight: kSpineNameLineHeight,
+          time: _buildDepartureTimes(),
+          meta: _buildMeta(context, isStreet: isStreet),
+          body: _buildBody(context, isStreet: isStreet),
+          // A street leg has no stops to unfold, so its tap is free for the
+          // map; a transit leg's tap unfolds the stops it calls at.
+          onTap: isStreet
+              ? widget.onShowOnMap
+              : () => setState(() => _isExpanded = !_isExpanded),
         ),
-      ),
+        if (_isExpanded && !isStreet) ..._buildStopRows(color),
+      ],
     );
   }
 
-  /// The line under the title.
+  Color _legColor(BuildContext context) => legSpineColor(
+    leg: widget.leg,
+    background: AppColors.white,
+    accent: AppColors.accentOf(context),
+  );
+
+  /// When this leg leaves, and when the one before it got in.
   ///
-  /// Collapsed, a transit leg gives only where it is going: which class of
-  /// train it is rarely changes what you do, and the destination is what you
-  /// check you are on the right one by. The class joins it once the card is
-  /// open. Null drops the line rather than leaving an empty band.
+  /// A node is shared between the leg arriving at it and the leg leaving it.
+  /// Where the two differ you waited there, and both are worth printing —
+  /// dropping either would lose a time the old two-row card showed.
+  Widget _buildDepartureTimes() {
+    final previous = widget.previousLeg;
+    return SpineTimes(
+      arrival: previous?.endTime,
+      scheduledArrival: previous?.scheduledEndTime,
+      departure: widget.leg.startTime,
+      scheduledDeparture: widget.leg.scheduledStartTime,
+    );
+  }
+
+  /// The right-hand column: the platform to stand on, or the way to the map.
+  Widget? _buildMeta(BuildContext context, {required bool isStreet}) {
+    if (isStreet) {
+      // The whole row has always opened the map; nothing said so.
+      if (widget.onShowOnMap == null) return null;
+      return Semantics(
+        button: true,
+        label: 'Show this leg on the map',
+        child: Icon(
+          LucideIcons.map,
+          size: 16,
+          color: AppColors.accentOf(context),
+        ),
+      );
+    }
+    return _buildDepartureTrack();
+  }
+
+  Widget _buildBody(BuildContext context, {required bool isStreet}) {
+    final alerts = widget.leg.alerts;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => widget.openStopSheet(
+            stopId: widget.leg.fromStopId,
+            stopName: widget.leg.fromName,
+            referenceTime: widget.leg.startTime,
+          ),
+          child: Text(
+            widget.leg.fromName,
+            style: kSpineNameStyle.copyWith(color: AppColors.black),
+            overflow: TextOverflow.ellipsis,
+            maxLines: 2,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            Flexible(child: _buildTitleWidget()),
+            if (_buildSubtitle() case final subtitle?) ...[
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.black,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                ),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            if (alerts.isNotEmpty)
+              const Padding(
+                padding: EdgeInsets.only(right: 4),
+                child: Icon(
+                  LucideIcons.triangleAlert,
+                  size: 14,
+                  color: Color(0xFFFF8A00),
+                ),
+              ),
+            Expanded(
+              child: Text(
+                _buildNoteLine(),
+                style: TextStyle(
+                  fontSize: 13,
+                  color: AppColors.black.withValues(alpha: 0.5),
+                ),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+              ),
+            ),
+          ],
+        ),
+        if (!isStreet) ...[
+          const SizedBox(height: 6),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _isExpanded ? 'Hide stops' : 'Show stops',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.accentOf(context),
+                ),
+              ),
+              const SizedBox(width: 2),
+              Icon(
+                _isExpanded ? LucideIcons.chevronUp : LucideIcons.chevronDown,
+                size: 14,
+                color: AppColors.accentOf(context),
+              ),
+            ],
+          ),
+        ],
+        if (_isExpanded) ...[
+          if (alerts.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            ...alerts.map(_buildAlertWidget),
+          ],
+          const SizedBox(height: 8),
+          _buildMetadataSection(),
+        ],
+        const SizedBox(height: 14),
+      ],
+    );
+  }
+
+  /// The quiet line under the service: how long, how far, how many stops, and
+  /// once the leg is open, which class of vehicle it is.
+  String _buildNoteLine() {
+    final parts = <String>[formatDuration(widget.leg.duration)];
+
+    if (_isExpanded) parts.add(getTransitModeName(widget.leg.mode));
+
+    final distance = widget.leg.distance;
+    if (distance != null && distance > 0) {
+      parts.add('${(distance / 1000).toStringAsFixed(2)} km');
+    }
+
+    final stops = widget.leg.intermediateStops.length;
+    if (stops > 0) parts.add('$stops ${stops == 1 ? 'stop' : 'stops'}');
+
+    return parts.join(' · ');
+  }
+
+  /// The line beside the service badge.
+  ///
+  /// Where it is going is what you check you are on the right one by. The
+  /// class of vehicle rarely changes what you do, so it waits in the note
+  /// line until the leg is opened.
   String? _buildSubtitle() {
-    if (widget.leg.mode == 'WALK' || _isExpanded) return _buildModeText();
     final headsign = widget.leg.headsign?.trim();
-    return (headsign == null || headsign.isEmpty) ? null : headsign;
+    if (headsign != null && headsign.isNotEmpty) return headsign;
+    if (isStreetLeg(widget.leg.mode)) return null;
+    return null;
   }
 
   /// The platform to stand on, or a mark that it is not known.
@@ -1054,38 +1202,13 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
         mode == TransitMode.rail;
   }
 
-  String _buildModeText() {
-    final modeName = getTransitModeName(widget.leg.mode);
-
-    if (widget.leg.mode == 'WALK') {
-      final distance = widget.leg.distance;
-      if (distance != null && distance > 0) {
-        return '$modeName (${(distance / 1000).toStringAsFixed(2)} km)';
-      }
-      return modeName;
-    } else {
-      if (widget.leg.headsign != null && widget.leg.headsign!.isNotEmpty) {
-        return '$modeName • ${widget.leg.headsign}';
-      }
-      return modeName;
-    }
-  }
-
-  Widget _buildTransitTimelineContent() {
+  /// The stops the service calls at, dropped onto the line it already has.
+  ///
+  /// They are minor dots rather than rings: you change nothing there, so they
+  /// must not compete with the nodes, which mark the places you act at. The
+  /// leg's own first stop is not repeated — it is the ring above.
+  List<Widget> _buildStopRows(Color color) {
     final stops = <_TimelineStop>[];
-
-    stops.add(
-      _TimelineStop(
-        name: widget.leg.fromName,
-        stopId: widget.leg.fromStopId,
-        track: widget.leg.fromTrack,
-        departure: widget.leg.startTime,
-        scheduledDeparture: widget.leg.scheduledStartTime,
-        cancelled: widget.leg.cancelled,
-        isFirst: true,
-        isLast: false,
-      ),
-    );
 
     for (final stop in widget.leg.intermediateStops) {
       stops.add(
@@ -1098,81 +1221,77 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
           scheduledArrival: stop.scheduledArrival,
           scheduledDeparture: stop.scheduledDeparture,
           cancelled: stop.cancelled,
-          isFirst: false,
-          isLast: false,
         ),
       );
     }
 
-    stops.add(
-      _TimelineStop(
-        name: widget.leg.toName,
-        stopId: widget.leg.toStopId,
-        track: widget.leg.toTrack,
-        arrival: widget.leg.endTime,
-        scheduledArrival: widget.leg.scheduledEndTime,
-        cancelled: widget.leg.cancelled,
-        isFirst: false,
-        isLast: true,
+    return [
+      for (final stop in stops)
+        SpineRow(
+          node: SpineDot(color: color),
+          nodeCenter: kSpineMinorNodeCenter,
+          railColor: color,
+          firstLineHeight: kSpineStopLineHeight,
+          time: SpineTimes(
+            arrival: stop.arrival,
+            scheduledArrival: stop.scheduledArrival,
+            departure: stop.departure,
+            scheduledDeparture: stop.scheduledDeparture,
+            compact: true,
+          ),
+          meta: _buildStopTrack(stop),
+          body: _buildStopBody(stop),
+          onTap: stop.stopId == null
+              ? null
+              : () => widget.openStopSheet(
+                  stopId: stop.stopId,
+                  stopName: stop.name,
+                  referenceTime: stop.time ?? widget.leg.startTime,
+                ),
+        ),
+    ];
+  }
+
+  Widget _buildStopBody(_TimelineStop stop) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            stop.name,
+            style: kSpineStopStyle.copyWith(color: AppColors.black),
+            overflow: TextOverflow.ellipsis,
+            maxLines: 2,
+          ),
+          if (stop.cancelled) ...[
+            const SizedBox(height: 2),
+            Text(
+              'CANCELLED',
+              style: TextStyle(
+                fontSize: 12,
+                color: const Color(0xFFD32F2F),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ],
       ),
     );
+  }
 
-    final routeColor =
-        parseHexColor(widget.leg.routeColor) ?? AppColors.accentOf(context);
-    final fadedRouteColor = routeColor.withValues(alpha: 0.6);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (widget.leg.alerts.isNotEmpty) ...[
-          const SizedBox(height: 6),
-          ...widget.leg.alerts.map((alert) => _buildAlertWidget(alert)),
-          const SizedBox(height: 6),
-        ],
-
-        FixedTimeline.tileBuilder(
-          theme: TimelineThemeData(
-            nodePosition: 0,
-            color: routeColor,
-            indicatorTheme: const IndicatorThemeData(size: 16),
-            connectorTheme: const ConnectorThemeData(thickness: 2.5),
-          ),
-          builder: TimelineTileBuilder.connected(
-            itemCount: stops.length,
-            connectionDirection: ConnectionDirection.before,
-            contentsBuilder: (context, index) {
-              final stop = stops[index];
-              return Padding(
-                padding: const EdgeInsets.only(left: 12, bottom: 16),
-                child: GestureDetector(
-                  onTap: stop.stopId == null
-                      ? null
-                      : () => widget.openStopSheet(
-                          stopId: stop.stopId,
-                          stopName: stop.name,
-                          referenceTime: stop.time ?? widget.leg.startTime,
-                        ),
-                  child: _buildStopInfo(stop),
-                ),
-              );
-            },
-            indicatorBuilder: (context, index) {
-              final stop = stops[index];
-              if (stop.isFirst || stop.isLast) {
-                return DotIndicator(color: routeColor, size: 16);
-              }
-              return DotIndicator(color: fadedRouteColor, size: 12);
-            },
-            connectorBuilder: (context, index, connectorType) {
-              return SolidLineConnector(color: fadedRouteColor);
-            },
-          ),
-        ),
-
-        const SizedBox(height: 12),
-
-        _buildMetadataSection(),
-      ],
+  /// No placeholder here: a dozen grey dashes down a timeline would be noise,
+  /// and the node above already answers whether the platform you stand on is
+  /// known.
+  Widget? _buildStopTrack(_TimelineStop stop) {
+    final track = stop.track?.trim();
+    if (track == null || track.isEmpty) return null;
+    return Text(
+      'Track $track',
+      style: TextStyle(
+        fontSize: 12,
+        color: AppColors.black.withValues(alpha: 0.5),
+      ),
     );
   }
 
@@ -1257,118 +1376,6 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
     return Wrap(spacing: 8, runSpacing: 8, children: metadata);
   }
 
-  Widget _buildStopInfo(_TimelineStop stop) {
-    final track = stop.track?.trim();
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                stop.name,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: stop.isFirst || stop.isLast
-                      ? FontWeight.w600
-                      : FontWeight.normal,
-                  color: AppColors.black,
-                ),
-              ),
-              if (_buildStopTimes(stop) case final times?) ...[
-                const SizedBox(height: 2),
-                times,
-              ],
-              if (stop.cancelled) ...[
-                const SizedBox(height: 2),
-                Text(
-                  'CANCELLED',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: const Color(0xFFD32F2F),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-        // Its own column rather than a third line: the platform is a short
-        // token and stacking it under the times made them compete. Nothing
-        // stands in for an unknown one here — a dozen grey dashes down a
-        // timeline say less than the one placeholder on the card above.
-        if (track != null && track.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(left: 8),
-            child: Text(
-              'Track $track',
-              style: TextStyle(
-                fontSize: 12,
-                color: AppColors.black.withValues(alpha: 0.5),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  /// When the service is at the stop, and when it leaves again.
-  ///
-  /// Where it waits, both are worth printing — the departure is the one you
-  /// can still make — so they read `14:32 → 14:34`, each answering for its own
-  /// delay. Where it only passes through, the single time it has is enough.
-  Widget? _buildStopTimes(_TimelineStop stop) {
-    final arrival = _StopTime.from(stop.arrival, stop.scheduledArrival);
-    final departure = _StopTime.from(stop.departure, stop.scheduledDeparture);
-
-    final showBoth =
-        arrival != null &&
-        departure != null &&
-        arrival.scheduled != departure.scheduled;
-
-    final times = showBoth
-        ? [arrival, departure]
-        : [if (arrival != null) arrival else if (departure != null) departure];
-    if (times.isEmpty) return null;
-
-    return Row(
-      children: [
-        for (final (index, time) in times.indexed) ...[
-          if (index > 0)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: Text(
-                '→',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: AppColors.black.withValues(alpha: 0.4),
-                ),
-              ),
-            ),
-          Text(
-            formatTime(time.scheduled),
-            style: TextStyle(
-              fontSize: 13,
-              color: AppColors.black.withValues(alpha: 0.6),
-            ),
-          ),
-          if (time.delay case final delay?) ...[
-            const SizedBox(width: 4),
-            Text(
-              formatDelay(delay),
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: delayColor(delay),
-              ),
-            ),
-          ],
-        ],
-      ],
-    );
-  }
-
   Widget _buildAlertWidget(Alert alert) {
     return Container(
       margin: const EdgeInsets.only(bottom: 8.0),
@@ -1424,10 +1431,6 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
 
   Duration? get _arrivalDelay =>
       computeDelay(widget.leg.scheduledEndTime, widget.leg.endTime);
-
-  Widget _buildLegIcon() {
-    return Icon(getLegIcon(widget.leg.mode), size: 24, color: AppColors.black);
-  }
 
   Widget _buildTitleWidget() {
     if (widget.leg.displayName != null) {
@@ -1485,6 +1488,11 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
   }
 }
 
+/// Getting between two services, as its own stretch of the line.
+///
+/// Neutral and dotted, because a change belongs to no line: you are on foot
+/// between two operators' services. What a rider needs here is how long they
+/// have and which platform to end up on, so both lead.
 class TransferLegCard extends StatelessWidget {
   final Leg leg;
   final OpenStopSheet openStopSheet;
@@ -1492,112 +1500,112 @@ class TransferLegCard extends StatelessWidget {
   /// A change is a walk between platforms; where it goes is the question.
   final VoidCallback? onShowOnMap;
 
+  /// The leg that arrives at this change. See [LegDetailsWidget.previousLeg].
+  final Leg? previousLeg;
+
   const TransferLegCard({
     super.key,
     required this.leg,
     required this.openStopSheet,
     this.onShowOnMap,
+    this.previousLeg,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(onTap: onShowOnMap, child: _buildCard(context));
-  }
-
-  Widget _buildCard(BuildContext context) {
-    return CustomCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(LucideIcons.arrowLeftRight, size: 20),
-              const SizedBox(width: 8),
-              Text(
-                'Transfer',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.black,
-                ),
+    return SpineRow(
+      node: const SpineNode(
+        icon: LucideIcons.arrowLeftRight,
+        color: kStreetLegColor,
+        semanticLabel: 'Change',
+      ),
+      railColor: kStreetLegColor,
+      railDashed: true,
+      railTopInset: JourneyMetrics.ring,
+      firstLineHeight: kSpineNameLineHeight,
+      time: SpineTimes(
+        arrival: previousLeg?.endTime,
+        scheduledArrival: previousLeg?.scheduledEndTime,
+        departure: leg.startTime,
+        scheduledDeparture: leg.scheduledStartTime,
+      ),
+      meta: onShowOnMap == null
+          ? null
+          : Semantics(
+              button: true,
+              label: 'Show this change on the map',
+              child: Icon(
+                LucideIcons.map,
+                size: 16,
+                color: AppColors.accentOf(context),
               ),
-              const Spacer(),
+            ),
+      onTap: onShowOnMap,
+      body: Padding(
+        padding: const EdgeInsets.only(bottom: 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => openStopSheet(
+                stopId: leg.fromStopId,
+                stopName: leg.fromName,
+                referenceTime: leg.startTime,
+              ),
+              child: Text(
+                leg.fromName,
+                style: kSpineNameStyle.copyWith(color: AppColors.black),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 2,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Change · ${formatDuration(leg.duration)}',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AppColors.black.withValues(alpha: 0.75),
+              ),
+            ),
+            if (_platforms() case final platforms?) ...[
+              const SizedBox(height: 3),
               Text(
-                formatDuration(leg.duration),
+                platforms,
                 style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.black,
+                  fontSize: 13,
+                  color: AppColors.black.withValues(alpha: 0.5),
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 8),
-          GestureDetector(
-            onTap: () => openStopSheet(
-              stopId: leg.fromStopId,
-              stopName: leg.fromName,
-              referenceTime: leg.startTime,
-            ),
-            child: Row(
-              children: [
-                const Icon(LucideIcons.arrowRight, size: 16),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    '${formatTime(leg.startTime)} - ${leg.fromName}',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: AppColors.black.withValues(alpha: 0.5),
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
-                  ),
+            if (leg.distance != null && leg.distance! > 0) ...[
+              const SizedBox(height: 3),
+              Text(
+                'Approx. ${(leg.distance! / 1000).toStringAsFixed(2)} km walk',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: AppColors.black.withValues(alpha: 0.5),
                 ),
-              ],
-            ),
-          ),
-          if (leg.distance != null && leg.distance! > 0) ...[
-            const SizedBox(height: 4),
-            Text(
-              'Approx. ${(leg.distance! / 1000).toStringAsFixed(2)} km walk',
-              style: TextStyle(
-                fontSize: 13,
-                color: AppColors.black.withValues(alpha: 0.6),
               ),
-            ),
+            ],
           ],
-        ],
-      ),
-    );
-  }
-}
-
-class _DelayChip extends StatelessWidget {
-  const _DelayChip({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final isAhead = label.startsWith('-');
-    final color = isAhead ? const Color(0xFF2E7D32) : const Color(0xFFB26A00);
-    return Container(
-      margin: const EdgeInsets.only(left: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: isAhead ? const Color(0xFFE8F5E9) : const Color(0xFFFFF1E0),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          color: color,
         ),
       ),
     );
+  }
+
+  /// Which platform to leave and which to end up on — the one thing a change
+  /// is actually about, and only worth a line when the feed knows it.
+  String? _platforms() {
+    final from = leg.fromTrack?.trim();
+    final to = leg.toTrack?.trim();
+    final hasFrom = from != null && from.isNotEmpty;
+    final hasTo = to != null && to.isNotEmpty;
+    if (hasFrom && hasTo) return 'Track $from → Track $to';
+    if (hasTo) return 'To Track $to';
+    if (hasFrom) return 'From Track $from';
+    return null;
   }
 }
 
@@ -1617,41 +1625,64 @@ class FinishLegCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    final color = legSpineColor(
+      leg: leg,
+      background: AppColors.white,
+      accent: AppColors.accentOf(context),
+    );
+
+    return SpineRow(
+      node: SpineNode(
+        icon: LucideIcons.flag,
+        color: color,
+        filled: true,
+        semanticLabel: 'Journey end',
+      ),
+      firstLineHeight: kSpineNameLineHeight,
+      time: SpineTimes(
+        arrival: arrivalTime,
+        scheduledArrival: leg.scheduledEndTime,
+      ),
+      meta: _buildTrack(),
       onTap: () => openStopSheet(
         stopId: leg.toStopId,
         stopName: leg.toName,
         referenceTime: leg.endTime,
       ),
-      child: CustomCard(
+      body: Padding(
+        padding: const EdgeInsets.only(bottom: 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                const Icon(LucideIcons.flag, size: 20),
-                const SizedBox(width: 8),
-                Text(
-                  'Finish',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.black,
-                  ),
-                ),
-                const Spacer(),
-                Text(
-                  formatTime(arrivalTime),
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.black,
-                  ),
-                ),
-              ],
+            Text(
+              leg.toName,
+              style: kSpineNameStyle.copyWith(color: AppColors.black),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 2,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Finish · ${formatDuration(totalDuration)} total',
+              style: TextStyle(
+                fontSize: 13,
+                color: AppColors.black.withValues(alpha: 0.5),
+              ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget? _buildTrack() {
+    final track = leg.toTrack?.trim();
+    if (track == null || track.isEmpty) return null;
+    return Text(
+      'Track $track',
+      style: TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
+        color: AppColors.black.withValues(alpha: 0.75),
       ),
     );
   }
@@ -1662,8 +1693,6 @@ class _TimelineStop {
   final String? stopId;
   final String? track;
   final bool cancelled;
-  final bool isFirst;
-  final bool isLast;
 
   /// Both times, kept apart.
   ///
@@ -1680,8 +1709,6 @@ class _TimelineStop {
     this.stopId,
     this.track,
     this.cancelled = false,
-    this.isFirst = false,
-    this.isLast = false,
     this.arrival,
     this.departure,
     this.scheduledArrival,

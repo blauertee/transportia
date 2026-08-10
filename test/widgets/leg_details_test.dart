@@ -57,6 +57,9 @@ Leg _leg({
     'duration': const Duration(minutes: 40).inSeconds,
     'headsign': headsign,
     'routeShortName': 'ICE 599',
+    // With a display name the row leads with the service badge; without one
+    // the mode name is the title, which is a different path.
+    'displayName': 'ICE 599',
     'from': {
       'name': 'Berlin Hauptbahnhof',
       'lat': 52.525,
@@ -120,30 +123,35 @@ void main() {
         InMemorySharedPreferencesAsync.empty();
   });
 
-  testWidgets('collapsed, the card says where the service goes, not what '
+  testWidgets('collapsed, the row says where the service goes, not what '
       'class it is', (tester) async {
     await _pump(tester, _leg());
 
     expect(find.text('Flughafen BER'), findsOneWidget);
-    expect(find.text('High-speed Train • Flughafen BER'), findsNothing);
+    expect(find.textContaining('High-speed Train'), findsNothing);
   });
 
-  testWidgets('the class joins the destination once the card is open', (
-    tester,
-  ) async {
+  testWidgets('the class joins the note once the leg is open', (tester) async {
     await _pump(tester, _leg());
     await _expand(tester);
 
-    expect(find.text('High-speed Train • Flughafen BER'), findsOneWidget);
+    // In the note line rather than beside the destination: it is a thing you
+    // look up, not one you act on.
+    expect(find.textContaining('High-speed Train'), findsOneWidget);
   });
 
-  testWidgets('a leg with no headsign gets no line rather than an empty one', (
-    tester,
-  ) async {
+  testWidgets('the node still names the stop it leaves from', (tester) async {
+    // The name moved out of an endpoint row and onto the node itself, so it
+    // has to still be there — and only once.
+    await _pump(tester, _leg());
+    expect(find.text('Berlin Hauptbahnhof'), findsOneWidget);
+  });
+
+  testWidgets('a leg with no headsign leaves no empty line', (tester) async {
     await _pump(tester, _leg(headsign: ''));
 
-    // Only the two endpoint rows, each prefixed with a time.
-    expect(find.text('Berlin Hauptbahnhof'), findsNothing);
+    expect(find.text('Berlin Hauptbahnhof'), findsOneWidget);
+    expect(find.text(''), findsNothing);
   });
 
   testWidgets('the platform sits above the duration', (tester) async {
@@ -274,19 +282,21 @@ void main() {
     );
     await _expand(tester);
 
-    // The leg's own departure platform, on the card row and against the first
-    // stop of the timeline — and nothing at all against Ostkreuz.
-    expect(find.textContaining('Track'), findsNWidgets(2));
+    // The leg's own departure platform, once, on its node — and nothing at
+    // all against Ostkreuz.
+    expect(find.textContaining('Track'), findsOneWidget);
     expect(find.text('Track —'), findsNothing);
   });
 
-  testWidgets('the first stop shows the platform the leg leaves from', (
+  testWidgets('the platform is printed once, on the node it belongs to', (
     tester,
   ) async {
     await _pump(tester, _leg(track: '7'));
     await _expand(tester);
 
-    // Once in the overview, once at the top of the timeline it belongs to.
-    expect(find.text('Track 7'), findsNWidgets(2));
+    // Opening the leg drops its stops onto the line; the leg's own first stop
+    // is the ring above them and is not repeated among them.
+    expect(find.text('Track 7'), findsOneWidget);
+    expect(find.text('Berlin Hauptbahnhof'), findsOneWidget);
   });
 }
