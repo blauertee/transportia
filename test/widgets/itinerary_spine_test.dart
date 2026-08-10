@@ -6,6 +6,9 @@ import 'package:shared_preferences_platform_interface/shared_preferences_async_p
 import 'package:transportia/models/itinerary.dart';
 import 'package:transportia/providers/theme_provider.dart';
 import 'package:transportia/screens/itinerary_detail_screen.dart';
+import 'package:transportia/theme/journey_metrics.dart';
+import 'package:transportia/widgets/custom_card.dart';
+import 'package:transportia/widgets/journey/spine_node.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:transportia/utils/time_utils.dart';
 
@@ -306,6 +309,208 @@ void main() {
       expect(find.text('Flughafen BER'), findsOneWidget);
       expect(find.textContaining('Finish'), findsOneWidget);
       expect(find.text('Track 3'), findsOneWidget);
+    });
+  });
+
+  group('the row reads in the right order', () {
+    testWidgets('the end station follows its own line number', (tester) async {
+      // An Align in the badge used to fill half the row, so every leg put its
+      // end station at the same x whatever the line was called.
+      await _pump(
+        tester,
+        Column(
+          children: [
+            LegDetailsWidget(leg: _ride(), openStopSheet: _noop),
+            LegDetailsWidget(
+              leg: Leg.fromJson({
+                'mode': 'BUS',
+                'startTime': _at(Duration.zero),
+                'endTime': _at(const Duration(minutes: 5)),
+                'duration': 300,
+                'headsign': 'Rathaus',
+                'displayName': 'M4',
+                'from': {'name': 'Alexanderplatz', 'lat': 52.5, 'lon': 13.4},
+                'to': {'name': 'Rathaus', 'lat': 52.5, 'lon': 13.4},
+              }),
+              openStopSheet: _noop,
+            ),
+          ],
+        ),
+      );
+
+      final wide = tester.getRect(find.text('ICE 599'));
+      final narrow = tester.getRect(find.text('M4'));
+      final afterWide = tester.getRect(find.text('Flughafen BER'));
+      final afterNarrow = tester.getRect(find.text('Rathaus').first);
+
+      // Same margin after the badge, so different badges put their end
+      // stations at different x.
+      expect(
+        afterWide.left - wide.right,
+        closeTo(afterNarrow.left - narrow.right, 1.0),
+      );
+      expect(afterWide.left, isNot(closeTo(afterNarrow.left, 4.0)));
+    });
+
+    testWidgets('the departure holds the row, the arrival hangs above it', (
+      tester,
+    ) async {
+      final arrivesEarly = Leg.fromJson({
+        'mode': 'WALK',
+        'startTime': _at(const Duration(minutes: 1)),
+        'endTime': _at(const Duration(minutes: 4)),
+        'scheduledEndTime': _at(const Duration(minutes: 4)),
+        'duration': 180,
+        'from': {'name': 'Naturkundemuseum', 'lat': 52.53, 'lon': 13.38},
+        'to': {'name': 'Berlin Hauptbahnhof', 'lat': 52.525, 'lon': 13.369},
+      });
+      await _pumpRide(tester, previous: arrivesEarly);
+
+      final arrival = tester.getRect(
+        find.text(formatTime(_t0.add(const Duration(minutes: 4)))),
+      );
+      final departure = tester.getRect(
+        find.text(formatTime(_t0.add(const Duration(minutes: 8)))),
+      );
+      final ring = tester.getRect(find.byType(SpineNode));
+
+      // The one you can still catch is the one level with the ring.
+      expect(departure.center.dy, closeTo(ring.center.dy, 3.0));
+      expect(arrival.bottom, lessThanOrEqualTo(departure.top));
+    });
+
+    testWidgets('the departure is the darker of the two', (tester) async {
+      final arrivesEarly = Leg.fromJson({
+        'mode': 'WALK',
+        'startTime': _at(const Duration(minutes: 1)),
+        'endTime': _at(const Duration(minutes: 4)),
+        'scheduledEndTime': _at(const Duration(minutes: 4)),
+        'duration': 180,
+        'from': {'name': 'Naturkundemuseum', 'lat': 52.53, 'lon': 13.38},
+        'to': {'name': 'Berlin Hauptbahnhof', 'lat': 52.525, 'lon': 13.369},
+      });
+      await _pumpRide(tester, previous: arrivesEarly);
+
+      double alphaOf(String time) =>
+          tester.widget<Text>(find.text(time)).style!.color!.a;
+
+      expect(
+        alphaOf(formatTime(_t0.add(const Duration(minutes: 8)))),
+        greaterThan(alphaOf(formatTime(_t0.add(const Duration(minutes: 4))))),
+      );
+    });
+
+    testWidgets('a stop keeps its own times, and clears the next stop', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        LegDetailsWidget(
+          leg: Leg.fromJson({
+            'mode': 'HIGHSPEED_RAIL',
+            'startTime': _at(Duration.zero),
+            'endTime': _at(const Duration(minutes: 60)),
+            'duration': 3600,
+            'displayName': 'ICE 599',
+            'from': {'name': 'Hbf', 'lat': 52.5, 'lon': 13.4},
+            'to': {'name': 'BER', 'lat': 52.4, 'lon': 13.5},
+            'intermediateStops': [
+              {
+                'name': 'Ostkreuz',
+                'lat': 52.5,
+                'lon': 13.4,
+                'stopId': 'stop-ost',
+                'scheduledArrival': _at(const Duration(minutes: 20)),
+                'scheduledDeparture': _at(const Duration(minutes: 22)),
+              },
+              {
+                'name': 'Schönefeld',
+                'lat': 52.5,
+                'lon': 13.4,
+                'stopId': 'stop-sxf',
+                'scheduledArrival': _at(const Duration(minutes: 40)),
+                'scheduledDeparture': _at(const Duration(minutes: 42)),
+              },
+            ],
+          }),
+          openStopSheet: _noop,
+        ),
+      );
+      await _expand(tester);
+
+      final first = tester.getRect(find.text('Ostkreuz'));
+      final second = tester.getRect(find.text('Schönefeld'));
+      final arrival = tester.getRect(
+        find.text(formatTime(_t0.add(const Duration(minutes: 20)))),
+      );
+      final departure = tester.getRect(
+        find.text(formatTime(_t0.add(const Duration(minutes: 22)))),
+      );
+
+      // A stop's times hang off its own name: the arrival level with it, the
+      // departure just under. A leg's node lifts its arrival clear so the
+      // departure can hold the anchor — doing that here would float the
+      // arrival up towards the station above, which is the one place the pair
+      // must not look like it belongs.
+      expect(arrival.center.dy, closeTo(first.center.dy, 2.0));
+      expect(departure.top, greaterThanOrEqualTo(arrival.bottom - 1));
+
+      // And the next station is far enough off that the pair reads as this
+      // one's rather than as floating between the two.
+      expect(second.top - first.bottom, greaterThan(24));
+    });
+  });
+
+  group('the journey header', () {
+    testWidgets('has no box, and a rule under it instead', (tester) async {
+      await _pump(
+        tester,
+        JourneyOverviewWidget(
+          itinerary: Itinerary(
+            duration: 3600,
+            startTime: _t0,
+            endTime: _t0.add(const Duration(minutes: 60)),
+            transfers: 1,
+            legs: [_ride()],
+          ),
+        ),
+      );
+
+      expect(find.byType(CustomCard), findsNothing);
+    });
+
+    testWidgets("its map icon matches a leg's, on the same edge", (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        Column(
+          children: [
+            JourneyOverviewWidget(
+              itinerary: Itinerary(
+                duration: 3600,
+                startTime: _t0,
+                endTime: _t0.add(const Duration(minutes: 60)),
+                transfers: 1,
+                legs: [_ride()],
+              ),
+            ),
+            LegDetailsWidget(
+              leg: _change(),
+              openStopSheet: _noop,
+              onShowOnMap: () {},
+            ),
+          ],
+        ),
+      );
+
+      final icons = find.byIcon(LucideIcons.map);
+      expect(icons, findsNWidgets(2));
+      final header = tester.getRect(icons.first);
+      final leg = tester.getRect(icons.last);
+      expect(header.right, closeTo(leg.right, 0.5));
+      expect(header.width, closeTo(leg.width, 0.5));
+      expect(header.right, closeTo(420 - JourneyMetrics.screenPadding, 0.5));
     });
   });
 }

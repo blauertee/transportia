@@ -32,7 +32,9 @@ class SpineRow extends StatelessWidget {
     this.railTopInset = 0,
     this.railBottomInset = 0,
     this.firstLineHeight = 20,
-    this.padding = const EdgeInsets.symmetric(horizontal: 16),
+    this.padding = const EdgeInsets.symmetric(
+      horizontal: JourneyMetrics.screenPadding,
+    ),
     this.timeColumn = JourneyMetrics.timeColumn,
     this.onTap,
   });
@@ -81,6 +83,9 @@ class SpineRow extends StatelessWidget {
     final railColor = this.railColor;
 
     final row = Stack(
+      // The times column lifts an arrival above the row's top edge so the
+      // departure can hold the anchor; hard-edge clipping would cut it off.
+      clipBehavior: Clip.none,
       children: [
         // Behind the content and stretched to it. Positioned rather than a
         // stretched Row child, because that would need an IntrinsicHeight and

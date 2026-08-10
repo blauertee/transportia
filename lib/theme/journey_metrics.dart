@@ -36,6 +36,11 @@ abstract final class JourneyMetrics {
   /// Between the rail's gutter and the text that belongs to it.
   static const double gap = 12;
 
+  /// The inset every row keeps from the screen edge. Anything laid out beside
+  /// the spine uses it too, so a map icon in a leg and one in the journey
+  /// header land on the same edge.
+  static const double screenPadding = 16;
+
   /// A dashed rail: [dash] painted, [dashGap] skipped, repeating.
   static const double dash = 4;
   static const double dashGap = 5;

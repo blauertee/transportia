@@ -56,6 +56,10 @@ typedef OpenStopSheet =
 const double kSpineNameLineHeight = 20;
 const double kSpineStopLineHeight = 18;
 
+/// A delay sits on its own line under the time it belongs to. Explicit for
+/// the same reason: [SpineTimes] has to know how tall its own stack is.
+const double kSpineDelayLineHeight = 14;
+
 /// Where a minor stop's dot sits, measured from the row's top. Tighter than a
 /// node's, because a passed-through stop is a smaller mark and does not need
 /// a ring's worth of room.
@@ -75,10 +79,11 @@ const TextStyle kSpineStopStyle = TextStyle(
 
 /// When a service is at a point on the line, and when it leaves again.
 ///
-/// Where the two differ the service waited there, and both are worth printing
-/// — the departure is the one you can still make. They read `14:32 → 14:34`,
-/// each answering for its own delay. Where only one is known, that one is
-/// enough.
+/// Where the two differ the service waited there, and both are worth printing.
+/// The **departure** is the one that carries the row: it is what you can still
+/// catch, so it takes the row's anchor and its weight, and the arrival hangs
+/// above it in grey. Where only one time is known, that one is the departure's
+/// place.
 class SpineTimes extends StatelessWidget {
   const SpineTimes({
     super.key,
@@ -108,40 +113,72 @@ class SpineTimes extends StatelessWidget {
         departure != null &&
         arrival.scheduled != departure.scheduled;
 
+    // The last entry is the one that leaves, whether or not an arrival came
+    // before it.
     final times = showBoth
         ? [arrival, departure]
-        : [if (arrival != null) arrival else if (departure != null) departure];
+        : [if (departure != null) departure else if (arrival != null) arrival];
     if (times.isEmpty) return const SizedBox.shrink();
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (final time in times) ...[
-          Text(
-            formatTime(time.scheduled),
-            style: TextStyle(
-              fontSize: compact ? 13 : 14,
-              fontWeight: FontWeight.w600,
-              height:
-                  (compact ? kSpineStopLineHeight : kSpineNameLineHeight) /
-                  (compact ? 13 : 14),
-              color: AppColors.black.withValues(
-                alpha: time == times.first ? 0.85 : 0.5,
-              ),
-            ),
-          ),
-          if (time.delay case final delay?)
+    final lineHeight = compact ? kSpineStopLineHeight : kSpineNameLineHeight;
+
+    // On a leg, everything above the departure is lifted out of the row so the
+    // departure — not the arrival — ends up level with the node and the stop
+    // name. Height rather than layout, because the row cannot afford an
+    // intrinsic pass; every style here sets an explicit height so this is
+    // exact.
+    //
+    // A stop between two ends of a leg is left alone. Lifting there would
+    // float its arrival up towards the station above, which is the one place
+    // the pair must not look like it belongs.
+    var above = 0.0;
+    if (!compact) {
+      for (final time in times.take(times.length - 1)) {
+        above += lineHeight;
+        if (time.delay != null) above += kSpineDelayLineHeight;
+      }
+    }
+
+    return Transform.translate(
+      offset: Offset(0, -above),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final time in times) ...[
             Text(
-              formatDelay(delay),
+              formatTime(time.scheduled),
+              // A time is one line. Wrapping it would break the arithmetic
+              // that puts the departure on the row's anchor, and half a clock
+              // reading over two lines is worse than a tight fit.
+              maxLines: 1,
+              softWrap: false,
               style: TextStyle(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w700,
-                color: delayColor(delay),
+                fontSize: compact ? 13 : 14,
+                fontWeight: time == times.last
+                    ? FontWeight.w700
+                    : FontWeight.w500,
+                height: lineHeight / (compact ? 13 : 14),
+                color: AppColors.black.withValues(
+                  alpha: time == times.last ? 0.9 : 0.45,
+                ),
               ),
             ),
+            if (time.delay case final delay?)
+              Text(
+                formatDelay(delay),
+                maxLines: 1,
+                softWrap: false,
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  height: kSpineDelayLineHeight / 11.5,
+                  color: delayColor(delay),
+                ),
+              ),
+          ],
         ],
-      ],
+      ),
     );
   }
 }
@@ -626,7 +663,18 @@ class JourneyOverviewWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return CustomCard(
+    // No box. It is the head of the journey, not a notice about it, and the
+    // spine below it is boxless too — a card here made the screen read as a
+    // card followed by a drawing. A rule and some air separate it instead,
+    // and its padding matches the rows' so the map icon lands on the same
+    // right edge as every leg's.
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        JourneyMetrics.screenPadding,
+        4,
+        JourneyMetrics.screenPadding,
+        0,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -738,14 +786,22 @@ class JourneyOverviewWidget extends StatelessWidget {
                     ),
                   );
                 },
-                child: Icon(
-                  LucideIcons.map,
-                  size: 20,
-                  color: AppColors.accentOf(context),
+                child: Semantics(
+                  button: true,
+                  label: 'Show the whole journey on the map',
+                  child: Icon(
+                    LucideIcons.map,
+                    // The same size the legs use, on the same edge.
+                    size: 16,
+                    color: AppColors.accentOf(context),
+                  ),
                 ),
               ),
             ],
           ),
+          const SizedBox(height: 14),
+          Container(height: 1, color: AppColors.black.withValues(alpha: 0.08)),
+          const SizedBox(height: 18),
         ],
       ),
     );
@@ -1063,10 +1119,12 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
         const SizedBox(height: 6),
         Row(
           children: [
+            // The badge keeps its own width; the end station takes what is
+            // left, so it sits a fixed margin after the line number.
             Flexible(child: _buildTitleWidget()),
             if (_buildSubtitle() case final subtitle?) ...[
               const SizedBox(width: 8),
-              Flexible(
+              Expanded(
                 child: Text(
                   subtitle,
                   style: TextStyle(
@@ -1254,7 +1312,9 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
 
   Widget _buildStopBody(_TimelineStop stop) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      // Roomy enough that a stop's arrival and departure read as belonging to
+      // the name above them rather than to the stop below.
+      padding: const EdgeInsets.only(bottom: 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1442,26 +1502,26 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
           (routeColor == null && !isWalkLeg
               ? AppColors.solidWhite
               : AppColors.black);
-      final badge = Align(
-        alignment: Alignment.centerLeft,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: bg ?? const Color(0x00000000),
-            borderRadius: BorderRadius.circular(4),
+      // Sized to its own text. An Align here would take the whole of the
+      // width the Row offered it, which put every leg's end station at the
+      // same x instead of a fixed margin after its own line number.
+      final badge = Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: bg ?? const Color(0x00000000),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Text(
+          widget.leg.displayName!.isNotEmpty
+              ? widget.leg.displayName!
+              : getTransitModeName(widget.leg.mode),
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: txt,
           ),
-          child: Text(
-            widget.leg.displayName!.length > 0
-                ? widget.leg.displayName!
-                : getTransitModeName(widget.leg.mode),
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: txt,
-            ),
-            overflow: TextOverflow.ellipsis,
-            maxLines: 1,
-          ),
+          overflow: TextOverflow.ellipsis,
+          maxLines: 1,
         ),
       );
       final tripId = widget.leg.tripId;
