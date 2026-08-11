@@ -4,7 +4,6 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../models/routing_options.dart';
 import '../../models/transit_mode_group.dart';
 import '../../models/transitous/enums.dart';
-import '../../theme/app_colors.dart';
 import '../options/icon_controls.dart';
 import '../options/selectable_tick.dart';
 
@@ -134,27 +133,17 @@ class TransitSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         for (final group in TransitModeGroup.values) ...[
-          _listHeading(group.label),
+          OptionGroupHeading(group.label),
           const SizedBox(height: 6),
           _tickWrap(group.modes),
           const SizedBox(height: 10),
         ],
-        _listHeading('Other'),
+        OptionGroupHeading('Other'),
         const SizedBox(height: 6),
         _tickWrap(TransitModeGroup.extras),
       ],
     );
   }
-
-  Widget _listHeading(String text) => Text(
-    text.toUpperCase(),
-    style: TextStyle(
-      fontSize: 10.5,
-      fontWeight: FontWeight.w700,
-      letterSpacing: 0.7,
-      color: AppColors.black.withValues(alpha: 0.45),
-    ),
-  );
 
   Widget _tickWrap(List<TransitMode> modes) => Wrap(
     spacing: 6,

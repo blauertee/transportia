@@ -10,7 +10,7 @@ reference count — the judgement column is the point of the file.
 `flutter analyze` already reports unused *private* members, and reports none;
 everything below is public, which is why it goes unflagged.
 
-Last swept: 2026-08-11, against `c4fa8bc`.
+Last swept: 2026-08-11, against `7fb61a9`.
 
 ---
 

@@ -8,6 +8,7 @@ import '../services/favorites_service.dart';
 import '../services/transitous_geocode_service.dart';
 import '../services/location_service.dart';
 import '../theme/app_colors.dart';
+import '../utils/geo_utils.dart';
 import '../widgets/custom_app_bar.dart';
 import '../widgets/validation_toast.dart';
 import '../widgets/skeletons/skeleton_shimmer.dart';
@@ -53,8 +54,8 @@ class _AddFavouriteMapScreenState extends State<AddFavouriteMapScreen> {
                     onMapCreated: _onMapCreated,
                     styleString: themeProvider.mapStyleUrl,
                     initialCameraPosition: const CameraPosition(
-                      target: LatLng(50.087, 14.420),
-                      zoom: 13.0,
+                      target: LatLng(kFallbackMapLat, kFallbackMapLon),
+                      zoom: kFallbackMapZoom,
                     ),
                     myLocationEnabled: true,
                     rotateGesturesEnabled: true,
@@ -157,7 +158,7 @@ class _AddFavouriteMapScreenState extends State<AddFavouriteMapScreen> {
       }
     }
 
-    target ??= const LatLng(50.087, 14.420);
+    target ??= const LatLng(kFallbackMapLat, kFallbackMapLon);
 
     await controller.moveCamera(
       CameraUpdate.newCameraPosition(

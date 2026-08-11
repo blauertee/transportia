@@ -21,8 +21,9 @@ const double _kTerminalDotSize = 16;
 /// Diameter of the dot marking an intermediate stop.
 const double _kIntermediateDotSize = 12;
 
-/// Diameter of the circle carrying the vehicle icon.
-const double _kVehicleMarkerSize = 28;
+/// Diameter of the circle carrying the vehicle icon. Fills the indicator box
+/// it sits in, so the two must agree.
+const double _kVehicleMarkerSize = kTimelineIndicatorSize;
 
 /// How far the accented line is dimmed once the vehicle has gone past.
 const double _kPassedLineOpacity = 0.6;

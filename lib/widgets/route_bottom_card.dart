@@ -11,6 +11,7 @@ import '../services/transitous_geocode_service.dart';
 import '../widgets/route_field_box.dart';
 import '../theme/app_colors.dart';
 import 'buttons/pill_button.dart';
+import 'map/bottom_sheet_chrome.dart';
 import 'floating_nav_bar.dart';
 import 'buttons/primary_button.dart';
 import 'search/journey_spine.dart';
@@ -175,6 +176,19 @@ class _BottomCardState extends State<BottomCard> {
     if (mounted) setState(() {});
   }
 
+  /// How long the row confirms the save for, before going back to reporting
+  /// the difference from the stored defaults.
+  static const Duration _savedConfirmationFor = Duration(milliseconds: 1800);
+
+  void _saveOptionsAsDefault() {
+    widget.onSaveOptionsAsDefault();
+    setState(() => _savedAsDefault = true);
+    _savedTimer?.cancel();
+    _savedTimer = Timer(_savedConfirmationFor, () {
+      if (mounted) setState(() => _savedAsDefault = false);
+    });
+  }
+
   final ScrollController _scroll = ScrollController();
 
   /// The journey stages. Collapsed, the card is just a search box.
@@ -223,18 +237,7 @@ class _BottomCardState extends State<BottomCard> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x1A000000),
-            blurRadius: 14,
-            offset: Offset(0, -6),
-          ),
-        ],
-      ),
+    return BottomSheetSurface(
       child: GestureDetector(
         behavior: HitTestBehavior.translucent,
         onTap: () {
@@ -250,293 +253,252 @@ class _BottomCardState extends State<BottomCard> {
             }
             widget.onUnfocus();
           },
-          child: SafeArea(
-            top: false,
-            child: SizedBox.expand(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: widget.onHandleTap,
-                    onVerticalDragStart: (_) => widget.onDragStart(),
-                    onVerticalDragUpdate: (d) =>
-                        widget.onDragUpdate(d.delta.dy),
-                    onVerticalDragEnd: (d) =>
-                        widget.onDragEnd(d.velocity.pixelsPerSecond.dy),
-                    // A drag that loses the arena after starting reports no
-                    // end, and the drag rumble only stops on one.
-                    onVerticalDragCancel: () => widget.onDragEnd(0),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const SizedBox(height: 18),
-                        Container(
-                          width: 48,
-                          height: 6,
-                          decoration: BoxDecoration(
-                            color: AppColors.black.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(3),
-                          ),
-                        ),
-                        const SizedBox(height: 18),
-                      ],
-                    ),
-                  ),
+          child: SizedBox.expand(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                BottomSheetHandle(
+                  onTap: widget.onHandleTap,
+                  onDragStart: widget.onDragStart,
+                  onDragUpdate: widget.onDragUpdate,
+                  onDragEnd: widget.onDragEnd,
+                  bottomGap: 18,
+                ),
 
-                  Expanded(
-                    child: _buildScrollableBody(
-                      context,
-                      above: [
-                        Builder(
-                          builder: (context) {
-                            final fadeStart = 0.5;
-                            final t =
-                                ((widget.collapseProgress - fadeStart) /
-                                        (1 - fadeStart))
-                                    .clamp(0.0, 1.0);
-                            final opacity = 1.0 - Curves.easeOut.transform(t);
-                            return GestureDetector(
-                              behavior: HitTestBehavior.translucent,
-                              onTap: widget.onUnfocus,
-                              child: ClipRect(
-                                child: Align(
-                                  alignment: Alignment.topCenter,
-                                  heightFactor: opacity,
-                                  child: Opacity(
-                                    opacity: opacity,
-                                    child: Padding(
-                                      padding: EdgeInsets.fromLTRB(
-                                        12,
-                                        0,
-                                        12,
-                                        8,
-                                      ),
-                                      child: Align(
-                                        alignment: Alignment.centerLeft,
-                                        child: Text(
-                                          'Where to?',
-                                          style: TextStyle(
-                                            fontSize: 18,
-                                            fontWeight: FontWeight.w700,
-                                            color: AppColors.black,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                          child: Listener(
-                            onPointerDown: (_) {},
-                            behavior: HitTestBehavior.opaque,
-                            child: GestureDetector(
-                              onTap: () {},
-                              behavior: HitTestBehavior.opaque,
-                              child: RouteFieldBox(
-                                fromController: widget.fromCtrl,
-                                toController: widget.toCtrl,
-                                fromFocusNode: widget.fromFocusNode,
-                                toFocusNode: widget.toFocusNode,
-                                showMyLocationDefault:
-                                    widget.showMyLocationDefault,
-                                accentColor: AppColors.accentOf(context),
-                                onSwapRequested: widget.onSwapRequested,
-                                layerLink: widget.routeFieldLink,
-                                fromLoading: widget.fromLoading,
-                                toLoading: widget.toLoading,
-                                middle: _buildSpine(),
-                                onFromPressed: widget.onFromPressed,
-                                onToPressed: widget.onToPressed,
-                                isFromFavourite: widget.isFromFavourite,
-                                isToFavourite: widget.isToFavourite,
-                                onToggleFromFavourite:
-                                    widget.onToggleFromFavourite,
-                                onToggleToFavourite: widget.onToggleToFavourite,
-                              ),
-                            ),
-                          ),
-                        ),
-
-                        // Always offered, not only once something differs:
-                        // the row is where the routing options are managed
-                        // from, and hunting for a button that appears and
-                        // disappears is worse than one that is simply there.
-                        if (!widget.isCollapsed)
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-                            child: SaveDefaultRow(
-                              saved: _savedAsDefault,
-                              differsFromStored:
-                                  widget.options != widget.storedOptions,
-                              onReset: widget.onResetOptions,
-                              onSaveAsDefault: () {
-                                widget.onSaveOptionsAsDefault();
-                                setState(() => _savedAsDefault = true);
-                                _savedTimer?.cancel();
-                                _savedTimer = Timer(
-                                  const Duration(milliseconds: 1800),
-                                  () {
-                                    if (mounted) {
-                                      setState(() => _savedAsDefault = false);
-                                    }
-                                  },
-                                );
-                              },
-                            ),
-                          ),
-                      ],
-                      below: [
-                        Padding(
-                          padding: const EdgeInsets.only(top: 16),
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.translucent,
-                            onTap: widget.onUnfocus,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Recent trips',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
-                                    color: AppColors.black,
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                ...widget.recentTrips.map(
-                                  (trip) => Padding(
-                                    padding: const EdgeInsets.only(bottom: 16),
-                                    child: _RecentTripTile(
-                                      trip: trip,
-                                      onTap: () => widget.onRecentTripTap(trip),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                      ],
-                    ),
-                  ),
-
-                  if (!widget.isCollapsed)
-                    Padding(
-                      // Clears the floating nav bar, which is a sibling
-                      // painted over this card rather than beside it.
-                      padding: const EdgeInsets.fromLTRB(
-                        12,
-                        0,
-                        12,
-                        FloatingNavBar.reservedHeight + 12,
-                      ),
-                      child: Builder(
+                Expanded(
+                  child: _buildScrollableBody(
+                    context,
+                    above: [
+                      Builder(
                         builder: (context) {
-                          const double start = 0.5;
-                          final double raw =
-                              (widget.collapseProgress - start) / (1 - start);
-                          final double t = raw.clamp(0.0, 1.0);
-                          final double dy = 16.0 * t;
+                          final fadeStart = 0.5;
+                          final t =
+                              ((widget.collapseProgress - fadeStart) /
+                                      (1 - fadeStart))
+                                  .clamp(0.0, 1.0);
+                          final opacity = 1.0 - Curves.easeOut.transform(t);
                           return GestureDetector(
                             behavior: HitTestBehavior.translucent,
                             onTap: widget.onUnfocus,
-                            child: Transform.translate(
-                              offset: Offset(0, dy),
-                              child: Row(
-                                children: [
-                                  GestureDetector(
-                                    onTap: () {},
-                                    behavior: HitTestBehavior.opaque,
-                                    child: CompositedTransformTarget(
-                                      link: widget.timeSelectionLayerLink,
-                                      child: PillButton(
-                                        onTap: widget.onTimeSelectionTap,
-                                        onTapDown:
-                                            widget.onTimeSelectionTapDown,
-                                        onTapCancel:
-                                            widget.onTimeSelectionTapCancel,
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                              LucideIcons.clock,
-                                              size: 16,
-                                              color: AppColors.black,
-                                            ),
-                                            const SizedBox(width: 8),
-                                            Text(
-                                              widget.timeSelection
-                                                  .toDisplayString(),
-                                              style: TextStyle(
-                                                color: AppColors.black,
-                                                fontSize: 15,
-                                                fontWeight: FontWeight.w500,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  // The card covers most of the map, and its
-                                  // handle is not an obvious way to say "let
-                                  // me see it".
-                                  GestureDetector(
-                                    onTap: () {},
-                                    behavior: HitTestBehavior.opaque,
-                                    child: PillButton(
-                                      onTap: widget.onShowMap,
-                                      child: Semantics(
-                                        button: true,
-                                        label: 'Show the map',
-                                        child: Icon(
-                                          LucideIcons.map,
-                                          size: 16,
+                            child: ClipRect(
+                              child: Align(
+                                alignment: Alignment.topCenter,
+                                heightFactor: opacity,
+                                child: Opacity(
+                                  opacity: opacity,
+                                  child: Padding(
+                                    padding: EdgeInsets.fromLTRB(12, 0, 12, 8),
+                                    child: Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(
+                                        'Where to?',
+                                        style: TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.w700,
                                           color: AppColors.black,
                                         ),
                                       ),
                                     ),
                                   ),
-                                  const Spacer(),
-                                  GestureDetector(
-                                    onTap: () {},
-                                    behavior: HitTestBehavior.opaque,
-                                    child: PrimaryButton(
-                                      onTap: () =>
-                                          widget.onSearch(widget.timeSelection),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                        child: Listener(
+                          onPointerDown: (_) {},
+                          behavior: HitTestBehavior.opaque,
+                          child: GestureDetector(
+                            onTap: () {},
+                            behavior: HitTestBehavior.opaque,
+                            child: RouteFieldBox(
+                              fromController: widget.fromCtrl,
+                              toController: widget.toCtrl,
+                              fromFocusNode: widget.fromFocusNode,
+                              toFocusNode: widget.toFocusNode,
+                              showMyLocationDefault:
+                                  widget.showMyLocationDefault,
+                              accentColor: AppColors.accentOf(context),
+                              onSwapRequested: widget.onSwapRequested,
+                              layerLink: widget.routeFieldLink,
+                              fromLoading: widget.fromLoading,
+                              toLoading: widget.toLoading,
+                              middle: _buildSpine(),
+                              onFromPressed: widget.onFromPressed,
+                              onToPressed: widget.onToPressed,
+                              isFromFavourite: widget.isFromFavourite,
+                              isToFavourite: widget.isToFavourite,
+                              onToggleFromFavourite:
+                                  widget.onToggleFromFavourite,
+                              onToggleToFavourite: widget.onToggleToFavourite,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // Always offered, not only once something differs:
+                      // the row is where the routing options are managed
+                      // from, and hunting for a button that appears and
+                      // disappears is worse than one that is simply there.
+                      if (!widget.isCollapsed)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                          child: SaveDefaultRow(
+                            saved: _savedAsDefault,
+                            differsFromStored:
+                                widget.options != widget.storedOptions,
+                            onReset: widget.onResetOptions,
+                            onSaveAsDefault: _saveOptionsAsDefault,
+                          ),
+                        ),
+                    ],
+                    below: [
+                      Padding(
+                        padding: const EdgeInsets.only(top: 16),
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.translucent,
+                          onTap: widget.onUnfocus,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Recent trips',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.black,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              ...widget.recentTrips.map(
+                                (trip) => Padding(
+                                  padding: const EdgeInsets.only(bottom: 16),
+                                  child: _RecentTripTile(
+                                    trip: trip,
+                                    onTap: () => widget.onRecentTripTap(trip),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                  ),
+                ),
+
+                if (!widget.isCollapsed)
+                  Padding(
+                    // Clears the floating nav bar, which is a sibling
+                    // painted over this card rather than beside it.
+                    padding: const EdgeInsets.fromLTRB(
+                      12,
+                      0,
+                      12,
+                      FloatingNavBar.reservedHeight + 12,
+                    ),
+                    child: Builder(
+                      builder: (context) {
+                        const double start = 0.5;
+                        final double raw =
+                            (widget.collapseProgress - start) / (1 - start);
+                        final double t = raw.clamp(0.0, 1.0);
+                        final double dy = 16.0 * t;
+                        return GestureDetector(
+                          behavior: HitTestBehavior.translucent,
+                          onTap: widget.onUnfocus,
+                          child: Transform.translate(
+                            offset: Offset(0, dy),
+                            child: Row(
+                              children: [
+                                GestureDetector(
+                                  onTap: () {},
+                                  behavior: HitTestBehavior.opaque,
+                                  child: CompositedTransformTarget(
+                                    link: widget.timeSelectionLayerLink,
+                                    child: PillButton(
+                                      onTap: widget.onTimeSelectionTap,
+                                      onTapDown: widget.onTimeSelectionTapDown,
+                                      onTapCancel:
+                                          widget.onTimeSelectionTapCancel,
                                       child: Row(
                                         mainAxisSize: MainAxisSize.min,
-                                        children: const [
+                                        children: [
+                                          Icon(
+                                            LucideIcons.clock,
+                                            size: 16,
+                                            color: AppColors.black,
+                                          ),
+                                          const SizedBox(width: 8),
                                           Text(
-                                            'Search',
+                                            widget.timeSelection
+                                                .toDisplayString(),
                                             style: TextStyle(
-                                              color: AppColors.solidWhite,
+                                              color: AppColors.black,
                                               fontSize: 15,
-                                              fontWeight: FontWeight.w700,
+                                              fontWeight: FontWeight.w500,
                                             ),
                                           ),
                                         ],
                                       ),
                                     ),
                                   ),
-                                ],
-                              ),
+                                ),
+                                const SizedBox(width: 10),
+                                // The card covers most of the map, and its
+                                // handle is not an obvious way to say "let
+                                // me see it".
+                                GestureDetector(
+                                  onTap: () {},
+                                  behavior: HitTestBehavior.opaque,
+                                  child: PillButton(
+                                    onTap: widget.onShowMap,
+                                    child: Semantics(
+                                      button: true,
+                                      label: 'Show the map',
+                                      child: Icon(
+                                        LucideIcons.map,
+                                        size: 16,
+                                        color: AppColors.black,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const Spacer(),
+                                GestureDetector(
+                                  onTap: () {},
+                                  behavior: HitTestBehavior.opaque,
+                                  child: PrimaryButton(
+                                    onTap: () =>
+                                        widget.onSearch(widget.timeSelection),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: const [
+                                        Text(
+                                          'Search',
+                                          style: TextStyle(
+                                            color: AppColors.solidWhite,
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
-                          );
-                        },
-                      ),
+                          ),
+                        );
+                      },
                     ),
-                ],
-              ),
+                  ),
+              ],
             ),
           ),
         ),

@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../constants/prefs_keys.dart';
 import '../models/saved_place.dart';
+import 'transitous_geocode_service.dart';
 
 enum SavedPlacesBucket { search, timetable }
 
@@ -84,6 +86,36 @@ class SavedPlacesService {
     }
 
     return _normalize(updated);
+  }
+
+  /// Records that [suggestion] was picked, and returns the bucket's new
+  /// contents. Persisting happens in the background, so the caller can show
+  /// the updated list at once.
+  ///
+  /// Returns [places] unchanged for a suggestion with no name, which is not
+  /// worth remembering and would sort as an empty row.
+  static List<SavedPlace> recordSelection({
+    required SavedPlacesBucket bucket,
+    required List<SavedPlace> places,
+    required TransitousLocationSuggestion suggestion,
+  }) {
+    final name = suggestion.name.trim();
+    if (name.isEmpty) return places;
+
+    final updated = applySelection(
+      places,
+      SavedPlace(
+        name: name,
+        type: suggestion.type,
+        lat: suggestion.lat,
+        lon: suggestion.lon,
+        importance: SavedPlace.defaultImportance,
+        city: suggestion.defaultArea,
+        countryCode: suggestion.country,
+      ),
+    );
+    unawaited(savePlaces(bucket: bucket, places: updated));
+    return updated;
   }
 
   static List<SavedPlace> _normalize(List<SavedPlace> places) {

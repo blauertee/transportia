@@ -43,49 +43,35 @@ class _QuickSettingsBottomCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x1A000000),
-            blurRadius: 14,
-            offset: Offset(0, -6),
+    return BottomSheetSurface(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          BottomSheetHandle(
+            onTap: onHandleTap,
+            onDragStart: onDragStart,
+            onDragUpdate: onDragUpdate,
+            onDragEnd: onDragEnd,
+          ),
+          BottomSheetBackButton(onPressed: onBack),
+          Expanded(
+            child: _QuickSettingsContent(
+              quickButtonAction: quickButtonAction,
+              quickButtonOptions: quickButtonOptions,
+              showVehicles: showVehicles,
+              hideNonRealtime: hideNonRealtime,
+              showStops: showStops,
+              vehicleModeVisibility: vehicleModeVisibility,
+              onQuickButtonChanged: onQuickButtonChanged,
+              onShowVehiclesChanged: onShowVehiclesChanged,
+              onHideNonRealtimeChanged: onHideNonRealtimeChanged,
+              onVehicleModeChanged: onVehicleModeChanged,
+              onShowStopsChanged: onShowStopsChanged,
+              onOpenAllSettings: onOpenAllSettings,
+              bottomSpacer: bottomSpacer,
+            ),
           ),
         ],
-      ),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _BottomSheetHandle(
-              onTap: onHandleTap,
-              onDragStart: onDragStart,
-              onDragUpdate: onDragUpdate,
-              onDragEnd: onDragEnd,
-            ),
-            _BottomSheetBackButton(onPressed: onBack),
-            Expanded(
-              child: _QuickSettingsContent(
-                quickButtonAction: quickButtonAction,
-                quickButtonOptions: quickButtonOptions,
-                showVehicles: showVehicles,
-                hideNonRealtime: hideNonRealtime,
-                showStops: showStops,
-                vehicleModeVisibility: vehicleModeVisibility,
-                onQuickButtonChanged: onQuickButtonChanged,
-                onShowVehiclesChanged: onShowVehiclesChanged,
-                onHideNonRealtimeChanged: onHideNonRealtimeChanged,
-                onVehicleModeChanged: onVehicleModeChanged,
-                onShowStopsChanged: onShowStopsChanged,
-                onOpenAllSettings: onOpenAllSettings,
-                bottomSpacer: bottomSpacer,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

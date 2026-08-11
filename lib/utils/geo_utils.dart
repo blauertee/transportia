@@ -32,3 +32,13 @@ bool areCoordsClose(
 }
 
 double _degreesToRadians(double degrees) => degrees * (math.pi / 180.0);
+
+/// Where a map opens before anything better is known — neither the user's
+/// location nor a place they picked.
+///
+/// Prague, at a zoom that shows a city rather than a country. Any populated
+/// point would do; what matters is that the map opens somewhere with transit
+/// on it rather than in the ocean at 0,0.
+const double kFallbackMapLat = 50.087;
+const double kFallbackMapLon = 14.420;
+const double kFallbackMapZoom = 13.0;

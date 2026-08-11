@@ -147,31 +147,15 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
   Future<void> _recordSavedPlace(
     TransitousLocationSuggestion suggestion,
   ) async {
-    final name = suggestion.name.trim();
-    if (name.isEmpty) return;
-    final selected = SavedPlace(
-      name: name,
-      type: suggestion.type,
-      lat: suggestion.lat,
-      lon: suggestion.lon,
-      importance: SavedPlace.defaultImportance,
-      city: suggestion.defaultArea,
-      countryCode: suggestion.country,
-    );
-    final updated = SavedPlacesService.applySelection(
-      _savedTimetablePlaces,
-      selected,
+    final updated = SavedPlacesService.recordSelection(
+      bucket: SavedPlacesBucket.timetable,
+      places: _savedTimetablePlaces,
+      suggestion: suggestion,
     );
     if (!mounted) return;
     setState(() {
       _savedTimetablePlaces = updated;
     });
-    unawaited(
-      SavedPlacesService.savePlaces(
-        bucket: SavedPlacesBucket.timetable,
-        places: updated,
-      ),
-    );
   }
 
   void _onFocusChanged() {
@@ -201,23 +185,13 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
     setState(() {
       _showTimeSelectionOverlay = true;
     });
-    showGeneralDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      barrierLabel: 'Time selection',
-      barrierColor: const Color(0x00000000),
-      transitionDuration: const Duration(milliseconds: 180),
-      pageBuilder: (context, _, __) {
-        return TimeSelectionOverlay(
-          currentSelection: _timeSelection,
-          onSelectionChanged: _onTimeSelectionChanged,
-          onDismiss: _closeTimeSelectionOverlay,
-          showDepartArriveToggle: false,
-        );
-      },
-      transitionBuilder: (context, animation, _, child) {
-        return FadeTransition(opacity: animation, child: child);
-      },
+    showTimeSelectionOverlay(
+      context,
+      currentSelection: _timeSelection,
+      onSelectionChanged: _onTimeSelectionChanged,
+      onDismiss: _closeTimeSelectionOverlay,
+      // Timetables ask "departures from when", never "arrivals by when".
+      showDepartArriveToggle: false,
     ).then((_) {
       if (!mounted) return;
       if (_showTimeSelectionOverlay) {
@@ -395,7 +369,7 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
     try {
       final response = await StopTimesService.fetchStopTimes(
         stopId: _selectedStop?.id ?? '',
-        n: 25,
+        n: StopTimesService.defaultPageSize,
         pageCursor: _nextPageCursor,
         startTime: _startTimeParam,
         arriveBy: _timeSelection.isArriveBy,
@@ -437,7 +411,7 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
     try {
       final response = await StopTimesService.fetchStopTimes(
         stopId: _selectedStop?.id ?? '',
-        n: 25,
+        n: StopTimesService.defaultPageSize,
         pageCursor: _previousPageCursor,
         startTime: _startTimeParam,
         arriveBy: _timeSelection.isArriveBy,

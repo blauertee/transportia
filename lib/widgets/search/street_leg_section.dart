@@ -307,7 +307,7 @@ class StreetLegSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _heading('Other ways to travel'),
+        OptionGroupHeading('Other ways to travel'),
         const SizedBox(height: 6),
         Wrap(
           spacing: 6,
@@ -322,7 +322,7 @@ class StreetLegSection extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 12),
-        _heading('Shared vehicles'),
+        OptionGroupHeading('Shared vehicles'),
         const SizedBox(height: 6),
         Text(
           formFactors.isEmpty
@@ -349,16 +349,6 @@ class StreetLegSection extends StatelessWidget {
       ],
     );
   }
-
-  Widget _heading(String text) => Text(
-    text.toUpperCase(),
-    style: TextStyle(
-      fontSize: 10.5,
-      fontWeight: FontWeight.w700,
-      letterSpacing: 0.7,
-      color: AppColors.black.withValues(alpha: 0.45),
-    ),
-  );
 }
 
 class _BudgetSlider extends StatelessWidget {

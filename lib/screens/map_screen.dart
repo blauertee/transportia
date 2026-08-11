@@ -64,6 +64,7 @@ import '../widgets/last_updated_footer.dart';
 import '../widgets/stop_departures_sheet.dart';
 import '../widgets/journey/trip_details_view.dart';
 import '../widgets/journey/trip_timeline.dart' show StopTapCallback;
+import '../widgets/map/bottom_sheet_chrome.dart';
 import '../widgets/map/long_press_selection_modal.dart';
 import '../widgets/map/stop_selection_modal.dart';
 
@@ -98,8 +99,8 @@ class MapScreen extends StatefulWidget {
 class _MapScreenState extends State<MapScreen>
     with SingleTickerProviderStateMixin {
   static const CameraPosition _initCam = CameraPosition(
-    target: LatLng(50.087, 14.420),
-    zoom: 13.0,
+    target: LatLng(kFallbackMapLat, kFallbackMapLon),
+    zoom: kFallbackMapZoom,
     tilt: 0.0,
     bearing: 0.0,
   );
@@ -1611,23 +1612,11 @@ class _MapScreenState extends State<MapScreen>
       _showTimeSelectionOverlay = true;
     });
     _notifyOverlayVisibility();
-    showGeneralDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      barrierLabel: 'Time selection',
-      barrierColor: const Color(0x00000000),
-      transitionDuration: const Duration(milliseconds: 180),
-      pageBuilder: (context, _, __) {
-        return TimeSelectionOverlay(
-          currentSelection: _timeSelection,
-          onSelectionChanged: _onTimeSelectionChanged,
-          onDismiss: _closeTimeSelectionOverlay,
-          showDepartArriveToggle: true,
-        );
-      },
-      transitionBuilder: (context, animation, _, child) {
-        return FadeTransition(opacity: animation, child: child);
-      },
+    showTimeSelectionOverlay(
+      context,
+      currentSelection: _timeSelection,
+      onSelectionChanged: _onTimeSelectionChanged,
+      onDismiss: _closeTimeSelectionOverlay,
     ).then((_) {
       if (!mounted) return;
       if (_showTimeSelectionOverlay) {
@@ -4131,31 +4120,15 @@ class _MapScreenState extends State<MapScreen>
   Future<void> _recordSavedPlace(
     TransitousLocationSuggestion suggestion,
   ) async {
-    final name = suggestion.name.trim();
-    if (name.isEmpty) return;
-    final selected = SavedPlace(
-      name: name,
-      type: suggestion.type,
-      lat: suggestion.lat,
-      lon: suggestion.lon,
-      importance: SavedPlace.defaultImportance,
-      city: suggestion.defaultArea,
-      countryCode: suggestion.country,
-    );
-    final updated = SavedPlacesService.applySelection(
-      _savedSearchPlaces,
-      selected,
+    final updated = SavedPlacesService.recordSelection(
+      bucket: SavedPlacesBucket.search,
+      places: _savedSearchPlaces,
+      suggestion: suggestion,
     );
     if (!mounted) return;
     setState(() {
       _savedSearchPlaces = updated;
     });
-    unawaited(
-      SavedPlacesService.savePlaces(
-        bucket: SavedPlacesBucket.search,
-        places: updated,
-      ),
-    );
   }
 
   Future<void> _loadRecentTrips() async {

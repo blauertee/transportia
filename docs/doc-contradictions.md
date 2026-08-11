@@ -8,7 +8,7 @@ Tick an entry off by fixing one side and deleting the row. Nothing here has
 been changed yet — resolving a contradiction is a decision about intent, not a
 cleanup.
 
-Last swept: 2026-08-11, against `c4fa8bc`.
+Last swept: 2026-08-11, against `7fb61a9`.
 
 ---
 

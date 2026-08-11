@@ -492,3 +492,23 @@ class SliderScaleLabels extends StatelessWidget {
     );
   }
 }
+
+/// The small-caps label over a group of options — a transport group's name, a
+/// street leg's stage. Quiet enough to organise the ticks under it without
+/// competing with them.
+class OptionGroupHeading extends StatelessWidget {
+  const OptionGroupHeading(this.text, {super.key});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Text(
+    text.toUpperCase(),
+    style: TextStyle(
+      fontSize: 10.5,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 0.7,
+      color: AppColors.black.withValues(alpha: 0.45),
+    ),
+  );
+}

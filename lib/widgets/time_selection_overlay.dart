@@ -7,6 +7,42 @@ import '../theme/app_colors.dart';
 import 'bottom_overlay_card.dart';
 import 'pressable_highlight.dart';
 
+/// How long the overlay takes to fade in and out.
+const Duration _kTimeOverlayFadeDuration = Duration(milliseconds: 180);
+
+/// Fully transparent: the overlay's own card dims what is behind it, so a
+/// barrier colour here would dim it twice.
+const Color _kTimeOverlayBarrierColor = Color(0x00000000);
+
+/// Shows [TimeSelectionOverlay] over the current screen, resolving once it has
+/// closed however it was dismissed.
+///
+/// Not barrier-dismissible: the overlay has its own dismiss action, and a tap
+/// outside it lands on the map or the field behind it.
+Future<void> showTimeSelectionOverlay(
+  BuildContext context, {
+  required TimeSelection currentSelection,
+  required ValueChanged<TimeSelection> onSelectionChanged,
+  required VoidCallback onDismiss,
+  bool showDepartArriveToggle = true,
+}) {
+  return showGeneralDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    barrierLabel: 'Time selection',
+    barrierColor: _kTimeOverlayBarrierColor,
+    transitionDuration: _kTimeOverlayFadeDuration,
+    pageBuilder: (context, _, __) => TimeSelectionOverlay(
+      currentSelection: currentSelection,
+      onSelectionChanged: onSelectionChanged,
+      onDismiss: onDismiss,
+      showDepartArriveToggle: showDepartArriveToggle,
+    ),
+    transitionBuilder: (context, animation, _, child) =>
+        FadeTransition(opacity: animation, child: child),
+  );
+}
+
 class TimeSelectionOverlay extends StatefulWidget {
   const TimeSelectionOverlay({
     super.key,
