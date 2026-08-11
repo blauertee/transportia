@@ -1,6 +1,25 @@
 import '../models/itinerary.dart';
 import '../models/journey_stop.dart';
 
+/// Every alert worth showing for [leg] and the [stops] it calls at, with
+/// repeats removed.
+///
+/// The same disruption is commonly attached to the leg and to each stop it
+/// touches, so alerts are keyed on the text a rider actually reads.
+List<Alert> collectTripAlerts(Leg leg, List<JourneyStop> stops) {
+  final byText = <String, Alert>{};
+  void add(Alert alert) {
+    if (!alert.hasText) return;
+    byText['${alert.headerText}|${alert.descriptionText}'] = alert;
+  }
+
+  for (final stop in stops) {
+    stop.alerts.forEach(add);
+  }
+  leg.alerts.forEach(add);
+  return byText.values.toList(growable: false);
+}
+
 List<JourneyStop> buildJourneyStops(Leg leg) {
   final stops = <JourneyStop>[];
 

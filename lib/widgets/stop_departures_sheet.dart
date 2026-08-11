@@ -14,6 +14,42 @@ import 'bottom_overlay_card.dart';
 import 'pressable_highlight.dart';
 import 'skeletons/skeleton_shimmer.dart';
 
+/// How long the sheet takes to fade in and out.
+const Duration _kStopSheetFadeDuration = Duration(milliseconds: 180);
+
+/// Fully transparent, so the sheet floats over the screen it was opened from
+/// rather than dimming it.
+const Color _kStopSheetBarrierColor = Color(0x00000000);
+
+/// Shows [StopDeparturesSheet] over the current screen.
+///
+/// Does nothing when [stopId] is missing, so callers can hand it a tapped
+/// place without first checking whether that place is a real stop.
+void showStopDeparturesSheet(
+  BuildContext context, {
+  required String? stopId,
+  required String stopName,
+  required DateTime referenceTime,
+}) {
+  if (stopId == null || stopId.isEmpty) return;
+
+  showGeneralDialog<void>(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: 'Stop departures',
+    barrierColor: _kStopSheetBarrierColor,
+    transitionDuration: _kStopSheetFadeDuration,
+    pageBuilder: (context, _, __) => StopDeparturesSheet(
+      stopId: stopId,
+      stopName: stopName,
+      referenceTime: referenceTime,
+      onDismiss: () => Navigator.of(context, rootNavigator: true).pop(),
+    ),
+    transitionBuilder: (context, animation, _, child) =>
+        FadeTransition(opacity: animation, child: child),
+  );
+}
+
 /// Bottom sheet shown when a stop in the itinerary (or on the map) is
 /// tapped. Shows a live list of the stop's upcoming departures. Tolerant of
 /// a missing [stopId] and of empty/failed departures responses.

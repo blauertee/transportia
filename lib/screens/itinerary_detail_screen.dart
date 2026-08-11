@@ -30,6 +30,7 @@ import '../utils/journey_colors.dart';
 import '../utils/journey_progress.dart';
 import '../utils/leg_helper.dart';
 import '../utils/time_utils.dart';
+import '../widgets/alert_notice.dart';
 import '../widgets/custom_app_bar.dart';
 import '../widgets/custom_card.dart';
 import '../widgets/journey/spine_node.dart';
@@ -427,28 +428,12 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
     required String? stopId,
     required String stopName,
     required DateTime referenceTime,
-  }) {
-    if (stopId == null || stopId.isEmpty) return;
-
-    showGeneralDialog<void>(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: 'Stop departures',
-      barrierColor: const Color(0x00000000),
-      transitionDuration: const Duration(milliseconds: 180),
-      pageBuilder: (context, _, __) {
-        return StopDeparturesSheet(
-          stopId: stopId,
-          stopName: stopName,
-          referenceTime: referenceTime,
-          onDismiss: () => Navigator.of(context, rootNavigator: true).pop(),
-        );
-      },
-      transitionBuilder: (context, animation, _, child) {
-        return FadeTransition(opacity: animation, child: child);
-      },
-    );
-  }
+  }) => showStopDeparturesSheet(
+    context,
+    stopId: stopId,
+    stopName: stopName,
+    referenceTime: referenceTime,
+  );
 
   /// Opens the journey map on one leg.
   ///
@@ -1786,55 +1771,10 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
     return Wrap(spacing: 8, runSpacing: 8, children: metadata);
   }
 
-  Widget _buildAlertWidget(Alert alert) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8.0),
-      padding: const EdgeInsets.all(8.0),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF3CD),
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: const Color(0xFFFFC107)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            LucideIcons.triangleAlert,
-            size: 16,
-            color: const Color(0xFFF57C00),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (alert.headerText != null && alert.headerText!.isNotEmpty)
-                  Text(
-                    alert.headerText!,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.solidBlack,
-                    ),
-                  ),
-                if (alert.descriptionText != null &&
-                    alert.descriptionText!.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    alert.descriptionText!,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppColors.solidBlack.withValues(alpha: 0.8),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget _buildAlertWidget(Alert alert) => Padding(
+    padding: const EdgeInsets.only(bottom: 8.0),
+    child: AlertNotice.compact(alert: alert),
+  );
 
   Duration? get _departureDelay =>
       computeDelay(widget.leg.scheduledStartTime, widget.leg.startTime);

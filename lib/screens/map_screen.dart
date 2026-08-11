@@ -11,7 +11,6 @@ import 'package:maplibre_gl/maplibre_gl.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:timelines_plus/timelines_plus.dart';
 import '../animations/curves.dart';
 import '../constants/prefs_keys.dart';
 import '../providers/theme_provider.dart';
@@ -19,7 +18,6 @@ import '../models/route_field_kind.dart';
 import '../models/routing_options.dart';
 import '../models/transitous/server_config.dart';
 import '../models/itinerary.dart';
-import '../models/journey_stop.dart';
 import '../models/my_location.dart';
 import '../models/saved_place.dart';
 import '../models/stop_time.dart';
@@ -43,7 +41,6 @@ import '../services/transitous_geocode_service.dart';
 import '../services/trip_details_service.dart';
 import '../theme/app_colors.dart';
 import '../utils/color_utils.dart';
-import '../utils/duration_formatter.dart';
 import '../utils/geo_utils.dart';
 import '../utils/haptics.dart';
 import '../utils/custom_page_route.dart';
@@ -51,10 +48,8 @@ import '../utils/leg_helper.dart';
 import '../utils/map_marker_utils.dart';
 import '../utils/polyline_utils.dart';
 import '../utils/stop_time_utils.dart';
-import '../utils/journey_utils.dart';
 import '../widgets/custom_card.dart';
 import '../widgets/error_notice.dart';
-import '../widgets/info_chip.dart';
 import '../widgets/app_toggle_switch.dart';
 import '../widgets/pressable_highlight.dart';
 import '../widgets/quick_button_picker_sheet.dart';
@@ -67,8 +62,8 @@ import '../widgets/skeletons/skeleton_card.dart';
 import '../widgets/skeletons/skeleton_shimmer.dart';
 import '../widgets/last_updated_footer.dart';
 import '../widgets/stop_departures_sheet.dart';
-import '../widgets/stop_schedule_row.dart';
-import '../widgets/timeline_indicator_box.dart';
+import '../widgets/journey/trip_details_view.dart';
+import '../widgets/journey/trip_timeline.dart' show StopTapCallback;
 import '../widgets/map/long_press_selection_modal.dart';
 import '../widgets/map/stop_selection_modal.dart';
 
@@ -3820,28 +3815,12 @@ class _MapScreenState extends State<MapScreen>
     required String? stopId,
     required String stopName,
     required DateTime referenceTime,
-  }) {
-    if (stopId == null || stopId.isEmpty) return;
-
-    showGeneralDialog<void>(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: 'Stop departures',
-      barrierColor: const Color(0x00000000),
-      transitionDuration: const Duration(milliseconds: 180),
-      pageBuilder: (context, _, __) {
-        return StopDeparturesSheet(
-          stopId: stopId,
-          stopName: stopName,
-          referenceTime: referenceTime,
-          onDismiss: () => Navigator.of(context, rootNavigator: true).pop(),
-        );
-      },
-      transitionBuilder: (context, animation, _, child) {
-        return FadeTransition(opacity: animation, child: child);
-      },
-    );
-  }
+  }) => showStopDeparturesSheet(
+    context,
+    stopId: stopId,
+    stopName: stopName,
+    referenceTime: referenceTime,
+  );
 
   void _openQuickSettings() {
     if (_isQuickSettings) return;

@@ -24,7 +24,7 @@ import '../utils/time_utils.dart';
 import '../widgets/buttons/pill_button.dart';
 import '../widgets/buttons/primary_button.dart';
 import '../widgets/skeletons/skeleton_list.dart';
-import '../widgets/load_more_button.dart';
+import '../widgets/bidirectional_paged_list.dart';
 import '../widgets/time_selection_overlay.dart';
 import '../widgets/validation_toast.dart';
 
@@ -58,8 +58,13 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
   bool _isLoadingPrevious = false;
   late final ScrollController _resultsScrollController;
   bool _appliedInitialPreviousOffset = false;
-  static const double _seePreviousScrollOffset = 40.0;
   static const Key _centerKey = ValueKey('stop-times-center');
+
+  /// Gutter the result cards sit inside.
+  static const double _kResultsHorizontalPadding = 20.0;
+
+  /// Clearance under the last result for the floating nav bar.
+  static const double _kResultsBottomSpacing = 96.0;
 
   bool get _hasPreviousPage => _previousPageCursor?.isNotEmpty ?? false;
   bool get _hasNextPage => _nextPageCursor?.isNotEmpty ?? false;
@@ -471,11 +476,22 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      if (!_resultsScrollController.hasClients) return;
-      final minExtent = _resultsScrollController.position.minScrollExtent;
-      _resultsScrollController.jumpTo(minExtent + _seePreviousScrollOffset);
+      scrollPastSeePrevious(_resultsScrollController);
       _appliedInitialPreviousOffset = true;
     });
+  }
+
+  Widget _buildStopTimeTile(StopTime stopTime) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.of(context).push(
+          CustomPageRoute(
+            child: ConnectionInfoScreen(tripId: stopTime.tripId),
+          ),
+        );
+      },
+      child: _StopTimeCard(stopTime: stopTime),
+    );
   }
 
   Widget _buildLoadingSkeleton() {
@@ -722,105 +738,22 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
                       child: _isLoadingStopTimes
                           ? _buildLoadingSkeleton()
                           : _stopTimes != null
-                          ? Builder(
-                              builder: (context) {
-                                final hasPreviousSlot = _hasPreviousPage;
-                                final hasNextSlot = _hasNextPage;
-                                final beforeItems = _stopTimes!.sublist(
-                                  0,
-                                  _centerIndex,
-                                );
-                                final afterItems = _stopTimes!.sublist(
-                                  _centerIndex,
-                                );
-                                final beforeCount =
-                                    beforeItems.length +
-                                    (hasPreviousSlot ? 1 : 0);
-                                final afterCount =
-                                    afterItems.length + (hasNextSlot ? 1 : 0);
-
-                                Widget buildStopTimeTile(StopTime stopTime) {
-                                  return GestureDetector(
-                                    onTap: () {
-                                      Navigator.of(context).push(
-                                        CustomPageRoute(
-                                          child: ConnectionInfoScreen(
-                                            tripId: stopTime.tripId,
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                    child: _StopTimeCard(stopTime: stopTime),
-                                  );
-                                }
-
-                                return CustomScrollView(
-                                  controller: _resultsScrollController,
-                                  center: _centerKey,
-                                  slivers: [
-                                    SliverPadding(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 20,
-                                      ),
-                                      // Within a reverse-growth sliver,
-                                      // delegate index 0 is adjacent to the
-                                      // center anchor, so items are listed
-                                      // nearest-first with the "See previous"
-                                      // button last (farthest away, requiring
-                                      // a scroll up to reach it).
-                                      sliver: SliverList(
-                                        delegate: SliverChildBuilderDelegate((
-                                          context,
-                                          index,
-                                        ) {
-                                          if (index < beforeItems.length) {
-                                            final stopTime =
-                                                beforeItems[beforeItems.length -
-                                                    1 -
-                                                    index];
-                                            return buildStopTimeTile(stopTime);
-                                          }
-                                          return LoadMoreButton(
-                                            onTap: _loadPrevious,
-                                            isLoading: _isLoadingPrevious,
-                                            label: 'See previous',
-                                            icon: LucideIcons.chevronUp,
-                                          );
-                                        }, childCount: beforeCount),
-                                      ),
-                                    ),
-                                    SliverPadding(
-                                      key: _centerKey,
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 20,
-                                      ),
-                                      sliver: SliverList(
-                                        delegate: SliverChildBuilderDelegate((
-                                          context,
-                                          index,
-                                        ) {
-                                          if (index < afterItems.length) {
-                                            return buildStopTimeTile(
-                                              afterItems[index],
-                                            );
-                                          }
-                                          if (hasNextSlot &&
-                                              index == afterItems.length) {
-                                            return LoadMoreButton(
-                                              onTap: _loadMore,
-                                              isLoading: _isLoadingMore,
-                                            );
-                                          }
-                                          return const SizedBox.shrink();
-                                        }, childCount: afterCount),
-                                      ),
-                                    ),
-                                    const SliverToBoxAdapter(
-                                      child: SizedBox(height: 96),
-                                    ),
-                                  ],
-                                );
-                              },
+                          ? BidirectionalPagedList<StopTime>(
+                              controller: _resultsScrollController,
+                              centerKey: _centerKey,
+                              items: _stopTimes!,
+                              centerIndex: _centerIndex,
+                              itemBuilder: _buildStopTimeTile,
+                              hasPrevious: _hasPreviousPage,
+                              hasNext: _hasNextPage,
+                              isLoadingPrevious: _isLoadingPrevious,
+                              isLoadingNext: _isLoadingMore,
+                              onLoadPrevious: _loadPrevious,
+                              onLoadNext: _loadMore,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: _kResultsHorizontalPadding,
+                              ),
+                              trailingExtent: _kResultsBottomSpacing,
                             )
                           : _buildStopSearch(),
                     ),
