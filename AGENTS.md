@@ -4,12 +4,24 @@
 - `lib/`: application code.
   - `lib/main.dart`: entrypoint; boots `Transportia`.
   - `lib/app.dart`: app shell, routing, locale setup.
+  - `lib/environment.dart`: app-wide constants and API version resolution.
   - `lib/api/`: Transitous (MOTIS) client — endpoint registry, HTTP client,
     query formatting. The only place that talks to `package:http`.
-  - `lib/models/transitous/`: response models mirroring the MOTIS schema.
-  - `lib/screens/`: UI screens (e.g., `map_screen.dart`, `welcome_screen.dart`).
+  - `lib/models/`: app-level models; `lib/models/transitous/` holds the
+    response models mirroring the MOTIS schema.
+  - `lib/screens/`: UI screens (e.g., `map_screen.dart`, `welcome_screen.dart`),
+    with a subdirectory per screen large enough to be split up.
   - `lib/services/`: platform/data services (e.g., `location_service.dart`).
-  - `lib/widgets/`: reusable UI components (e.g., `route_field_box.dart`).
+  - `lib/utils/`: pure helpers — no widgets, no `BuildContext`. Shared logic
+    belongs here.
+  - `lib/widgets/`: reusable UI components (e.g., `route_field_box.dart`),
+    grouped into `journey/`, `map/`, `options/`, `search/`, `buttons/` and
+    `skeletons/`.
+  - `lib/providers/`, `lib/theme/`, `lib/constants/`, `lib/animations/`:
+    app state, colours, preference keys, shared curves.
+- `docs/`: audit trackers (`doc-contradictions.md`, `unused-code.md`).
+- `Agenda.md`: what the code should look like — nesting, shared helpers, named
+  constants, comments, and when a change needs a test.
 - `assets/`: images and static assets (declared in `pubspec.yaml`).
 - `test/`: Dart tests (`*_test.dart`).
 - Platform runners: `android/`, `ios/`, `web/`, `linux/`, `macos/`, `windows/`.
@@ -30,6 +42,9 @@
 - Types: `UpperCamelCase`; members/functions/vars: `lowerCamelCase`.
 - Avoid `print`; use logs or comments when necessary.
 - Lints: `flutter_lints` configured via `analysis_options.yaml`. Fix all `flutter analyze` issues before submitting.
+- See `Agenda.md` for the structural conventions: flattening nested branching
+  into named methods, lifting duplicated logic into `lib/utils/` or
+  `lib/widgets/`, naming non-obvious literals, and what to leave in a comment.
 
 ## Testing Guidelines
 - Place tests in `test/` with `_test.dart` suffix (e.g., `route_field_box_test.dart`).
