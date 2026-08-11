@@ -80,10 +80,7 @@ class _MapSelectionModalState extends State<MapSelectionModal>
       curve: Curves.linearToEaseOut,
       reverseCurve: Curves.easeInToLinear,
     );
-    _scale = Tween<double>(
-      begin: widget.entryScale,
-      end: 1.0,
-    ).animate(_curve);
+    _scale = Tween<double>(begin: widget.entryScale, end: 1.0).animate(_curve);
     _backdropOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(_curve);
     _controller.forward();
   }

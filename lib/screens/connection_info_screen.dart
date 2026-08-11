@@ -110,10 +110,7 @@ class _ConnectionInfoScreenState extends State<ConnectionInfoScreen> {
   void _openTripOnMap() {
     Navigator.of(context).push(
       CustomPageRoute(
-        child: ItineraryMapScreen(
-          itinerary: _itinerary!,
-          showCarousel: false,
-        ),
+        child: ItineraryMapScreen(itinerary: _itinerary!, showCarousel: false),
       ),
     );
   }

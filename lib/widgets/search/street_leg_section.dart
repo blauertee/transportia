@@ -363,7 +363,6 @@ class StreetLegSection extends StatelessWidget {
   );
 }
 
-
 class _BudgetSlider extends StatelessWidget {
   const _BudgetSlider({
     required this.budget,

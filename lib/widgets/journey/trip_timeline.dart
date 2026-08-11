@@ -123,7 +123,9 @@ class TripTimeline extends StatelessWidget {
                 _vehicleBadge(),
               ],
             )
-          : Center(child: DotIndicator(color: dotColor, size: dotSize)),
+          : Center(
+              child: DotIndicator(color: dotColor, size: dotSize),
+            ),
     );
   }
 
@@ -132,9 +134,7 @@ class TripTimeline extends StatelessWidget {
     lineColor: routeColor,
     child: DecoratedBox(
       decoration: BoxDecoration(color: routeColor, shape: BoxShape.circle),
-      child: Center(
-        child: Icon(modeIcon, size: 14, color: routeTextColor),
-      ),
+      child: Center(child: Icon(modeIcon, size: 14, color: routeTextColor)),
     ),
   );
 
@@ -147,9 +147,7 @@ class TripTimeline extends StatelessWidget {
 
   Widget _buildConnector(List<_TimelineEntry> entries, int index) {
     final isPassed = index < entries.length && _isEntryPassed(entries[index]);
-    return SolidLineConnector(
-      color: isPassed ? _passedRouteColor : routeColor,
-    );
+    return SolidLineConnector(color: isPassed ? _passedRouteColor : routeColor);
   }
 
   /// A vehicle entry only ever sits behind the vehicle, so the line up to it

@@ -44,11 +44,7 @@ class AlertNotice extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            LucideIcons.triangleAlert,
-            size: 16,
-            color: AppColors.alertIcon,
-          ),
+          Icon(LucideIcons.triangleAlert, size: 16, color: AppColors.alertIcon),
           const SizedBox(width: 8),
           Expanded(
             child: Column(

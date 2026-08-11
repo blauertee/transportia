@@ -131,9 +131,7 @@ bool _isBeforeFirstDeparture(List<JourneyStop> stops, DateTime now) {
 bool _isAfterLastArrival(List<JourneyStop> stops, DateTime now) {
   final last = stops.last;
   final arrival = last.arrival ?? last.departure;
-  return arrival != null &&
-      !isSameMinute(now, arrival) &&
-      now.isAfter(arrival);
+  return arrival != null && !isSameMinute(now, arrival) && now.isAfter(arrival);
 }
 
 /// The vehicle is at [stop] either because this is its departure minute, or

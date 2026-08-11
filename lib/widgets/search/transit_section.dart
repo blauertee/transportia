@@ -274,4 +274,3 @@ class TransitSection extends StatelessWidget {
     );
   }
 }
-

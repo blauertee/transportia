@@ -119,8 +119,8 @@ class _IconPickerGrid extends StatelessWidget {
   final ValueChanged<String> onSelected;
 
   int _columnsFor(double availableWidth) {
-    final fitting =
-        (availableWidth / (_kIconTileExtent + _kIconTileSpacing)).floor();
+    final fitting = (availableWidth / (_kIconTileExtent + _kIconTileSpacing))
+        .floor();
     return fitting.clamp(1, favoriteIconOptions.length);
   }
 
@@ -169,14 +169,10 @@ class _IconTile extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         decoration: BoxDecoration(
-          color: isSelected
-              ? accent
-              : AppColors.black.withValues(alpha: 0.03),
+          color: isSelected ? accent : AppColors.black.withValues(alpha: 0.03),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: isSelected
-                ? accent
-                : AppColors.black.withValues(alpha: 0.1),
+            color: isSelected ? accent : AppColors.black.withValues(alpha: 0.1),
             width: isSelected ? 2 : 1,
           ),
         ),

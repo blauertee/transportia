@@ -260,8 +260,7 @@ class _TripInfoCard extends StatelessWidget {
       if (distance != null)
         InfoChip(
           icon: LucideIcons.ruler,
-          label:
-              '${(distance / _kMetresPerKilometre).toStringAsFixed(1)} km',
+          label: '${(distance / _kMetresPerKilometre).toStringAsFixed(1)} km',
         ),
       if (agencyName != null)
         InfoChip(icon: LucideIcons.building, label: agencyName),
