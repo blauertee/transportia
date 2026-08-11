@@ -464,3 +464,31 @@ class OptionSlider extends StatelessWidget {
     );
   }
 }
+
+/// The endpoints and midpoint printed under an [OptionSlider], so a position
+/// on the track can be read without dragging it.
+class SliderScaleLabels extends StatelessWidget {
+  const SliderScaleLabels({super.key, required this.labels});
+
+  final List<String> labels;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          for (final label in labels)
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 10.5,
+                color: AppColors.black.withValues(alpha: 0.45),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}

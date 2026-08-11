@@ -5,6 +5,7 @@ import '../../models/routing_options.dart';
 import '../../models/transitous/enums.dart';
 import '../../theme/app_colors.dart';
 import '../options/icon_controls.dart';
+import '../options/selectable_tick.dart';
 
 /// Which street mode a mile can use, and what each is called.
 ///
@@ -315,7 +316,7 @@ class StreetLegSection extends StatelessWidget {
           runSpacing: 6,
           children: [
             for (final entry in mileModeExtras.entries)
-              _Tick(
+              SelectableTick(
                 label: entry.value,
                 selected: modes.contains(entry.key),
                 onPressed: () => _toggleMode(entry.key),
@@ -340,7 +341,7 @@ class StreetLegSection extends StatelessWidget {
           runSpacing: 6,
           children: [
             for (final entry in rentalFormFactorLabels.entries)
-              _Tick(
+              SelectableTick(
                 label: entry.value,
                 selected: formFactors.contains(entry.key),
                 onPressed: () => _toggleFormFactor(entry.key),
@@ -362,52 +363,6 @@ class StreetLegSection extends StatelessWidget {
   );
 }
 
-class _Tick extends StatelessWidget {
-  const _Tick({
-    required this.label,
-    required this.selected,
-    required this.onPressed,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = AppColors.accentOf(context);
-    return Semantics(
-      button: true,
-      selected: selected,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onPressed,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 140),
-          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
-          decoration: BoxDecoration(
-            color: selected
-                ? accent.withValues(alpha: 0.13)
-                : const Color(0x00000000),
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(
-              color: selected
-                  ? accent
-                  : AppColors.black.withValues(alpha: 0.12),
-            ),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              color: selected ? accent : AppColors.black,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 class _BudgetSlider extends StatelessWidget {
   const _BudgetSlider({
@@ -435,26 +390,14 @@ class _BudgetSlider extends StatelessWidget {
           onChanged: (value) =>
               onChanged(Duration(minutes: (value / step).round() * step)),
         ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 2),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _scaleLabel(context, '0'),
-              _scaleLabel(context, budgetSummaryText(maxBudget ~/ 2)),
-              _scaleLabel(context, budgetSummaryText(maxBudget)),
-            ],
-          ),
+        SliderScaleLabels(
+          labels: [
+            '0',
+            budgetSummaryText(maxBudget ~/ 2),
+            budgetSummaryText(maxBudget),
+          ],
         ),
       ],
     );
   }
-
-  Widget _scaleLabel(BuildContext context, String text) => Text(
-    text,
-    style: TextStyle(
-      fontSize: 10.5,
-      color: AppColors.black.withValues(alpha: 0.45),
-    ),
-  );
 }
