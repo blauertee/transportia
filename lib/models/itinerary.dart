@@ -546,6 +546,110 @@ class Leg {
     );
   }
 
+  /// The part of this leg that [from] → [to] actually travels.
+  ///
+  /// `/trip` answers with the service end to end — the S7 from Ahrensfelde to
+  /// Potsdam — whatever slice of it a journey uses. Taken whole it put every
+  /// station on the line into an expanded leg, and moved the leg's own
+  /// departure to the start of the line.
+  ///
+  /// Returns this leg untouched when either endpoint is not on it. A wrong
+  /// slice is worse than an unsliced one: the times would then belong to
+  /// somewhere the traveller never goes.
+  Leg sliceBetween(TransitPlace from, TransitPlace to) {
+    final sequence = [this.from, ...intermediateStops, this.to];
+
+    final start = sequence.indexWhere((place) => _samePlace(place, from));
+    if (start < 0) return this;
+
+    // Searched backwards: a line that calls at a stop twice — a loop, or a
+    // service that reverses — should give the later visit, or the slice
+    // would end before it began.
+    var end = -1;
+    for (var i = sequence.length - 1; i > start; i--) {
+      if (_samePlace(sequence[i], to)) {
+        end = i;
+        break;
+      }
+    }
+    if (end < 0) return this;
+    if (start == 0 && end == sequence.length - 1) return this;
+
+    final origin = sequence[start];
+    final destination = sequence[end];
+    final departs = origin.departure ?? origin.arrival ?? startTime;
+    final arrives = destination.arrival ?? destination.departure ?? endTime;
+
+    return Leg(
+      mode: mode,
+      from: origin,
+      to: destination,
+      startTime: departs,
+      endTime: arrives,
+      scheduledStartTime: origin.scheduledDeparture ?? scheduledStartTime,
+      scheduledEndTime: destination.scheduledArrival ?? scheduledEndTime,
+      duration: arrives.difference(departs).inSeconds,
+      distance: distance,
+      realTime: realTime,
+      scheduled: scheduled,
+      routeShortName: routeShortName,
+      routeLongName: routeLongName,
+      displayName: displayName,
+      headsign: headsign,
+      routeId: routeId,
+      routeUrl: routeUrl,
+      routeColor: routeColor,
+      routeTextColor: routeTextColor,
+      routeType: routeType,
+      directionId: directionId,
+      agencyName: agencyName,
+      agencyUrl: agencyUrl,
+      agencyFareUrl: agencyFareUrl,
+      agencyId: agencyId,
+      tripId: tripId,
+      tripShortName: tripShortName,
+      // The whole service either side of the slice, which is exactly what
+      // these two are for.
+      tripFrom: tripFrom ?? sequence.first,
+      tripTo: tripTo ?? sequence.last,
+      category: category,
+      source: source,
+      cancelled: cancelled,
+      intermediateStops: sequence.sublist(start + 1, end),
+      alerts: alerts,
+      legGeometry: legGeometry,
+      steps: steps,
+      rental: rental,
+      alternatives: alternatives,
+      interlineWithPreviousLeg: interlineWithPreviousLeg,
+      fareTransferIndex: fareTransferIndex,
+      effectiveFareLegIndex: effectiveFareLegIndex,
+      loopedCalendarSince: loopedCalendarSince,
+      bikesAllowed: bikesAllowed,
+      wheelchairAccessible: wheelchairAccessible,
+      reservation: reservation,
+      ticketUrls: ticketUrls,
+    );
+  }
+
+  /// Whether two places are the same station.
+  ///
+  /// A stop id may name a platform (`…:900170004:2:52`) where the other side
+  /// names the station (`…:900170004`), so the parent counts as an id too.
+  /// Names decide it when no id matches, which is what makes two platforms of
+  /// one station meet.
+  static bool _samePlace(TransitPlace a, TransitPlace b) {
+    Set<String> keys(TransitPlace p) => {
+      for (final key in [p.stopId, p.parentId])
+        if (key != null && key.isNotEmpty) key,
+    };
+
+    final aKeys = keys(a);
+    final bKeys = keys(b);
+    if (aKeys.intersection(bKeys).isNotEmpty) return true;
+    return a.name.isNotEmpty && a.name == b.name;
+  }
+
   factory Leg.fromJson(Map<String, dynamic> json) {
     try {
       final legGeometry = asMap(json['legGeometry']);

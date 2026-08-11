@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 
 import '../../theme/journey_metrics.dart';
+import '../../utils/journey_progress.dart';
 
 /// One row's stretch of the journey line.
 ///
@@ -20,6 +21,7 @@ class SpineRail extends StatelessWidget {
     this.dashed = false,
     this.topInset = 0,
     this.bottomInset = 0,
+    this.travelled = 0,
   });
 
   final Color color;
@@ -32,6 +34,15 @@ class SpineRail extends StatelessWidget {
   final double topInset;
   final double bottomInset;
 
+  /// How much of this stretch is behind the traveller, 0..1.
+  ///
+  /// Split within the stretch rather than row by row, because a row can be a
+  /// four-hour ride: flipping the whole thing at its far end would leave the
+  /// indicator motionless for the entire journey it is meant to describe.
+  /// Zero by default, so a spine with no times — the search screen's — draws
+  /// exactly as it did.
+  final double travelled;
+
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
@@ -40,6 +51,7 @@ class SpineRail extends StatelessWidget {
         dashed: dashed,
         topInset: topInset,
         bottomInset: bottomInset,
+        travelled: travelled.clamp(0.0, 1.0),
       ),
       size: Size.infinite,
     );
@@ -52,12 +64,14 @@ class _RailPainter extends CustomPainter {
     required this.dashed,
     required this.topInset,
     required this.bottomInset,
+    required this.travelled,
   });
 
   final Color color;
   final bool dashed;
   final double topInset;
   final double bottomInset;
+  final double travelled;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -65,8 +79,10 @@ class _RailPainter extends CustomPainter {
     final bottom = size.height - bottomInset;
     if (bottom <= top) return;
 
-    final paint = Paint()
-      ..color = color
+    Paint pen(bool behind) => Paint()
+      ..color = behind
+          ? color.withValues(alpha: color.a * kTravelledOpacity)
+          : color
       ..strokeWidth = JourneyMetrics.stroke
       // Round, because Lucide's own strokes are round-capped and a flat line
       // beside a round glyph reads as a different pen.
@@ -74,9 +90,17 @@ class _RailPainter extends CustomPainter {
       ..style = PaintingStyle.stroke;
 
     final x = size.width / 2;
+    // Where the traveller is within this stretch. Everything above it has
+    // been ridden.
+    final split = top + (bottom - top) * travelled;
 
     if (!dashed) {
-      canvas.drawLine(Offset(x, top), Offset(x, bottom), paint);
+      if (split > top) {
+        canvas.drawLine(Offset(x, top), Offset(x, split), pen(true));
+      }
+      if (split < bottom) {
+        canvas.drawLine(Offset(x, split), Offset(x, bottom), pen(false));
+      }
       return;
     }
 
@@ -86,7 +110,9 @@ class _RailPainter extends CustomPainter {
     final half = JourneyMetrics.stroke / 2;
     for (var y = top + half; y < bottom - half; y += step) {
       final end = (y + JourneyMetrics.dash).clamp(top + half, bottom - half);
-      canvas.drawLine(Offset(x, y), Offset(x, end), paint);
+      // A dash is one mark: it takes the side its middle falls on rather than
+      // being cut in two, which at this size would read as a printing fault.
+      canvas.drawLine(Offset(x, y), Offset(x, end), pen((y + end) / 2 < split));
     }
   }
 
@@ -95,5 +121,6 @@ class _RailPainter extends CustomPainter {
       old.color != color ||
       old.dashed != dashed ||
       old.topInset != topInset ||
-      old.bottomInset != bottomInset;
+      old.bottomInset != bottomInset ||
+      old.travelled != travelled;
 }

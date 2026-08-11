@@ -394,6 +394,69 @@ void main() {
   });
 
   group('the per-trip fallback', () {
+    test('keeps the stops the journey rides, not the whole line', () async {
+      // `/trip` answers with the service end to end. Taken whole, an expanded
+      // leg listed every station on the line and the leg reported the line's
+      // own first departure as its own.
+      final ride = Leg(
+        mode: 'SUBURBAN',
+        tripId: 'trip-1',
+        from: const TransitPlace(name: 'Middle', lat: 52.5, lon: 13.4),
+        to: const TransitPlace(name: 'Near the end', lat: 52.4, lon: 13.5),
+        startTime: _depart,
+        endTime: _arrive,
+        duration: _arrive.difference(_depart).inSeconds,
+      );
+
+      TransitPlace stop(String name, Duration offset) => TransitPlace(
+        name: name,
+        lat: 52.45,
+        lon: 13.45,
+        arrival: _depart.add(offset),
+        departure: _depart.add(offset),
+      );
+
+      final result = await ItineraryRefreshService.refresh(
+        _itinerary([ride]),
+        fetchTripDetails: ({required String tripId}) async => _itinerary([
+          Leg(
+            mode: 'SUBURBAN',
+            tripId: 'trip-1',
+            realTime: true,
+            from: TransitPlace(
+              name: 'First on the line',
+              lat: 52.6,
+              lon: 13.3,
+              departure: _depart.subtract(const Duration(minutes: 40)),
+            ),
+            to: TransitPlace(
+              name: 'Last on the line',
+              lat: 52.3,
+              lon: 13.6,
+              arrival: _arrive.add(const Duration(minutes: 40)),
+            ),
+            startTime: _depart.subtract(const Duration(minutes: 40)),
+            endTime: _arrive.add(const Duration(minutes: 40)),
+            duration: 5400,
+            intermediateStops: [
+              stop('Before you got on', const Duration(minutes: -20)),
+              stop('Middle', Duration.zero),
+              stop('One you pass', const Duration(minutes: 5)),
+              stop('Near the end', const Duration(minutes: 15)),
+              stop('After you got off', const Duration(minutes: 25)),
+            ],
+          ),
+        ]),
+      );
+
+      final leg = result.itinerary.legs.single;
+      expect(leg.intermediateStops.map((s) => s.name), ['One you pass']);
+      expect(leg.fromName, 'Middle');
+      expect(leg.toName, 'Near the end');
+      expect(leg.startTime, _depart);
+      expect(leg.endTime, _depart.add(const Duration(minutes: 15)));
+    });
+
     test(
       'merges the leg for the trip it asked about, not the first one',
       () async {

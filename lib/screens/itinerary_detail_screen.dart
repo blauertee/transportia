@@ -27,6 +27,7 @@ import '../utils/custom_page_route.dart';
 import '../utils/duration_formatter.dart';
 import '../utils/itinerary_leg_utils.dart';
 import '../utils/journey_colors.dart';
+import '../utils/journey_progress.dart';
 import '../utils/leg_helper.dart';
 import '../utils/time_utils.dart';
 import '../widgets/custom_app_bar.dart';
@@ -640,6 +641,10 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
     final displayLegs = buildDisplayLegs(_itinerary.legs);
     final changeovers = changeoversOf(displayLegs);
     final savedTripNotice = _savedTripNotice();
+    // Read once per build so every row on screen agrees about where the
+    // traveller is. `_agoTicker` already rebuilds twice a minute, which is
+    // what makes the fade advance without any machinery of its own.
+    final progress = JourneyProgress(DateTime.now());
 
     return Container(
       color: AppColors.white,
@@ -740,6 +745,7 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
                                       .firstOrNull,
                                   openStopSheet: _openStopSheet,
                                   onShowOnMap: () => _showLegOnMap(legIndex),
+                                  progress: progress,
                                 );
                               }
                               return LegDetailsWidget(
@@ -747,6 +753,7 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
                                 previousLeg: previous,
                                 openStopSheet: _openStopSheet,
                                 onShowOnMap: () => _showLegOnMap(legIndex),
+                                progress: progress,
                               );
                             }
 
@@ -757,6 +764,7 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
                                 arrivalTime: _itinerary.endTime,
                                 totalDuration: _itinerary.duration,
                                 openStopSheet: _openStopSheet,
+                                progress: progress,
                               );
                             }
 
@@ -1299,12 +1307,17 @@ class LegDetailsWidget extends StatefulWidget {
   /// only show the departure, losing a time the old two-row card printed.
   final Leg? previousLeg;
 
+  /// Where the clock says the traveller has got to, which decides how much of
+  /// this leg's line is drawn as already ridden.
+  final JourneyProgress progress;
+
   const LegDetailsWidget({
     super.key,
     required this.leg,
     required this.openStopSheet,
     this.onShowOnMap,
     this.previousLeg,
+    this.progress = JourneyProgress.never,
   });
 
   @override
@@ -1321,6 +1334,15 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
     final point = _point;
     final previous = widget.previousLeg;
 
+    final progress = widget.progress;
+    final boarded = progress.hasPassed(widget.leg.startTime);
+    // Expanded, this row's line reaches only as far as the first stop; the
+    // rest of the leg belongs to the stop rows below it.
+    final railEndsAt = _isExpanded && !isStreet
+        ? (widget.leg.intermediateStops.firstOrNull?.arrival ??
+              widget.leg.endTime)
+        : widget.leg.endTime;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1329,11 +1351,18 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
           // grows out of its underside in that service's colour.
           node: SpineNode(
             icon: getLegIcon(widget.leg.mode),
-            color: color,
+            color: boarded ? _faded(color) : color,
             semanticLabel: getTransitModeName(widget.leg.mode),
           ),
           railColor: color,
           railDashed: isStreet,
+          railTravelled: progress.fractionBetween(
+            widget.leg.startTime,
+            railEndsAt,
+          ),
+          // Everything that got you to this ring is behind you once you are
+          // standing at it.
+          railAboveTravelled: boarded ? 1 : 0,
           // The leg owns the line from its own ring down to the next one; the
           // stretch above the ring belongs to whatever arrived here.
           aboveAnchor: point.showsArrival ? kSpineNameLineHeight : 0,
@@ -1368,6 +1397,15 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
     background: AppColors.white,
     accent: AppColors.accentOf(context),
   );
+
+  /// A marker for somewhere already reached, in the same wash as the line
+  /// behind the traveller.
+  ///
+  /// A stop row's line is drawn from the row's top, which is a little above
+  /// its dot, so the fade there is a marker's height out for as long as you
+  /// stand at that stop. A leg row is exact — its line starts at the ring.
+  static Color _faded(Color color) =>
+      color.withValues(alpha: color.a * kTravelledOpacity);
 
   /// When this leg leaves, and when the one before it got in.
   ///
@@ -1585,7 +1623,7 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
     }
 
     return [
-      for (final stop in stops)
+      for (final (index, stop) in stops.indexed)
         if (SpinePoint(
               arrival: stop.arrival,
               scheduledArrival: stop.scheduledArrival,
@@ -1596,9 +1634,23 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
             )
             case final point)
           SpineRow(
-            node: SpineDot(color: color),
+            node: SpineDot(
+              color: widget.progress.hasPassed(stop.time)
+                  ? _faded(color)
+                  : color,
+            ),
             nodeCenter: kSpineMinorNodeCenter,
             railColor: color,
+            // This dot's line runs to the next one, or off the end of the leg
+            // when it is the last stop. Expanded, this is what gives the fade
+            // its exact anchors: it lands between the two stops the clock
+            // falls between.
+            railTravelled: widget.progress.fractionBetween(
+              stop.time,
+              index + 1 < stops.length
+                  ? (stops[index + 1].arrival ?? stops[index + 1].departure)
+                  : widget.leg.endTime,
+            ),
             // A stop waited at reserves room for its arrival the same way a
             // leg's node does; the line through that room is this leg's, so
             // no separate colour is needed above it.
@@ -1865,6 +1917,9 @@ class TransferLegCard extends StatelessWidget {
   /// nobody is reporting on, which is most of them.
   final Changeover? changeover;
 
+  /// See [LegDetailsWidget.progress].
+  final JourneyProgress progress;
+
   const TransferLegCard({
     super.key,
     required this.leg,
@@ -1872,6 +1927,7 @@ class TransferLegCard extends StatelessWidget {
     this.onShowOnMap,
     this.previousLeg,
     this.changeover,
+    this.progress = JourneyProgress.never,
   });
 
   @override
@@ -1895,15 +1951,25 @@ class TransferLegCard extends StatelessWidget {
     final missed = changeover?.isMissed ?? false;
     // A break has to be findable while scrolling, before a word is read.
     final changeColor = missed ? kMissedChangeColor : kStreetLegColor;
+    // A change you have already made is behind you like any other stretch —
+    // but a change you cannot make keeps its full red wherever you are, since
+    // it is a warning rather than a piece of the route.
+    final arrived = !missed && progress.hasPassed(point.departure?.shown);
 
     return SpineRow(
       node: SpineNode(
         icon: missed ? LucideIcons.triangleAlert : LucideIcons.arrowLeftRight,
-        color: changeColor,
+        color: arrived
+            ? changeColor.withValues(alpha: changeColor.a * kTravelledOpacity)
+            : changeColor,
         semanticLabel: missed ? 'Change you will not make' : 'Change',
       ),
       railColor: changeColor,
       railDashed: true,
+      railTravelled: missed
+          ? 0
+          : progress.fractionBetween(point.departure?.shown, leg.endTime),
+      railAboveTravelled: arrived ? 1 : 0,
       aboveAnchor: point.showsArrival ? kSpineNameLineHeight : 0,
       railTopInset:
           (point.showsArrival ? kSpineNameLineHeight : 0) + JourneyMetrics.ring,
@@ -2022,12 +2088,16 @@ class FinishLegCard extends StatelessWidget {
   final int totalDuration;
   final OpenStopSheet openStopSheet;
 
+  /// See [LegDetailsWidget.progress].
+  final JourneyProgress progress;
+
   const FinishLegCard({
     super.key,
     required this.leg,
     required this.arrivalTime,
     required this.totalDuration,
     required this.openStopSheet,
+    this.progress = JourneyProgress.never,
   });
 
   @override
@@ -2037,11 +2107,15 @@ class FinishLegCard extends StatelessWidget {
       background: AppColors.white,
       accent: AppColors.accentOf(context),
     );
+    // The end of the line: once it is behind you the whole journey is.
+    final arrived = progress.hasPassed(arrivalTime);
 
     return SpineRow(
       node: SpineNode(
         icon: LucideIcons.flag,
-        color: color,
+        color: arrived
+            ? color.withValues(alpha: color.a * kTravelledOpacity)
+            : color,
         filled: true,
         semanticLabel: 'Journey end',
       ),

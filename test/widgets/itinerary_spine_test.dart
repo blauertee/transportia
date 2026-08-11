@@ -9,8 +9,10 @@ import 'package:transportia/screens/itinerary_detail_screen.dart';
 import 'package:transportia/theme/journey_metrics.dart';
 import 'package:transportia/utils/changeover.dart';
 import 'package:transportia/utils/journey_colors.dart';
+import 'package:transportia/utils/journey_progress.dart';
 import 'package:transportia/widgets/custom_card.dart';
 import 'package:transportia/widgets/journey/spine_node.dart';
+import 'package:transportia/widgets/journey/spine_rail.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:transportia/utils/time_utils.dart';
 
@@ -224,15 +226,26 @@ void _noop({
   required DateTime referenceTime,
 }) {}
 
-Future<void> _pumpRide(WidgetTester tester, {Leg? previous}) => _pump(
+Future<void> _pumpRide(
+  WidgetTester tester, {
+  Leg? previous,
+  JourneyProgress progress = JourneyProgress.never,
+}) => _pump(
   tester,
   LegDetailsWidget(
     leg: _ride(),
     previousLeg: previous,
     openStopSheet: _noop,
     onShowOnMap: () {},
+    progress: progress,
   ),
 );
+
+/// How much of each rail on screen is drawn as already ridden, top to bottom.
+List<double> _travelled(WidgetTester tester) => [
+  for (final element in find.byType(SpineRail).evaluate())
+    (element.widget as SpineRail).travelled,
+];
 
 Future<void> _expand(WidgetTester tester) async {
   await tester.tap(find.text('Show stops'));
@@ -406,6 +419,105 @@ void main() {
         TransferLegCard(leg: _change(), openStopSheet: _noop),
       );
       expect(find.textContaining('0.26 km walk'), findsOneWidget);
+    });
+  });
+
+  group('the line shows how far you have got', () {
+    testWidgets('a journey not yet started is drawn whole', (tester) async {
+      await _pumpRide(
+        tester,
+        progress: JourneyProgress(_t0.subtract(const Duration(hours: 1))),
+      );
+
+      expect(_travelled(tester), everyElement(0.0));
+    });
+
+    testWidgets('part-way through a leg, its line is part faded', (
+      tester,
+    ) async {
+      // The ride takes 50 minutes; the clock is 20 minutes into it. A leg
+      // this long is exactly why the fade splits inside a row rather than
+      // flipping at its end.
+      await _pumpRide(
+        tester,
+        progress: JourneyProgress(_t0.add(const Duration(minutes: 30))),
+      );
+
+      expect(_travelled(tester).single, closeTo(20 / 50, 0.01));
+    });
+
+    testWidgets('a leg behind you is faded end to end, ring and all', (
+      tester,
+    ) async {
+      await _pumpRide(
+        tester,
+        progress: JourneyProgress(_t0.add(const Duration(hours: 2))),
+      );
+
+      expect(_travelled(tester).single, 1.0);
+      final ring = tester.widget<SpineNode>(find.byType(SpineNode));
+      expect(ring.color.a, lessThan(1.0));
+    });
+
+    testWidgets('the ring stays solid until you are standing at it', (
+      tester,
+    ) async {
+      await _pumpRide(
+        tester,
+        progress: JourneyProgress(_t0.add(const Duration(minutes: 9))),
+      );
+
+      expect(tester.widget<SpineNode>(find.byType(SpineNode)).color.a, 1.0);
+    });
+
+    testWidgets('expanded, the fade lands between the stops you are between', (
+      tester,
+    ) async {
+      // Ostkreuz is left at :30 past and the ride ends at :30 past the next
+      // hour. Sitting at :45 puts the traveller a quarter of the way down the
+      // stop's own stretch, and the leg above it fully behind.
+      await _pumpRide(
+        tester,
+        progress: JourneyProgress(_t0.add(const Duration(minutes: 45))),
+      );
+      await _expand(tester);
+
+      final rails = _travelled(tester);
+      expect(rails, hasLength(2), reason: 'the leg and its one stop');
+      expect(rails.first, 1.0, reason: 'the run into Ostkreuz is done');
+      expect(rails.last, closeTo(15 / 30, 0.01));
+    });
+
+    testWidgets('a stop still ahead keeps its dot solid', (tester) async {
+      await _pumpRide(
+        tester,
+        progress: JourneyProgress(_t0.add(const Duration(minutes: 20))),
+      );
+      await _expand(tester);
+
+      expect(tester.widget<SpineDot>(find.byType(SpineDot)).color.a, 1.0);
+    });
+
+    testWidgets('a stop behind you has its dot faded', (tester) async {
+      await _pumpRide(
+        tester,
+        progress: JourneyProgress(_t0.add(const Duration(minutes: 45))),
+      );
+      await _expand(tester);
+
+      expect(
+        tester.widget<SpineDot>(find.byType(SpineDot)).color.a,
+        lessThan(1.0),
+      );
+    });
+
+    testWidgets('with no clock nothing is faded at all', (tester) async {
+      // The default, and what the search screen's spine relies on.
+      await _pumpRide(tester);
+      await _expand(tester);
+
+      expect(_travelled(tester), everyElement(0.0));
+      expect(tester.widget<SpineNode>(find.byType(SpineNode)).color.a, 1.0);
     });
   });
 

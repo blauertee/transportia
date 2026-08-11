@@ -227,7 +227,13 @@ class ItineraryRefreshService {
 
     final newLegs = itinerary.legs.map((leg) {
       final fresh = leg.tripId != null ? updates[leg.tripId] : null;
-      return fresh != null ? leg.withRealTimeFrom(fresh) : leg;
+      if (fresh == null) return leg;
+      // `/trip` answers with the whole service, so what came back covers the
+      // line end to end rather than the part this journey rides. Cut it down
+      // before merging, or the leg inherits every station on the line and the
+      // line's own first departure. Only this path needs it —
+      // `/refresh-itinerary` already answers leg by leg.
+      return leg.withRealTimeFrom(fresh.sliceBetween(leg.from, leg.to));
     }).toList();
 
     return ItineraryRefreshResult(

@@ -34,6 +34,8 @@ class SpineRow extends StatelessWidget {
     this.aboveAnchor = 0,
     this.railAboveColor,
     this.railAboveDashed = false,
+    this.railTravelled = 0,
+    this.railAboveTravelled = 0,
     this.firstLineHeight = 20,
     this.padding = const EdgeInsets.symmetric(
       horizontal: JourneyMetrics.screenPadding,
@@ -79,6 +81,11 @@ class SpineRow extends StatelessWidget {
   final Color? railAboveColor;
   final bool railAboveDashed;
 
+  /// How much of each stretch is behind the traveller, 0..1. See
+  /// [SpineRail.travelled]; zero leaves the line drawn as it always was.
+  final double railTravelled;
+  final double railAboveTravelled;
+
   /// Height of the first line of [body], used to centre it on [nodeCenter].
   ///
   /// Passed in rather than measured: laying the columns out against the text's
@@ -113,7 +120,11 @@ class SpineRow extends StatelessWidget {
             width: JourneyMetrics.gutter,
             top: 0,
             height: aboveAnchor,
-            child: SpineRail(color: aboveColor, dashed: railAboveDashed),
+            child: SpineRail(
+              color: aboveColor,
+              dashed: railAboveDashed,
+              travelled: railAboveTravelled,
+            ),
           ),
         if (railColor != null)
           Positioned(
@@ -126,6 +137,7 @@ class SpineRow extends StatelessWidget {
               dashed: railDashed,
               topInset: railTopInset,
               bottomInset: railBottomInset,
+              travelled: railTravelled,
             ),
           ),
         Padding(
