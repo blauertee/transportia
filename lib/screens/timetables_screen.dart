@@ -22,6 +22,7 @@ import '../utils/leg_helper.dart' show getLegIcon;
 import '../utils/stop_time_utils.dart';
 import '../utils/time_utils.dart';
 import '../widgets/buttons/pill_button.dart';
+import '../widgets/error_notice.dart';
 import '../widgets/buttons/primary_button.dart';
 import '../widgets/skeletons/skeleton_list.dart';
 import '../widgets/bidirectional_paged_list.dart';
@@ -52,6 +53,11 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
   List<StopTime>? _stopTimes;
   int _centerIndex = 0;
   bool _isLoadingStopTimes = false;
+
+  /// Why the last load failed, or null. Held rather than toasted so the body
+  /// has something to show instead of falling back to the stop picker.
+  String? _stopTimesError;
+
   String? _nextPageCursor;
   bool _isLoadingMore = false;
   String? _previousPageCursor;
@@ -246,6 +252,7 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
       _searchController.clear();
       _selectedStop = null;
       _stopTimes = null;
+      _stopTimesError = null;
       _nextPageCursor = null;
       _previousPageCursor = null;
       _isLoadingStopTimes = false;
@@ -254,6 +261,8 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
     });
   }
 
+  /// Picking a stop is the whole question this screen asks, so answering it
+  /// opens the departure board rather than filling a field and waiting.
   void _onSuggestionSelected(TransitousLocationSuggestion suggestion) {
     unawaited(_recordSavedPlace(suggestion));
     setState(() {
@@ -261,6 +270,7 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
       _selectedStop = suggestion;
       _searchFocus.unfocus();
     });
+    unawaited(_onSearch());
   }
 
   Future<void> _onSearch() async {
@@ -271,11 +281,11 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
     }
 
     var selectedStop = _selectedStop;
-    if (selectedStop?.id == null && query.length >= 3) {
+    if (selectedStop?.stopId == null && query.length >= 3) {
       selectedStop = await _resolveStopFromQuery(query);
     }
 
-    final stopId = selectedStop?.id;
+    final stopId = selectedStop?.stopId;
     if (stopId == null) {
       showValidationToast(context, 'Please select a stop from the list');
       return;
@@ -285,6 +295,7 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
 
     setState(() {
       _isLoadingStopTimes = true;
+      _stopTimesError = null;
       _stopTimes = null;
       _nextPageCursor = null;
       _previousPageCursor = null;
@@ -307,7 +318,7 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
       // The stop can have been cleared or swapped while this was in flight,
       // and a late answer would put the departures back over a screen the
       // rider has already left.
-      if (!mounted || _selectedStop?.id != stopId) return;
+      if (!mounted || _selectedStop?.stopId != stopId) return;
 
       setState(() {
         _stopTimes = deduplicateStopTimes(response.stopTimes);
@@ -318,15 +329,17 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
       });
       _maybeApplyInitialPreviousOffset();
     } catch (e) {
-      if (!mounted || _selectedStop?.id != stopId) return;
+      if (!mounted || _selectedStop?.stopId != stopId) return;
 
+      // Recorded rather than toasted: a toast leaves the body with no
+      // departures and nothing to say, so it falls back to the picker and the
+      // rider sees a second search field under the stop they just chose.
       setState(() {
         _isLoadingStopTimes = false;
+        _stopTimesError = 'Failed to load stop times';
         _previousPageCursor = null;
         _isLoadingPrevious = false;
       });
-
-      showValidationToast(context, 'Failed to load stop times');
     }
   }
 
@@ -626,6 +639,17 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
     );
   }
 
+  /// Shown in place of the departures when a load failed, so the chosen stop
+  /// stays chosen and the failure is something the rider can act on.
+  Widget _buildStopTimesError() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: ErrorNotice(message: _stopTimesError!, onRetry: _onSearch),
+      ),
+    );
+  }
+
   Widget _buildStopTimeTile(StopTime stopTime) {
     return GestureDetector(
       onTap: () {
@@ -690,6 +714,8 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
                     Expanded(
                       child: _isLoadingStopTimes
                           ? _buildLoadingSkeleton()
+                          : _stopTimesError != null
+                          ? _buildStopTimesError()
                           : _stopTimes != null
                           ? BidirectionalPagedList<StopTime>(
                               controller: _resultsScrollController,

@@ -69,6 +69,9 @@ class SavedPlacesService {
             lat: selected.lat,
             lon: selected.lon,
             importance: place.importance + importanceStep,
+            // Backfills the id onto a place stored before it was recorded, so
+            // re-picking a stop makes its timetable reachable again.
+            stopId: selected.stopId ?? place.stopId,
             city: selected.city ?? place.city,
             countryCode: selected.countryCode ?? place.countryCode,
           ),
@@ -110,6 +113,7 @@ class SavedPlacesService {
         lat: suggestion.lat,
         lon: suggestion.lon,
         importance: SavedPlace.defaultImportance,
+        stopId: suggestion.stopId,
         city: suggestion.defaultArea,
         countryCode: suggestion.country,
       ),

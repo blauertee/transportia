@@ -174,17 +174,26 @@ class _LocationSearchBodyState extends State<LocationSearchBody> {
 
   /// True when this search can only answer with a timetabled stop.
   ///
-  /// The geocoder is already told, but the two lists below the field were
-  /// not, so a timetable search offered addresses it could not open a
-  /// departure board for. Same predicate the timetable screen uses on its own
-  /// lists — [FavoritePlace.isStation] and the saved place's own type.
+  /// The geocoder is already told, but the two lists below the field were not,
+  /// so a timetable search offered addresses it could not open a departure
+  /// board for.
   bool get _stopsOnly => widget.type?.toUpperCase() == 'STOP';
 
-  List<FavoritePlace> get _offerableFavourites =>
-      _stopsOnly ? _favourites.where((f) => f.isStation).toList() : _favourites;
+  /// Being a station is not enough — a departure board needs the feed's id for
+  /// it, and places kept before the app recorded that have none. Offering one
+  /// would fail the moment it was tapped.
+  List<FavoritePlace> get _offerableFavourites => _stopsOnly
+      ? _favourites.where((f) => f.hasTimetable).toList()
+      : _favourites;
 
   List<SavedPlace> get _offerableRecents => _stopsOnly
-      ? _recents.where((p) => p.type.toUpperCase() == 'STOP').toList()
+      ? _recents
+            .where(
+              (p) =>
+                  p.type.toUpperCase() == 'STOP' &&
+                  (p.stopId?.isNotEmpty ?? false),
+            )
+            .toList()
       : _recents;
 
   String get _query => _controller.text.trim();
@@ -527,15 +536,17 @@ class _LocationSearchBodyState extends State<LocationSearchBody> {
   TransitousLocationSuggestion _favouriteToSuggestion(FavoritePlace f) =>
       TransitousLocationSuggestion(
         id: 'fav-${f.id}',
+        stopId: f.stopId,
         name: f.displayName,
         lat: f.lat,
         lon: f.lon,
-        type: 'PLACE',
+        type: f.type,
       );
 
   TransitousLocationSuggestion _savedToSuggestion(SavedPlace place) =>
       TransitousLocationSuggestion(
         id: 'saved-${place.key}',
+        stopId: place.stopId,
         name: place.name,
         lat: place.lat,
         lon: place.lon,

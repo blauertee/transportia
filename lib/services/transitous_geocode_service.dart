@@ -26,12 +26,25 @@ class TransitousLocationSuggestion {
     required this.lat,
     required this.lon,
     required this.type,
+    this.stopId,
     this.country,
     this.defaultArea,
     this.match,
   });
 
+  /// Identity for display and de-duplication only.
+  ///
+  /// Every source mints its own — the geocoder falls back to a coordinate when
+  /// a match has no id, and favourites, recents, map picks and history all
+  /// prefix their own. Never send it to the API; use [stopId].
   final String id;
+
+  /// The feed's id for this stop, e.g. `de-DELFI_de:11000:900100003`.
+  ///
+  /// Null unless the place is a stop the server named. Only a suggestion with
+  /// one can answer a departure board.
+  final String? stopId;
+
   final String name;
   final double lat;
   final double lon;
@@ -81,12 +94,18 @@ class TransitousLocationSuggestion {
     if (match.name.isEmpty) {
       throw TransitousGeocodeException('Incomplete suggestion payload');
     }
+    final type = match.type?.wireName ?? 'STOP';
     return TransitousLocationSuggestion(
       id: match.id.isEmpty ? _fallbackId(match.lat, match.lon) : match.id,
+      // Only a named stop gets one: an address or a coordinate has an id the
+      // geocoder invented, which /stoptimes rejects.
+      stopId: type.toUpperCase() == 'STOP' && match.id.isNotEmpty
+          ? match.id
+          : null,
       name: match.name,
       lat: match.lat,
       lon: match.lon,
-      type: match.type?.wireName ?? 'STOP',
+      type: type,
       country: match.country,
       defaultArea: _defaultAreaOf(match),
       match: match,

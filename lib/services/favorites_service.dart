@@ -26,6 +26,12 @@ class FavoritePlace {
   /// re-geocoding them; the timetable screen offers only those.
   final String type;
 
+  /// The feed's id for this stop, when the place was saved from one.
+  ///
+  /// Null for anywhere that is not a stop, and for stops favourited before the
+  /// app started recording it.
+  final String? stopId;
+
   const FavoritePlace({
     required this.id,
     required this.name,
@@ -34,10 +40,15 @@ class FavoritePlace {
     required this.addedAt,
     this.label,
     this.type = 'PLACE',
+    this.stopId,
     this.iconName = 'mapPin',
   });
 
   bool get isStation => type.toUpperCase() == 'STOP';
+
+  /// Whether a departure board can be opened for this place. A station whose
+  /// id was never recorded cannot answer one, so it is not offered.
+  bool get hasTimetable => isStation && (stopId?.isNotEmpty ?? false);
 
   /// What to show. The alias when there is one, the searched name otherwise.
   String get displayName => (label?.trim().isNotEmpty ?? false) ? label! : name;
@@ -52,6 +63,7 @@ class FavoritePlace {
     String? label,
     bool clearLabel = false,
     String? type,
+    String? stopId,
     double? lat,
     double? lon,
     DateTime? addedAt,
@@ -62,6 +74,7 @@ class FavoritePlace {
       name: name ?? this.name,
       label: clearLabel ? null : (label ?? this.label),
       type: type ?? this.type,
+      stopId: stopId ?? this.stopId,
       lat: lat ?? this.lat,
       lon: lon ?? this.lon,
       addedAt: addedAt ?? this.addedAt,
@@ -75,6 +88,7 @@ class FavoritePlace {
       'name': name,
       'label': label,
       'type': type,
+      'stopId': stopId,
       'lat': lat,
       'lon': lon,
       'addedAt': addedAt.toIso8601String(),
@@ -88,6 +102,7 @@ class FavoritePlace {
       name: json['name'] as String,
       label: json['label'] as String?,
       type: json['type'] as String? ?? 'PLACE',
+      stopId: json['stopId'] as String?,
       lat: (json['lat'] as num).toDouble(),
       lon: (json['lon'] as num).toDouble(),
       addedAt: DateTime.parse(json['addedAt'] as String),
@@ -185,6 +200,7 @@ class FavoritesService {
     required double lat,
     required double lon,
     String type = 'PLACE',
+    String? stopId,
   }) async {
     final existing = findAt(lat, lon);
     if (existing != null) {
@@ -197,6 +213,7 @@ class FavoritesService {
       lat: lat,
       lon: lon,
       type: type,
+      stopId: stopId,
       addedAt: DateTime.now(),
     );
     await saveFavorite(place);

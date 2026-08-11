@@ -5,6 +5,7 @@ class SavedPlace {
     required this.lat,
     required this.lon,
     required this.importance,
+    this.stopId,
     this.city,
     this.countryCode,
   });
@@ -17,6 +18,15 @@ class SavedPlace {
   final double lat;
   final double lon;
   final int importance;
+
+  /// The feed's id for this stop, when the place was saved from one. Null for
+  /// anywhere that is not a stop, and for stops saved before it was recorded.
+  ///
+  /// Deliberately not part of [key]: the key must keep matching entries stored
+  /// without it, so re-picking a stop backfills the id rather than duplicating
+  /// the row.
+  final String? stopId;
+
   final String? city;
   final String? countryCode;
 
@@ -28,6 +38,7 @@ class SavedPlace {
     double? lat,
     double? lon,
     int? importance,
+    String? stopId,
     String? city,
     String? countryCode,
   }) {
@@ -37,6 +48,7 @@ class SavedPlace {
       lat: lat ?? this.lat,
       lon: lon ?? this.lon,
       importance: importance ?? this.importance,
+      stopId: stopId ?? this.stopId,
       city: city ?? this.city,
       countryCode: countryCode ?? this.countryCode,
     );
@@ -49,6 +61,7 @@ class SavedPlace {
       'lat': lat,
       'lon': lon,
       'importance': importance,
+      'stopId': stopId,
       'city': city,
       'countryCode': countryCode,
     };
@@ -61,6 +74,7 @@ class SavedPlace {
     final lon = (json['lon'] as num?)?.toDouble();
     final importance =
         (json['importance'] as num?)?.toInt() ?? SavedPlace.defaultImportance;
+    final stopId = json['stopId'] as String?;
     final city = json['city'] as String?;
     final countryCode =
         (json['countryCode'] as String?) ?? (json['country'] as String?);
@@ -73,6 +87,7 @@ class SavedPlace {
       lat: lat,
       lon: lon,
       importance: importance,
+      stopId: stopId,
       city: city,
       countryCode: countryCode,
     );

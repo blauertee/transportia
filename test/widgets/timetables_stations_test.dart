@@ -1,6 +1,12 @@
+import 'dart:convert';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:provider/provider.dart';
+import 'package:transportia/api/transitous_client.dart';
+import 'package:transportia/widgets/error_notice.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 import 'package:transportia/models/saved_place.dart';
@@ -17,11 +23,15 @@ FavoritePlace _favourite({
   String? label,
   double lat = 52.5,
   double lon = 13.4,
+  // Defaults to a real feed id, because that is what makes a station
+  // offerable here. Pass null for one kept before ids were stored.
+  String? stopId = 'de-DELFI_de:11000:900100003',
 }) => FavoritePlace(
   id: id,
   name: name,
   label: label,
   type: type,
+  stopId: type.toUpperCase() == 'STOP' ? stopId : null,
   lat: lat,
   lon: lon,
   addedAt: DateTime.utc(2026, 1, 1),
@@ -32,13 +42,31 @@ SavedPlace _stop({
   String type = 'STOP',
   double lat = 52.52,
   double lon = 13.41,
+  String? stopId = 'de-DELFI_de:11000:900120005',
 }) => SavedPlace(
   name: name,
   type: type,
   lat: lat,
   lon: lon,
+  stopId: type.toUpperCase() == 'STOP' ? stopId : null,
   importance: SavedPlacesService.initialImportance,
 );
+
+TransitousClient _clientReturning(
+  Future<http.Response> Function(http.Request request) handler,
+) => TransitousClient(httpClient: MockClient(handler));
+
+/// A stop the server knows but which has nothing leaving right now — enough to
+/// prove the departures view was reached.
+Future<http.Response> _emptyDepartures(http.Request request) async =>
+    http.Response(
+      jsonEncode({'stopTimes': <Object>[]}),
+      200,
+      headers: {'content-type': 'application/json'},
+    );
+
+Future<http.Response> _serverError(http.Request request) async =>
+    http.Response('upstream is down', 502);
 
 Future<void> _pump(WidgetTester tester) async {
   tester.view.physicalSize = const Size(420, 1000);
@@ -73,7 +101,10 @@ void main() {
     SharedPreferencesAsyncPlatform.instance =
         InMemorySharedPreferencesAsync.empty();
     FavoritesService.favoritesListenable.value = const [];
+    TransitousClient.instance = _clientReturning(_emptyDepartures);
   });
+
+  tearDown(() => TransitousClient.instance = TransitousClient());
 
   testWidgets('with nothing remembered it still says what to do', (
     tester,
@@ -167,5 +198,91 @@ void main() {
     // A coordinate cannot answer a departure board.
     await _pump(tester);
     expect(find.bySemanticsLabel('Pick a point on the map'), findsNothing);
+  });
+
+  group('opening a favourite', () {
+    testWidgets('tapping one opens its departures, with no second search', (
+      tester,
+    ) async {
+      // The whole point of the screen: picking a stop is the question, so the
+      // answer should not be another field to fill in.
+      await FavoritesService.saveFavorite(
+        _favourite(id: 'a', name: 'Ostkreuz'),
+      );
+
+      await _pump(tester);
+      await tester.tap(find.text('Ostkreuz'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(LocationSearchBody), findsNothing);
+      expect(find.byType(EditableText), findsOneWidget);
+    });
+
+    testWidgets('the stop the server is asked about is the feed id', (
+      tester,
+    ) async {
+      // A favourite's own id is local ('fav_<micros>'); sending it would 400.
+      String? askedFor;
+      TransitousClient.instance = _clientReturning((request) {
+        askedFor = request.url.queryParameters['stopId'];
+        return _emptyDepartures(request);
+      });
+      await FavoritesService.saveFavorite(
+        _favourite(id: 'a', name: 'Ostkreuz', stopId: 'de-DELFI_stop:42'),
+      );
+
+      await _pump(tester);
+      await tester.tap(find.text('Ostkreuz'));
+      await tester.pumpAndSettle();
+
+      expect(askedFor, 'de-DELFI_stop:42');
+    });
+
+    testWidgets('a station with no stored id is not offered', (tester) async {
+      // Kept before the id was recorded. Tapping it could only fail, so it is
+      // left out rather than offered as a dead end.
+      await FavoritesService.saveFavorite(
+        _favourite(id: 'a', name: 'Ostkreuz', stopId: null),
+      );
+
+      await _pump(tester);
+
+      expect(find.text('Ostkreuz'), findsNothing);
+      expect(find.text('None of your favourites is a stop.'), findsOne);
+    });
+
+    testWidgets('a recent stop with no stored id is not offered', (
+      tester,
+    ) async {
+      await SavedPlacesService.savePlaces(
+        bucket: SavedPlacesBucket.timetable,
+        places: [_stop(name: 'Alexanderplatz', stopId: null)],
+      );
+
+      await _pump(tester);
+
+      expect(find.text('Alexanderplatz'), findsNothing);
+    });
+
+    testWidgets('a failed load says so instead of asking again', (
+      tester,
+    ) async {
+      // The reported bug: the failure left the body with nothing to show, so
+      // it fell back to the picker and a second search bar appeared under the
+      // stop that had just been chosen.
+      TransitousClient.instance = _clientReturning(_serverError);
+      await FavoritesService.saveFavorite(
+        _favourite(id: 'a', name: 'Ostkreuz'),
+      );
+
+      await _pump(tester);
+      await tester.tap(find.text('Ostkreuz'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ErrorNotice), findsOneWidget);
+      expect(find.byType(LocationSearchBody), findsNothing);
+      // The stop stays chosen, so retrying does not mean picking it again.
+      expect(find.byType(EditableText), findsOneWidget);
+    });
   });
 }

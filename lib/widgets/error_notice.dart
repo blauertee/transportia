@@ -2,12 +2,23 @@ import 'package:flutter/widgets.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../theme/app_colors.dart';
+import 'pressable_highlight.dart';
 
 class ErrorNotice extends StatelessWidget {
-  const ErrorNotice({super.key, required this.message, this.compact = false});
+  const ErrorNotice({
+    super.key,
+    required this.message,
+    this.compact = false,
+    this.onRetry,
+    this.retryLabel = 'Try again',
+  });
 
   final String message;
   final bool compact;
+
+  /// Offered under the message when the failure is worth another attempt.
+  final VoidCallback? onRetry;
+  final String retryLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -41,6 +52,34 @@ class ErrorNotice extends StatelessWidget {
               color: AppColors.black.withValues(alpha: 0.65),
             ),
           ),
+          if (onRetry != null) ...[
+            SizedBox(height: spacing),
+            PressableHighlight(
+              onPressed: onRetry!,
+              highlightColor: accent,
+              borderRadius: BorderRadius.circular(12),
+              enableHaptics: false,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    LucideIcons.refreshCw,
+                    size: iconSize - 4,
+                    color: accent,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    retryLabel,
+                    style: TextStyle(
+                      fontSize: fontSize,
+                      fontWeight: FontWeight.w600,
+                      color: accent,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );

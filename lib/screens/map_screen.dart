@@ -2362,6 +2362,7 @@ class _MapScreenState extends State<MapScreen>
       lat: selection.lat,
       lon: selection.lon,
       type: selection.type,
+      stopId: selection.stopId,
     );
     if (!mounted) return;
     showValidationToast(
@@ -4015,6 +4016,7 @@ class _MapScreenState extends State<MapScreen>
   TransitousLocationSuggestion _suggestionFromStop(MapStop stop) {
     return TransitousLocationSuggestion(
       id: stop.stopId ?? stop.id,
+      stopId: stop.stopId,
       name: stop.name,
       lat: stop.lat,
       lon: stop.lon,
