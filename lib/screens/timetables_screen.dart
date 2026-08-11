@@ -11,8 +11,10 @@ import '../models/saved_place.dart';
 import '../models/stop_time.dart';
 import '../screens/connection_info_screen.dart';
 import '../services/location_service.dart';
+import '../services/favorites_service.dart';
 import '../services/saved_places_service.dart';
 import '../services/stop_times_service.dart';
+import '../screens/location_search_screen.dart';
 import '../services/transitous_geocode_service.dart';
 import '../utils/color_utils.dart';
 import '../utils/custom_page_route.dart';
@@ -21,10 +23,8 @@ import '../utils/stop_time_utils.dart';
 import '../utils/time_utils.dart';
 import '../widgets/buttons/pill_button.dart';
 import '../widgets/buttons/primary_button.dart';
-import '../widgets/empty_state.dart';
 import '../widgets/skeletons/skeleton_list.dart';
 import '../widgets/load_more_button.dart';
-import '../widgets/route_suggestions_overlay.dart';
 import '../widgets/time_selection_overlay.dart';
 import '../widgets/validation_toast.dart';
 
@@ -46,9 +46,6 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
   TimeSelection _timeSelection = TimeSelection.now();
   bool _showTimeSelectionOverlay = false;
   bool _suppressTimeSelectionReopen = false;
-  List<TransitousLocationSuggestion> _suggestions = [];
-  bool _isFetchingSuggestions = false;
-  int _suggestionRequestId = 0;
   List<SavedPlace> _savedTimetablePlaces = [];
   LatLng? _lastUserLatLng;
   TransitousLocationSuggestion? _selectedStop;
@@ -82,6 +79,7 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
     _searchFocus.addListener(_onFocusChanged);
     _checkLocationPermission();
     unawaited(_loadSavedTimetablePlaces());
+    unawaited(FavoritesService.getFavorites());
     _applyInitialStop(widget.initialStop);
   }
 
@@ -115,6 +113,21 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
         }
       } catch (_) {}
     }
+  }
+
+  /// Before a stop is chosen, this screen *is* the stop search.
+  ///
+  /// It used to keep its own read-only field and its own copies of the
+  /// favourites and recents, then push a picker that showed the same two
+  /// lists again. One body, rendered here, is the whole of it — and the
+  /// keyboard stays down, because the lists are what you came for.
+  Widget _buildStopSearch() {
+    return LocationSearchBody(
+      bucket: SavedPlacesBucket.timetable,
+      type: 'STOP',
+      autofocus: false,
+      onPicked: _onSuggestionSelected,
+    );
   }
 
   Future<void> _loadSavedTimetablePlaces() async {
@@ -233,97 +246,34 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
     _toggleTimeSelectionOverlay();
   }
 
-  void _onSearchTextChanged() {
-    final query = _searchController.text.trim();
-    setState(() {});
-
-    if (_searchFocus.hasFocus) {
-      if (query.length >= 3) {
-        _requestSuggestions(query);
-      } else {
-        setState(() {
-          _suggestions = [];
-          _isFetchingSuggestions = false;
-        });
-      }
-    } else {
-      setState(() {
-        _suggestions = [];
-        _isFetchingSuggestions = false;
-      });
-    }
-  }
+  void _onSearchTextChanged() => setState(() {});
 
   void _applyInitialStop(TransitousLocationSuggestion? initialStop) {
     if (initialStop == null) return;
     _selectedStop = initialStop;
     _searchController.text = initialStop.name;
-    _suggestions = [];
-    _isFetchingSuggestions = false;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _onSearch();
     });
   }
 
-  Future<void> _requestSuggestions(String query) async {
-    final requestId = ++_suggestionRequestId;
-    setState(() => _isFetchingSuggestions = true);
-
-    try {
-      final results = await TransitousGeocodeService.fetchSuggestions(
-        text: query,
-        type: 'STOP',
-        placeBias: _lastUserLatLng,
-      );
-
-      if (requestId != _suggestionRequestId) return;
-      if (!mounted) return;
-
-      setState(() {
-        _suggestions = _prioritizeSavedSuggestions(results);
-        _isFetchingSuggestions = false;
-      });
-    } catch (e) {
-      if (requestId != _suggestionRequestId) return;
-      if (!mounted) return;
-
-      setState(() {
-        _suggestions = [];
-        _isFetchingSuggestions = false;
-      });
-    }
-  }
-
-  List<TransitousLocationSuggestion> _prioritizeSavedSuggestions(
-    List<TransitousLocationSuggestion> results,
-  ) {
-    if (_savedTimetablePlaces.isEmpty) return results;
-    final importanceByKey = <String, int>{
-      for (final place in _savedTimetablePlaces) place.key: place.importance,
-    };
-    final indexBySuggestion = <TransitousLocationSuggestion, int>{};
-    for (int i = 0; i < results.length; i++) {
-      indexBySuggestion[results[i]] = i;
-    }
-    final ordered = List<TransitousLocationSuggestion>.from(results);
-    ordered.sort((a, b) {
-      final aKey = SavedPlace.buildKey(type: a.type, lat: a.lat, lon: a.lon);
-      final bKey = SavedPlace.buildKey(type: b.type, lat: b.lat, lon: b.lon);
-      final aImportance = importanceByKey[aKey];
-      final bImportance = importanceByKey[bKey];
-      final aSaved = aImportance != null;
-      final bSaved = bImportance != null;
-      if (aSaved != bSaved) {
-        return aSaved ? -1 : 1;
-      }
-      if (aImportance != null && bImportance != null) {
-        final diff = bImportance.compareTo(aImportance);
-        if (diff != 0) return diff;
-      }
-      return indexBySuggestion[a]!.compareTo(indexBySuggestion[b]!);
+  /// Puts the screen back to being the stop search.
+  ///
+  /// Clearing used to empty the field and nothing else, so the departures and
+  /// the stop behind them stayed and there was no way back to the lists.
+  void _clearStop() {
+    _searchFocus.unfocus();
+    setState(() {
+      _searchController.clear();
+      _selectedStop = null;
+      _stopTimes = null;
+      _nextPageCursor = null;
+      _previousPageCursor = null;
+      _isLoadingStopTimes = false;
+      _isLoadingMore = false;
+      _isLoadingPrevious = false;
     });
-    return ordered;
   }
 
   void _onSuggestionSelected(TransitousLocationSuggestion suggestion) {
@@ -332,7 +282,6 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
       _searchController.text = suggestion.name;
       _selectedStop = suggestion;
       _searchFocus.unfocus();
-      _suggestions = [];
     });
   }
 
@@ -377,7 +326,10 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
         arriveBy: _timeSelection.isArriveBy,
       );
 
-      if (!mounted) return;
+      // The stop can have been cleared or swapped while this was in flight,
+      // and a late answer would put the departures back over a screen the
+      // rider has already left.
+      if (!mounted || _selectedStop?.id != stopId) return;
 
       setState(() {
         _stopTimes = deduplicateStopTimes(response.stopTimes);
@@ -388,7 +340,7 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
       });
       _maybeApplyInitialPreviousOffset();
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || _selectedStop?.id != stopId) return;
 
       setState(() {
         _isLoadingStopTimes = false;
@@ -410,17 +362,14 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
         type: 'STOP',
         placeBias: _lastUserLatLng,
       );
-      final ordered = _prioritizeSavedSuggestions(results);
-      if (ordered.isEmpty) return null;
-      final suggestion = ordered.first;
+      if (results.isEmpty) return null;
+      final suggestion = results.first;
       if (!mounted) return suggestion;
       unawaited(_recordSavedPlace(suggestion));
       setState(() {
         _searchController.text = suggestion.name;
         _selectedStop = suggestion;
         _searchFocus.unfocus();
-        _suggestions = [];
-        _isFetchingSuggestions = false;
       });
       return suggestion;
     } catch (_) {
@@ -542,7 +491,6 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
   @override
   Widget build(BuildContext context) {
     context.watch<ThemeProvider>();
-    final showSuggestions = _searchFocus.hasFocus;
 
     return PopScope(
       canPop: !_searchFocus.hasFocus && !_showTimeSelectionOverlay,
@@ -590,166 +538,182 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
                                 ),
                               ),
                               const SizedBox(width: 16),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Timetables',
-                                    style: TextStyle(
-                                      fontSize: 28,
-                                      fontWeight: FontWeight.w800,
-                                      color: AppColors.black,
-                                      height: 1.1,
-                                    ),
-                                  ),
-                                  SizedBox(height: 4),
-                                  Text(
-                                    'Stop departures & arrivals',
-                                    style: TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w500,
-                                      color: AppColors.black.withValues(
-                                        alpha: 0.4,
+                              // Flexible, or the title and its subtitle claim
+                              // their natural width and overflow the row on a
+                              // narrow screen.
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Timetables',
+                                      style: TextStyle(
+                                        fontSize: 28,
+                                        fontWeight: FontWeight.w800,
+                                        color: AppColors.black,
+                                        height: 1.1,
                                       ),
                                     ),
-                                  ),
-                                ],
+                                    SizedBox(height: 4),
+                                    Text(
+                                      'Stop departures & arrivals',
+                                      style: TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w500,
+                                        color: AppColors.black.withValues(
+                                          alpha: 0.4,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ],
                           ),
                           const SizedBox(height: 24),
 
-                          CompositedTransformTarget(
-                            link: _searchFieldLink,
-                            child: GestureDetector(
-                              onTap: () {},
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: AppColors.white,
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(
-                                    color: AppColors.black.withValues(
-                                      alpha: 0.1,
-                                    ),
-                                  ),
-                                  boxShadow: const [
-                                    BoxShadow(
-                                      color: Color(0x14000000),
-                                      blurRadius: 10,
-                                      offset: Offset(0, 4),
-                                    ),
-                                  ],
-                                ),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 8,
-                                ),
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      LucideIcons.search,
-                                      size: 20,
+                          // Only once a stop is chosen. Before that this
+                          // screen is the stop search itself, and a second
+                          // field above the first would be the duplication
+                          // this replaced.
+                          if (_selectedStop != null) ...[
+                            CompositedTransformTarget(
+                              link: _searchFieldLink,
+                              child: GestureDetector(
+                                onTap: () {},
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: AppColors.white,
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
                                       color: AppColors.black.withValues(
-                                        alpha: 0.4,
+                                        alpha: 0.1,
                                       ),
                                     ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: CupertinoTextField(
-                                        controller: _searchController,
-                                        focusNode: _searchFocus,
-                                        placeholder: 'Search for a stop...',
-                                        placeholderStyle: TextStyle(
-                                          color: AppColors.black.withValues(
-                                            alpha: 0.4,
-                                          ),
-                                          fontSize: 16,
-                                        ),
-                                        style: TextStyle(
-                                          color: AppColors.black,
-                                          fontSize: 16,
-                                        ),
-                                        decoration: null,
-                                        padding: const EdgeInsets.symmetric(
-                                          vertical: 8,
-                                        ),
-                                        cursorColor: AppColors.accentOf(
-                                          context,
-                                        ),
-                                        maxLines: 1,
-                                        textInputAction: TextInputAction.search,
-                                        onSubmitted: (_) => _onSearch(),
+                                    boxShadow: const [
+                                      BoxShadow(
+                                        color: Color(0x14000000),
+                                        blurRadius: 10,
+                                        offset: Offset(0, 4),
                                       ),
-                                    ),
-                                    if (_searchController.text.isNotEmpty)
-                                      GestureDetector(
-                                        onTap: () {
-                                          _searchController.clear();
-                                        },
-                                        child: Padding(
-                                          padding: const EdgeInsets.only(
-                                            left: 8,
-                                          ),
-                                          child: Icon(
-                                            LucideIcons.x,
-                                            size: 20,
+                                    ],
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 8,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        LucideIcons.search,
+                                        size: 20,
+                                        color: AppColors.black.withValues(
+                                          alpha: 0.4,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: CupertinoTextField(
+                                          controller: _searchController,
+                                          focusNode: _searchFocus,
+                                          // Opens the picker rather than
+                                          // typing here: favourites and recents
+                                          // need more room than a dropdown.
+                                          readOnly: true,
+                                          showCursor: false,
+                                          onTap: () => _searchFocus.unfocus(),
+                                          placeholder: 'Search for a stop...',
+                                          placeholderStyle: TextStyle(
                                             color: AppColors.black.withValues(
                                               alpha: 0.4,
                                             ),
+                                            fontSize: 16,
+                                          ),
+                                          style: TextStyle(
+                                            color: AppColors.black,
+                                            fontSize: 16,
+                                          ),
+                                          decoration: null,
+                                          padding: const EdgeInsets.symmetric(
+                                            vertical: 8,
+                                          ),
+                                          cursorColor: AppColors.accentOf(
+                                            context,
+                                          ),
+                                          maxLines: 1,
+                                          textInputAction:
+                                              TextInputAction.search,
+                                          onSubmitted: (_) => _onSearch(),
+                                        ),
+                                      ),
+                                      if (_searchController.text.isNotEmpty)
+                                        GestureDetector(
+                                          onTap: _clearStop,
+                                          child: Padding(
+                                            padding: const EdgeInsets.only(
+                                              left: 8,
+                                            ),
+                                            child: Icon(
+                                              LucideIcons.x,
+                                              size: 20,
+                                              color: AppColors.black.withValues(
+                                                alpha: 0.4,
+                                              ),
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-
-                          const SizedBox(height: 12),
-
-                          Row(
-                            children: [
-                              CompositedTransformTarget(
-                                link: _timeSelectionLayerLink,
-                                child: PillButton(
-                                  onTapDown: _handleTimeButtonTapDown,
-                                  onTapCancel: _handleTimeButtonTapCancel,
-                                  onTap: _handleTimeButtonTap,
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        LucideIcons.clock,
-                                        size: 16,
-                                        color: AppColors.black,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        _timeSelection.toDisplayString(),
-                                        style: TextStyle(
-                                          color: AppColors.black,
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
                                     ],
                                   ),
                                 ),
                               ),
-                              const Spacer(),
-                              PrimaryButton(
-                                onTap: _onSearch,
-                                child: const Text(
-                                  'Search',
-                                  style: TextStyle(
-                                    color: AppColors.solidWhite,
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w700,
+                            ),
+
+                            const SizedBox(height: 12),
+
+                            Row(
+                              children: [
+                                CompositedTransformTarget(
+                                  link: _timeSelectionLayerLink,
+                                  child: PillButton(
+                                    onTapDown: _handleTimeButtonTapDown,
+                                    onTapCancel: _handleTimeButtonTapCancel,
+                                    onTap: _handleTimeButtonTap,
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          LucideIcons.clock,
+                                          size: 16,
+                                          color: AppColors.black,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          _timeSelection.toDisplayString(),
+                                          style: TextStyle(
+                                            color: AppColors.black,
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ],
-                          ),
+                                const Spacer(),
+                                PrimaryButton(
+                                  onTap: _onSearch,
+                                  child: const Text(
+                                    'Search',
+                                    style: TextStyle(
+                                      color: AppColors.solidWhite,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -858,103 +822,9 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
                                 );
                               },
                             )
-                          : Center(
-                              child: Padding(
-                                padding: const EdgeInsets.all(40),
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    EmptyState(
-                                      icon: Container(
-                                        width: 80,
-                                        height: 80,
-                                        decoration: BoxDecoration(
-                                          color: AppColors.black.withValues(
-                                            alpha: 0.04,
-                                          ),
-                                          borderRadius: BorderRadius.circular(
-                                            20,
-                                          ),
-                                        ),
-                                        child: Icon(
-                                          LucideIcons.trainFront,
-                                          size: 40,
-                                          color: AppColors.black.withValues(
-                                            alpha: 0.2,
-                                          ),
-                                        ),
-                                      ),
-                                      title: 'Search for a stop',
-                                      subtitle:
-                                          'Enter a stop name above to view\ndepartures and arrivals',
-                                      titleStyle: TextStyle(
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.w700,
-                                        color: AppColors.black,
-                                      ),
-                                      subtitleStyle: TextStyle(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w500,
-                                        color: AppColors.black.withValues(
-                                          alpha: 0.4,
-                                        ),
-                                        height: 1.4,
-                                      ),
-                                      padding: EdgeInsets.zero,
-                                    ),
-                                    const SizedBox(height: 96),
-                                  ],
-                                ),
-                              ),
-                            ),
+                          : _buildStopSearch(),
                     ),
                   ],
-                ),
-
-                Positioned(
-                  left: 20,
-                  right: 20,
-                  top: 0,
-                  child: CompositedTransformFollower(
-                    link: _searchFieldLink,
-                    showWhenUnlinked: false,
-                    targetAnchor: Alignment.bottomLeft,
-                    followerAnchor: Alignment.topLeft,
-                    offset: const Offset(0, 8),
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 180),
-                      switchInCurve: Curves.easeOutCubic,
-                      switchOutCurve: Curves.easeInCubic,
-                      transitionBuilder: (child, animation) {
-                        final offsetTween = Tween<Offset>(
-                          begin: const Offset(0, -0.05),
-                          end: Offset.zero,
-                        );
-                        return FadeTransition(
-                          opacity: animation,
-                          child: SlideTransition(
-                            position: animation.drive(offsetTween),
-                            child: child,
-                          ),
-                        );
-                      },
-                      child: !showSuggestions
-                          ? const SizedBox.shrink()
-                          : SingleFieldSuggestionsOverlay(
-                              key: const ValueKey('suggestions'),
-                              width: MediaQuery.of(context).size.width - 40,
-                              controller: _searchController,
-                              suggestions: _suggestions,
-                              savedPlaces: _savedTimetablePlaces,
-                              isLoading: _isFetchingSuggestions,
-                              onSuggestionTap: _onSuggestionSelected,
-                              onDismissRequest: () {
-                                _searchFocus.unfocus();
-                              },
-                              title: "Stop suggestions",
-                            ),
-                    ),
-                  ),
                 ),
               ],
             ),
@@ -1119,3 +989,5 @@ class _TimeWithDelayText extends StatelessWidget {
     );
   }
 }
+
+/// One remembered stop, offered before anything has been searched for.

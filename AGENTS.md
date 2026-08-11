@@ -4,6 +4,9 @@
 - `lib/`: application code.
   - `lib/main.dart`: entrypoint; boots `Transportia`.
   - `lib/app.dart`: app shell, routing, locale setup.
+  - `lib/api/`: Transitous (MOTIS) client — endpoint registry, HTTP client,
+    query formatting. The only place that talks to `package:http`.
+  - `lib/models/transitous/`: response models mirroring the MOTIS schema.
   - `lib/screens/`: UI screens (e.g., `map_screen.dart`, `welcome_screen.dart`).
   - `lib/services/`: platform/data services (e.g., `location_service.dart`).
   - `lib/widgets/`: reusable UI components (e.g., `route_field_box.dart`).
@@ -31,6 +34,10 @@
 ## Testing Guidelines
 - Place tests in `test/` with `_test.dart` suffix (e.g., `route_field_box_test.dart`).
 - Use `flutter_test`. Keep tests deterministic; mock location/permissions when needed.
+- For API code, inject an `http.Client` into `TransitousClient` and drive it
+  with `MockClient` from `package:http/testing.dart`. Parse tests should read
+  the real captures in `test/fixtures/transitous/` rather than hand-written
+  JSON; see the README there before re-capturing.
 - Aim to cover core logic in `services/` and widget behaviors with golden or widget tests where practical.
 
 ## Commit & Pull Request Guidelines

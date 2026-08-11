@@ -1,4 +1,5 @@
 import '../services/transitous_geocode_service.dart';
+import 'my_location.dart';
 
 class TripHistoryItem {
   TripHistoryItem({
@@ -34,7 +35,7 @@ class TripHistoryItem {
       fromLat = from.lat;
       fromLon = from.lon;
     } else if (userLat != null && userLon != null) {
-      fromName = 'My Location';
+      fromName = myLocationName;
       fromLat = userLat;
       fromLon = userLon;
     } else {

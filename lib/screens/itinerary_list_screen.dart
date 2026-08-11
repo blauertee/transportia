@@ -10,7 +10,9 @@ import '../models/time_selection.dart';
 import '../widgets/custom_card.dart';
 import '../widgets/empty_state.dart';
 import '../models/itinerary.dart';
+import '../models/routing_options.dart';
 import '../providers/theme_provider.dart';
+import '../services/routing_options_service.dart';
 import '../services/routing_service.dart';
 import '../theme/app_colors.dart';
 import '../widgets/custom_app_bar.dart';
@@ -31,6 +33,14 @@ class ItineraryListScreen extends StatefulWidget {
   final TransitousLocationSuggestion? fromSelection;
   final TransitousLocationSuggestion? toSelection;
 
+  /// The options this search was configured with.
+  ///
+  /// Null for journeys nobody configured — a deep link, or a second opinion
+  /// on a saved trip — which fall back to the stored defaults. Either way the
+  /// value is resolved once and reused for every page, so a later edit to the
+  /// defaults cannot make the next page a different search from the first.
+  final RoutingOptions? options;
+
   const ItineraryListScreen({
     super.key,
     required this.fromLat,
@@ -38,6 +48,7 @@ class ItineraryListScreen extends StatefulWidget {
     required this.toLat,
     required this.toLon,
     required this.timeSelection,
+    this.options,
     this.fromSelection,
     this.toSelection,
   });
@@ -56,6 +67,7 @@ class _ItineraryListScreenState extends State<ItineraryListScreen> {
   bool _isLoadingPrevious = false;
   double? _fromLat;
   double? _fromLon;
+  RoutingOptions? _options;
   late final ScrollController _scrollController;
   bool _appliedInitialPreviousOffset = false;
   static const double _seePreviousScrollOffset = 40.0;
@@ -79,12 +91,15 @@ class _ItineraryListScreenState extends State<ItineraryListScreen> {
     try {
       final fromLat = await Future<double>.value(widget.fromLat);
       final fromLon = await Future<double>.value(widget.fromLon);
+      final options = widget.options ?? await RoutingOptionsService.load();
+      _options = options;
       final response = await RoutingService.findRoutesPaginated(
         fromLat: fromLat,
         fromLon: fromLon,
         toLat: widget.toLat,
         toLon: widget.toLon,
         timeSelection: widget.timeSelection,
+        options: options,
       );
       setState(() {
         _fromLat = fromLat;
@@ -113,6 +128,7 @@ class _ItineraryListScreenState extends State<ItineraryListScreen> {
         toLat: widget.toLat,
         toLon: widget.toLon,
         timeSelection: widget.timeSelection,
+        options: _options,
         pageCursor: _nextPageCursor,
       );
       setState(() {
@@ -141,6 +157,7 @@ class _ItineraryListScreenState extends State<ItineraryListScreen> {
         toLat: widget.toLat,
         toLon: widget.toLon,
         timeSelection: widget.timeSelection,
+        options: _options,
         pageCursor: _previousPageCursor,
       );
 

@@ -1,20 +1,10 @@
 import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../api/transitous_endpoint.dart';
 import '../constants/prefs_keys.dart';
 
 class BackendProvider extends ChangeNotifier {
   static const String defaultHost = 'api.transitous.org';
-  static const String _defaultGeocode = 'v1';
-  static const String _defaultMapStops = 'v1';
-
-  static const List<String> endpointKeys = [
-    'plan',
-    'trip',
-    'stoptimes',
-    'mapTrips',
-    'mapStops',
-    'geocode',
-  ];
 
   static BackendProvider? _instance;
   static BackendProvider? get instance => _instance;
@@ -30,22 +20,24 @@ class BackendProvider extends ChangeNotifier {
       _apiVersionOverride ?? _computeDefaultApiVersion(_host);
   bool get isCustomApiVersion => _apiVersionOverride != null;
 
-  String get planVersion => _endpointVersions['plan'] ?? apiVersion;
-  String get tripVersion => _endpointVersions['trip'] ?? apiVersion;
-  String get stopTimesVersion => _endpointVersions['stoptimes'] ?? apiVersion;
-  String get mapTripsVersion => _endpointVersions['mapTrips'] ?? apiVersion;
+  /// Version segment to use for [endpoint]: an explicit per-endpoint override
+  /// if the user set one, otherwise whatever the endpoint declares as its
+  /// default for the current main version.
+  String versionFor(TransitousEndpoint endpoint) =>
+      _endpointVersions[endpoint.prefKey] ?? defaultVersionFor(endpoint);
 
-  String get mapStopsVersion =>
-      _endpointVersions['mapStops'] ?? _defaultMapStops;
-
-  String get geocodeVersion => _endpointVersions['geocode'] ?? _defaultGeocode;
+  /// Version [endpoint] uses when no override is set.
+  String defaultVersionFor(TransitousEndpoint endpoint) =>
+      endpoint.defaultVersion(apiVersion);
 
   bool get hasEndpointOverrides => _endpointVersions.isNotEmpty;
-  bool isEndpointOverridden(String key) => _endpointVersions.containsKey(key);
-  String? endpointVersionOverride(String key) => _endpointVersions[key];
+  bool isEndpointOverridden(TransitousEndpoint endpoint) =>
+      _endpointVersions.containsKey(endpoint.prefKey);
+  String? endpointVersionOverride(TransitousEndpoint endpoint) =>
+      _endpointVersions[endpoint.prefKey];
 
   static String _computeDefaultApiVersion(String host) =>
-      host.contains('transitous') ? 'v5' : 'v1';
+      host.contains('transitous') ? 'v6' : 'v1';
 
   static String _endpointPrefKey(String key) =>
       'transitous_api_version_endpoint_$key';
@@ -63,9 +55,9 @@ class BackendProvider extends ChangeNotifier {
     if (savedVersion != null && savedVersion.isNotEmpty) {
       _apiVersionOverride = savedVersion;
     }
-    for (final key in endpointKeys) {
-      final v = await prefs.getString(_endpointPrefKey(key));
-      if (v != null && v.isNotEmpty) _endpointVersions[key] = v;
+    for (final endpoint in TransitousEndpoint.values) {
+      final v = await prefs.getString(_endpointPrefKey(endpoint.prefKey));
+      if (v != null && v.isNotEmpty) _endpointVersions[endpoint.prefKey] = v;
     }
     notifyListeners();
   }
@@ -108,22 +100,25 @@ class BackendProvider extends ChangeNotifier {
 
   Future<void> resetApiVersion() => setApiVersion('');
 
-  Future<void> setEndpointVersion(String key, String version) async {
+  Future<void> setEndpointVersion(
+    TransitousEndpoint endpoint,
+    String version,
+  ) async {
     final trimmed = version.trim();
-    if (trimmed.isEmpty) return resetEndpointVersion(key);
-    if (_endpointVersions[key] == trimmed) return;
-    _endpointVersions[key] = trimmed;
+    if (trimmed.isEmpty) return resetEndpointVersion(endpoint);
+    if (_endpointVersions[endpoint.prefKey] == trimmed) return;
+    _endpointVersions[endpoint.prefKey] = trimmed;
     notifyListeners();
     final prefs = SharedPreferencesAsync();
-    await prefs.setString(_endpointPrefKey(key), trimmed);
+    await prefs.setString(_endpointPrefKey(endpoint.prefKey), trimmed);
   }
 
-  Future<void> resetEndpointVersion(String key) async {
-    if (!_endpointVersions.containsKey(key)) return;
-    _endpointVersions.remove(key);
+  Future<void> resetEndpointVersion(TransitousEndpoint endpoint) async {
+    if (!_endpointVersions.containsKey(endpoint.prefKey)) return;
+    _endpointVersions.remove(endpoint.prefKey);
     notifyListeners();
     final prefs = SharedPreferencesAsync();
-    await prefs.remove(_endpointPrefKey(key));
+    await prefs.remove(_endpointPrefKey(endpoint.prefKey));
   }
 
   @override

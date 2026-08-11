@@ -4,8 +4,17 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../widgets/validation_toast.dart';
 import '../utils/haptics.dart';
 import '../theme/app_colors.dart';
+import '../models/my_location.dart';
+import '../theme/journey_metrics.dart';
+import '../utils/journey_colors.dart';
+import 'journey/spine_rail.dart';
 import 'skeletons/skeleton_shimmer.dart';
 
+/// The origin and destination of a search, stacked in travel order.
+///
+/// They read top to bottom rather than side by side because the search
+/// options sit *between* them: the journey's stages only mean anything in
+/// sequence, and a horizontal pair has no between to put them in.
 class RouteFieldBox extends StatefulWidget {
   const RouteFieldBox({
     super.key,
@@ -19,6 +28,13 @@ class RouteFieldBox extends StatefulWidget {
     required this.layerLink,
     this.fromLoading = false,
     this.toLoading = false,
+    this.middle,
+    required this.onFromPressed,
+    required this.onToPressed,
+    this.isFromFavourite = false,
+    this.isToFavourite = false,
+    required this.onToggleFromFavourite,
+    required this.onToggleToFavourite,
   });
 
   final TextEditingController fromController;
@@ -31,6 +47,20 @@ class RouteFieldBox extends StatefulWidget {
   final LayerLink layerLink;
   final bool fromLoading;
   final bool toLoading;
+
+  /// Sits between the two fields, sharing their gutter so the rail continues
+  /// the line the two markers start and end.
+  final Widget? middle;
+
+  /// Opens the place picker. The fields are not edited in place: picking a
+  /// place is a search with favourites and recents of its own.
+  final VoidCallback onFromPressed;
+  final VoidCallback onToPressed;
+
+  final bool isFromFavourite;
+  final bool isToFavourite;
+  final VoidCallback onToggleFromFavourite;
+  final VoidCallback onToggleToFavourite;
 
   @override
   State<RouteFieldBox> createState() => _RouteFieldBoxState();
@@ -86,98 +116,221 @@ class _RouteFieldBoxState extends State<RouteFieldBox> {
           ],
         ),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Expanded(
+            _EndpointRow(
+              railFrom: _EndpointRailFrom.marker,
+              marker: _EndpointDot(color: widget.accentColor, filled: false),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _HeartButton(
+                    filled: widget.isFromFavourite,
+                    accentColor: widget.accentColor,
+                    label: 'origin',
+                    onPressed: widget.onToggleFromFavourite,
+                  ),
+                  const SizedBox(width: 6),
+                  _buildSwapButton(context),
+                ],
+              ),
               child: _InlineField(
                 controller: widget.fromController,
                 focusNode: widget.fromFocusNode,
                 hintText: 'From',
-                textAlign: TextAlign.left,
                 isFromField: true,
                 showMyLocationDefault: widget.showMyLocationDefault,
                 accentColor: widget.accentColor,
                 showLoading: widget.fromLoading,
+                onPressed: widget.onFromPressed,
               ),
             ),
-            SizedBox(
-              width: 44,
-              height: 36,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Container(
-                    width: 1,
-                    height: 28,
-                    color: AppColors.black.withValues(alpha: 0.1),
-                  ),
-                  GestureDetector(
-                    onTap: () {
-                      final fromText = widget.fromController.text;
-                      final toText = widget.toController.text;
-                      if (fromText.isEmpty && toText.isEmpty) {
-                        showValidationToast(
-                          context,
-                          "Supply at least one location to swap",
-                        );
-                        return;
-                      }
-                      final swapped = widget.onSwapRequested();
-                      if (!swapped) return;
-                      Haptics.mediumTick();
-                    },
-                    onTapDown: (_) => setState(() => _swapPressed = true),
-                    onTapUp: (_) => setState(() => _swapPressed = false),
-                    onTapCancel: () => setState(() => _swapPressed = false),
-                    child: AnimatedScale(
-                      duration: const Duration(milliseconds: 100),
-                      scale: _swapPressed ? 0.92 : 1.0,
-                      curve: Curves.easeOut,
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 100),
-                        width: 28,
-                        height: 28,
-                        decoration: BoxDecoration(
-                          color: _swapPressed
-                              ? AppColors.white.withValues(alpha: 0.92)
-                              : AppColors.white,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: AppColors.black.withValues(alpha: 0.1),
-                          ),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Color(0x14000000),
-                              blurRadius: 6,
-                              offset: Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Icon(
-                          LucideIcons.arrowLeftRight,
-                          size: 16,
-                          color: widget.accentColor,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+            if (widget.middle case final middle?)
+              middle
+            else
+              Padding(
+                padding: const EdgeInsets.only(
+                  left: JourneyMetrics.gutter,
+                  top: 2,
+                  bottom: 2,
+                ),
+                child: Container(
+                  height: 1,
+                  color: AppColors.black.withValues(alpha: 0.08),
+                ),
               ),
-            ),
-            Expanded(
+            _EndpointRow(
+              railFrom: _EndpointRailFrom.top,
+              marker: _EndpointDot(color: widget.accentColor, filled: true),
+              trailing: _HeartButton(
+                filled: widget.isToFavourite,
+                accentColor: widget.accentColor,
+                label: 'destination',
+                onPressed: widget.onToggleToFavourite,
+              ),
               child: _InlineField(
                 controller: widget.toController,
                 focusNode: widget.toFocusNode,
                 hintText: 'To',
-                textAlign: TextAlign.right,
                 isFromField: false,
                 showMyLocationDefault: false,
                 accentColor: widget.accentColor,
                 showLoading: widget.toLoading,
+                onPressed: widget.onToPressed,
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildSwapButton(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        final fromText = widget.fromController.text;
+        final toText = widget.toController.text;
+        if (fromText.isEmpty && toText.isEmpty) {
+          showValidationToast(context, "Supply at least one location to swap");
+          return;
+        }
+        final swapped = widget.onSwapRequested();
+        if (!swapped) return;
+        Haptics.mediumTick();
+      },
+      onTapDown: (_) => setState(() => _swapPressed = true),
+      onTapUp: (_) => setState(() => _swapPressed = false),
+      onTapCancel: () => setState(() => _swapPressed = false),
+      child: Semantics(
+        button: true,
+        label: 'Swap origin and destination',
+        child: AnimatedScale(
+          duration: const Duration(milliseconds: 100),
+          scale: _swapPressed ? 0.92 : 1.0,
+          curve: Curves.easeOut,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 100),
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: _swapPressed
+                  ? AppColors.white.withValues(alpha: 0.92)
+                  : AppColors.white,
+              shape: BoxShape.circle,
+              border: Border.all(color: AppColors.black.withValues(alpha: 0.1)),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x14000000),
+                  blurRadius: 6,
+                  offset: Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Icon(
+              LucideIcons.arrowUpDown,
+              size: 16,
+              color: widget.accentColor,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Which part of an endpoint row its stretch of line covers.
+enum _EndpointRailFrom {
+  /// The origin: the line leaves its marker and runs on to the first stage.
+  marker,
+
+  /// The destination: the line arrives from the last stage and stops there.
+  top,
+}
+
+/// One endpoint: its marker in the shared gutter, its field, and whatever
+/// sits at the trailing edge.
+///
+/// The gutter is the spine's, so the two markers, the three stage rings and
+/// the line all sit on one centre line — the card reads as the top and bottom
+/// of the same drawing rather than as a box with a diagram inside it.
+class _EndpointRow extends StatelessWidget {
+  const _EndpointRow({
+    required this.marker,
+    required this.child,
+    required this.railFrom,
+    this.trailing,
+  });
+
+  final Widget marker;
+  final Widget child;
+  final Widget? trailing;
+  final _EndpointRailFrom railFrom;
+
+  /// Half the height of a field row, which is where the marker sits.
+  static const double _markerCenter = 22;
+
+  @override
+  Widget build(BuildContext context) {
+    final fromMarker = railFrom == _EndpointRailFrom.marker;
+
+    return Stack(
+      children: [
+        Positioned(
+          left: 0,
+          width: JourneyMetrics.gutter,
+          top: 0,
+          bottom: 0,
+          child: SpineRail(
+            color: kStreetLegColor,
+            dashed: true,
+            topInset: fromMarker ? _markerCenter : 0,
+            bottomInset: fromMarker ? 0 : _markerCenter,
+          ),
+        ),
+        Row(
+          children: [
+            SizedBox(
+              width: JourneyMetrics.gutter,
+              height: _markerCenter * 2,
+              child: Center(child: marker),
+            ),
+            // The same gap the spine's rows keep between the rail and their
+            // text, so a field, a stage summary and the traveller controls
+            // all begin on one edge instead of three.
+            const SizedBox(width: JourneyMetrics.gap),
+            Expanded(child: child),
+            if (trailing case final trailing?) ...[
+              const SizedBox(width: 8),
+              trailing,
+            ],
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _EndpointDot extends StatelessWidget {
+  const _EndpointDot({required this.color, required this.filled});
+
+  final Color color;
+
+  /// Hollow for where you start, solid for where you end — the convention
+  /// every map app already taught people.
+  final bool filled;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 9,
+      height: 9,
+      decoration: BoxDecoration(
+        color: filled ? color : AppColors.white,
+        shape: BoxShape.circle,
+        border: Border.all(color: color, width: 2),
       ),
     );
   }
@@ -187,22 +340,22 @@ class _InlineField extends StatelessWidget {
   const _InlineField({
     required this.controller,
     required this.hintText,
-    required this.textAlign,
     required this.isFromField,
     required this.showMyLocationDefault,
     required this.accentColor,
+    required this.onPressed,
     this.focusNode,
     this.showLoading = false,
   });
 
   final TextEditingController controller;
   final String hintText;
-  final TextAlign textAlign;
   final bool isFromField;
   final bool showMyLocationDefault;
   final Color accentColor;
   final FocusNode? focusNode;
   final bool showLoading;
+  final VoidCallback onPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -218,9 +371,7 @@ class _InlineField extends StatelessWidget {
       tween: Tween<double>(begin: 0.0, end: wantsOverlay ? 1.0 : 0.0),
       builder: (context, overlayT, _) {
         return Stack(
-          alignment: textAlign == TextAlign.right
-              ? Alignment.centerRight
-              : Alignment.centerLeft,
+          alignment: Alignment.centerLeft,
           children: [
             CupertinoTextField(
               controller: controller,
@@ -238,12 +389,16 @@ class _InlineField extends StatelessWidget {
               ),
               style: TextStyle(color: AppColors.black, fontSize: 16),
               cursorColor: AppColors.accentOf(context),
-              textAlign: textAlign,
               decoration: null,
               padding: const EdgeInsets.symmetric(vertical: 8),
               maxLines: 1,
               textInputAction: TextInputAction.next,
               keyboardType: TextInputType.text,
+              // Held for its text, not for typing: tapping opens the picker,
+              // which has room for favourites and recents this row does not.
+              readOnly: true,
+              showCursor: false,
+              onTap: onPressed,
             ),
             IgnorePointer(
               ignoring: overlayT < 0.01,
@@ -258,7 +413,7 @@ class _InlineField extends StatelessWidget {
                     ),
                     child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
-                      onTap: () => focusNode?.requestFocus(),
+                      onTap: onPressed,
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -269,7 +424,7 @@ class _InlineField extends StatelessWidget {
                           ),
                           const SizedBox(width: 6),
                           Text(
-                            'My Location',
+                            myLocationName,
                             style: TextStyle(
                               color: accentColor,
                               fontSize: 16,
@@ -292,9 +447,7 @@ class _InlineField extends StatelessWidget {
                     ? const SizedBox.shrink()
                     : IgnorePointer(
                         child: Align(
-                          alignment: textAlign == TextAlign.right
-                              ? Alignment.centerRight
-                              : Alignment.centerLeft,
+                          alignment: Alignment.centerLeft,
                           child: SkeletonShimmer(
                             baseColor: const Color(0xFFE2E7EC),
                             highlightColor: const Color(0xFFF7F9FC),
@@ -318,6 +471,60 @@ class _InlineField extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+/// Keeps a place, or lets it go.
+class _HeartButton extends StatelessWidget {
+  const _HeartButton({
+    required this.filled,
+    required this.accentColor,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final bool filled;
+  final Color accentColor;
+
+  /// Names which end this is, for a screen reader.
+  final String label;
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      toggled: filled,
+      label: filled ? 'Remove $label from favourites' : 'Keep $label',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          Haptics.lightTick();
+          onPressed();
+        },
+        // Lucide has no solid heart, so kept reads as accent on a tint and
+        // unkept as a pale outline on nothing.
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: filled
+                ? accentColor.withValues(alpha: 0.16)
+                : const Color(0x00000000),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            LucideIcons.heart,
+            size: 16,
+            color: filled
+                ? accentColor
+                : AppColors.black.withValues(alpha: 0.3),
+          ),
+        ),
+      ),
     );
   }
 }

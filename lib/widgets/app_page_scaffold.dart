@@ -13,6 +13,7 @@ class AppPageScaffold extends StatelessWidget {
     this.padding,
     this.footer,
     this.onBack,
+    this.showBack = true,
   });
 
   final String title;
@@ -22,6 +23,9 @@ class AppPageScaffold extends StatelessWidget {
   final EdgeInsetsGeometry? padding;
   final Widget? footer;
   final VoidCallback? onBack;
+
+  /// False for a screen presented as a tab rather than pushed.
+  final bool showBack;
 
   @override
   Widget build(BuildContext context) {
@@ -47,6 +51,7 @@ class AppPageScaffold extends StatelessWidget {
           children: [
             CustomAppBar(
               title: title,
+              showBack: showBack,
               onBackButtonPressed: onBack ?? () => Navigator.of(context).pop(),
             ),
             Expanded(child: content),

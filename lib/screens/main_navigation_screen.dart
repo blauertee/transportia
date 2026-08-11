@@ -1,8 +1,10 @@
 import 'package:flutter/cupertino.dart';
 import '../widgets/floating_nav_bar.dart';
 import 'map_screen.dart';
+import 'saved_trips_screen.dart';
 import 'timetables_screen.dart';
-import 'user_screen.dart';
+import 'settings_screen.dart';
+import '../services/plan_request.dart';
 import '../services/transitous_geocode_service.dart';
 
 class MainNavigationScreen extends StatefulWidget {
@@ -35,6 +37,20 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     });
   }
 
+  /// A screen elsewhere has asked for a journey to be planned, so the routing
+  /// tab comes forward holding it. [MapScreen] clears the request once it has
+  /// taken it.
+  void _handlePlanRequested() {
+    if (PlanRequests.pending.value == null) return;
+    setState(() => _currentIndex = 0);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    PlanRequests.pending.addListener(_handlePlanRequested);
+  }
+
   bool _handleBackGesture() {
     if (_currentIndex != 0) {
       setState(() => _currentIndex = 0);
@@ -45,6 +61,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   @override
   void dispose() {
+    PlanRequests.pending.removeListener(_handlePlanRequested);
     _mapCollapsedNotifier.dispose();
     _mapCollapseProgressNotifier.dispose();
     _overlaysVisibleNotifier.dispose();
@@ -85,7 +102,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 onTimetableRequested: _handleTimetableRequested,
               ),
               TimetablesScreen(initialStop: _pendingTimetableStop),
-              const AccountScreen(),
+              const SavedTripsScreen(),
+              const SettingsScreen(),
             ],
           ),
 

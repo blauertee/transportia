@@ -1,5 +1,26 @@
 import 'dart:developer' as developer;
 
+import 'transitous/alert.dart';
+import 'transitous/enums.dart';
+import 'transitous/json.dart';
+import 'transitous/leg_details.dart';
+import 'transitous/place.dart';
+import 'transitous/rental.dart';
+import 'transitous/step_instruction.dart';
+
+export 'transitous/alert.dart' show Alert;
+export 'transitous/enums.dart';
+export 'transitous/leg_details.dart' show Category, TicketUrls;
+export 'transitous/place.dart' show TransitPlace;
+export 'transitous/rental.dart' show Rental, RentalVehicleType;
+export 'transitous/step_instruction.dart' show StepInstruction;
+
+/// A stop a leg passes through without the rider boarding or alighting.
+///
+/// MOTIS returns the same `Place` object here as for leg endpoints, so this is
+/// an alias rather than a separate model.
+typedef IntermediateStop = TransitPlace;
+
 class FareInfo {
   final double amount;
   final String currency;
@@ -85,96 +106,6 @@ class FareLegInfo {
       .join(';');
 }
 
-class Alert {
-  final String? cause;
-  final String? causeDetail;
-  final String? effect;
-  final String? effectDetail;
-  final String? url;
-  final String? headerText;
-  final String? descriptionText;
-  final String? severityLevel;
-
-  Alert({
-    this.cause,
-    this.causeDetail,
-    this.effect,
-    this.effectDetail,
-    this.url,
-    this.headerText,
-    this.descriptionText,
-    this.severityLevel,
-  });
-
-  factory Alert.fromJson(Map<String, dynamic> json) {
-    return Alert(
-      cause: json['cause'],
-      causeDetail: json['causeDetail'],
-      effect: json['effect'],
-      effectDetail: json['effectDetail'],
-      url: json['url'],
-      headerText: json['headerText'],
-      descriptionText: json['descriptionText'],
-      severityLevel: json['severityLevel'],
-    );
-  }
-}
-
-class IntermediateStop {
-  final String name;
-  final String? stopId;
-  final double lat;
-  final double lon;
-  final DateTime? arrival;
-  final DateTime? departure;
-  final DateTime? scheduledArrival;
-  final DateTime? scheduledDeparture;
-  final String? track;
-  final String? scheduledTrack;
-  final bool cancelled;
-  final List<Alert> alerts;
-
-  IntermediateStop({
-    required this.name,
-    this.stopId,
-    required this.lat,
-    required this.lon,
-    this.arrival,
-    this.departure,
-    this.scheduledArrival,
-    this.scheduledDeparture,
-    this.track,
-    this.scheduledTrack,
-    this.cancelled = false,
-    this.alerts = const [],
-  });
-
-  factory IntermediateStop.fromJson(Map<String, dynamic> json) {
-    return IntermediateStop(
-      name: json['name'] ?? '',
-      stopId: json['stopId'],
-      lat: json['lat']?.toDouble() ?? 0.0,
-      lon: json['lon']?.toDouble() ?? 0.0,
-      arrival: json['arrival'] != null ? DateTime.parse(json['arrival']) : null,
-      departure: json['departure'] != null
-          ? DateTime.parse(json['departure'])
-          : null,
-      scheduledArrival: json['scheduledArrival'] != null
-          ? DateTime.parse(json['scheduledArrival'])
-          : null,
-      scheduledDeparture: json['scheduledDeparture'] != null
-          ? DateTime.parse(json['scheduledDeparture'])
-          : null,
-      track: json['track'],
-      scheduledTrack: json['scheduledTrack'],
-      cancelled: json['cancelled'] ?? false,
-      alerts: json['alerts'] != null
-          ? (json['alerts'] as List).map((a) => Alert.fromJson(a)).toList()
-          : [],
-    );
-  }
-}
-
 class EncodedPolyline {
   final String points;
   final int precision;
@@ -200,6 +131,14 @@ class Itinerary {
   final DateTime startTime;
   final DateTime endTime;
   final int transfers;
+
+  /// Opaque handle identifying this exact itinerary, used to refresh it in a
+  /// single request via `/refresh-itinerary`.
+  ///
+  /// Runs to roughly 1.3 KB, which is why the refresh call uses POST. Null for
+  /// itineraries parsed from a snapshot saved before the app started reading
+  /// this field.
+  final String? id;
   final List<Leg> legs;
   final bool isDirect;
   final FareInfo? fare;
@@ -222,6 +161,7 @@ class Itinerary {
     required this.endTime,
     required this.transfers,
     required this.legs,
+    this.id,
     this.isDirect = false,
     this.fare,
     this.ticketInfo = const [],
@@ -244,6 +184,7 @@ class Itinerary {
       endTime: newLegs.last.endTime,
       transfers: transitLegCount > 0 ? transitLegCount - 1 : 0,
       legs: newLegs,
+      id: id,
       isDirect: isDirect,
       fare: fare,
       ticketInfo: ticketInfo,
@@ -377,11 +318,12 @@ class Itinerary {
     }
 
     return Itinerary(
-      duration: json['duration'],
+      duration: asInt(json['duration']) ?? 0,
       startTime: DateTime.parse(json['startTime']),
       endTime: DateTime.parse(json['endTime']),
-      transfers: json['transfers'] ?? 0,
+      transfers: asInt(json['transfers']) ?? 0,
       legs: legs,
+      id: asString(json['id']),
       isDirect: isDirect,
       fare: fare,
       ticketInfo: ticketInfo,
@@ -391,87 +333,159 @@ class Itinerary {
 }
 
 class Leg {
+  /// Travel mode as returned by the API. Kept as a string because the app
+  /// compares it against feed-specific values in several places; use
+  /// [transitMode] for the typed form.
   final String mode;
-  final String fromName;
-  final String toName;
+
+  /// Where the leg starts and ends. MOTIS returns a full `Place` here, so
+  /// times, tracks, alerts and flex windows all live on these.
+  final TransitPlace from;
+  final TransitPlace to;
+
   final DateTime startTime;
   final DateTime endTime;
   final DateTime? scheduledStartTime;
   final DateTime? scheduledEndTime;
   final int duration;
   final double? distance;
+
+  /// True when this leg is backed by real-time data.
+  final bool realTime;
+
+  /// True when the leg exists in the published schedule, as opposed to being
+  /// an added or unscheduled service.
+  final bool scheduled;
+
   final String? routeShortName;
   final String? routeLongName;
   final String? displayName;
   final String? headsign;
+  final String? routeId;
+  final String? routeUrl;
   final String? routeColor;
   final String? routeTextColor;
   final int? routeType;
+
+  /// GTFS direction the trip runs in, used to tell the two ends of a line
+  /// apart.
+  final String? directionId;
+
   final String? agencyName;
   final String? agencyUrl;
+  final String? agencyFareUrl;
   final String? agencyId;
   final String? tripId;
   final String? tripShortName;
-  final bool realTime;
+
+  /// First and last stop of the whole trip, which usually extend beyond this
+  /// leg. Useful for showing where a service starts and terminates.
+  final TransitPlace? tripFrom;
+  final TransitPlace? tripTo;
+
+  /// Vehicle category, e.g. `IC` / `InterCity`. NeTEx datasets only.
+  final Category? category;
+
+  /// Dataset the leg came from, for attribution.
+  final String? source;
+
   final bool cancelled;
-  final String? fromTrack;
-  final String? toTrack;
-  final String? fromScheduledTrack;
-  final String? toScheduledTrack;
-  final String? fromStopId;
-  final String? toStopId;
-  final double fromLat;
-  final double fromLon;
-  final double toLat;
-  final double toLon;
   final List<IntermediateStop> intermediateStops;
   final List<Alert> alerts;
   final EncodedPolyline? legGeometry;
+
+  /// Turn-by-turn instructions for street legs, when detailed legs are
+  /// requested.
+  final List<StepInstruction> steps;
+
+  /// Vehicle-sharing details, set on `RENTAL` legs.
+  final Rental? rental;
+
+  /// Other departures serving the same connection, when leg alternatives are
+  /// requested.
+  final List<Leg> alternatives;
+
   final bool interlineWithPreviousLeg;
   final int? fareTransferIndex;
   final int? effectiveFareLegIndex;
 
+  /// Set when the trip repeats on a looped calendar; the value is the date the
+  /// loop started, meaning the times are extrapolated rather than published.
+  final DateTime? loopedCalendarSince;
+
+  final bool? bikesAllowed;
+  final WheelchairAccessibility? wheelchairAccessible;
+
+  /// Whether boarding requires a reservation.
+  final Reservation? reservation;
+
+  final TicketUrls? ticketUrls;
+
   Leg({
     required this.mode,
-    required this.fromName,
-    required this.toName,
+    required this.from,
+    required this.to,
     required this.startTime,
     required this.endTime,
+    required this.duration,
     this.scheduledStartTime,
     this.scheduledEndTime,
-    required this.duration,
     this.distance,
+    this.realTime = false,
+    this.scheduled = true,
     this.routeShortName,
     this.routeLongName,
     this.displayName,
     this.headsign,
+    this.routeId,
+    this.routeUrl,
     this.routeColor,
     this.routeTextColor,
     this.routeType,
+    this.directionId,
     this.agencyName,
     this.agencyUrl,
+    this.agencyFareUrl,
     this.agencyId,
     this.tripId,
     this.tripShortName,
-    this.realTime = false,
+    this.tripFrom,
+    this.tripTo,
+    this.category,
+    this.source,
     this.cancelled = false,
-    this.fromTrack,
-    this.toTrack,
-    this.fromScheduledTrack,
-    this.toScheduledTrack,
-    this.fromStopId,
-    this.toStopId,
-    required this.fromLat,
-    required this.fromLon,
-    required this.toLat,
-    required this.toLon,
     this.intermediateStops = const [],
     this.alerts = const [],
     this.legGeometry,
+    this.steps = const [],
+    this.rental,
+    this.alternatives = const [],
     this.interlineWithPreviousLeg = false,
     this.fareTransferIndex,
     this.effectiveFareLegIndex,
+    this.loopedCalendarSince,
+    this.bikesAllowed,
+    this.wheelchairAccessible,
+    this.reservation,
+    this.ticketUrls,
   });
+
+  /// Typed form of [mode]; null when the server sends a mode this build does
+  /// not know.
+  TransitMode? get transitMode => TransitMode.fromWire(mode);
+
+  String get fromName => from.name;
+  String get toName => to.name;
+  double get fromLat => from.lat;
+  double get fromLon => from.lon;
+  double get toLat => to.lat;
+  double get toLon => to.lon;
+  String? get fromStopId => from.stopId;
+  String? get toStopId => to.stopId;
+  String? get fromTrack => from.track;
+  String? get toTrack => to.track;
+  String? get fromScheduledTrack => from.scheduledTrack;
+  String? get toScheduledTrack => to.scheduledTrack;
 
   /// Returns a copy of this leg with the real-time fields (times, delay,
   /// cancellation, track, intermediate stops, alerts) refreshed from
@@ -480,150 +494,226 @@ class Leg {
   Leg withRealTimeFrom(Leg fresh) {
     return Leg(
       mode: mode,
-      fromName: fromName,
-      toName: toName,
+      from: from.mergeRealTime(fresh.from),
+      to: to.mergeRealTime(fresh.to),
       startTime: fresh.startTime,
       endTime: fresh.endTime,
       scheduledStartTime: fresh.scheduledStartTime ?? scheduledStartTime,
       scheduledEndTime: fresh.scheduledEndTime ?? scheduledEndTime,
       duration: fresh.duration,
       distance: distance,
+      realTime: fresh.realTime,
+      scheduled: fresh.scheduled,
       routeShortName: routeShortName,
       routeLongName: routeLongName,
       displayName: displayName,
       headsign: headsign,
+      routeId: routeId,
+      routeUrl: routeUrl,
       routeColor: routeColor,
       routeTextColor: routeTextColor,
       routeType: routeType,
+      directionId: directionId,
       agencyName: agencyName,
       agencyUrl: agencyUrl,
+      agencyFareUrl: agencyFareUrl,
       agencyId: agencyId,
       tripId: tripId,
       tripShortName: tripShortName,
-      realTime: fresh.realTime,
+      tripFrom: fresh.tripFrom ?? tripFrom,
+      tripTo: fresh.tripTo ?? tripTo,
+      category: category,
+      source: source,
       cancelled: fresh.cancelled,
-      fromTrack: fresh.fromTrack ?? fromTrack,
-      toTrack: fresh.toTrack ?? toTrack,
-      fromScheduledTrack: fromScheduledTrack,
-      toScheduledTrack: toScheduledTrack,
-      fromStopId: fromStopId,
-      toStopId: toStopId,
-      fromLat: fromLat,
-      fromLon: fromLon,
-      toLat: toLat,
-      toLon: toLon,
       intermediateStops: fresh.intermediateStops.isNotEmpty
           ? fresh.intermediateStops
           : intermediateStops,
       alerts: fresh.alerts.isNotEmpty ? fresh.alerts : alerts,
       legGeometry: legGeometry,
+      steps: steps,
+      rental: rental,
+      alternatives: fresh.alternatives.isNotEmpty
+          ? fresh.alternatives
+          : alternatives,
       interlineWithPreviousLeg: interlineWithPreviousLeg,
       fareTransferIndex: fareTransferIndex,
       effectiveFareLegIndex: effectiveFareLegIndex,
+      loopedCalendarSince: fresh.loopedCalendarSince ?? loopedCalendarSince,
+      bikesAllowed: bikesAllowed,
+      wheelchairAccessible: wheelchairAccessible,
+      reservation: reservation,
+      ticketUrls: ticketUrls,
     );
+  }
+
+  /// The part of this leg that [from] → [to] actually travels.
+  ///
+  /// `/trip` answers with the service end to end — the S7 from Ahrensfelde to
+  /// Potsdam — whatever slice of it a journey uses. Taken whole it put every
+  /// station on the line into an expanded leg, and moved the leg's own
+  /// departure to the start of the line.
+  ///
+  /// Returns this leg untouched when either endpoint is not on it. A wrong
+  /// slice is worse than an unsliced one: the times would then belong to
+  /// somewhere the traveller never goes.
+  Leg sliceBetween(TransitPlace from, TransitPlace to) {
+    final sequence = [this.from, ...intermediateStops, this.to];
+
+    final start = sequence.indexWhere((place) => _samePlace(place, from));
+    if (start < 0) return this;
+
+    // Searched backwards: a line that calls at a stop twice — a loop, or a
+    // service that reverses — should give the later visit, or the slice
+    // would end before it began.
+    var end = -1;
+    for (var i = sequence.length - 1; i > start; i--) {
+      if (_samePlace(sequence[i], to)) {
+        end = i;
+        break;
+      }
+    }
+    if (end < 0) return this;
+    if (start == 0 && end == sequence.length - 1) return this;
+
+    final origin = sequence[start];
+    final destination = sequence[end];
+    final departs = origin.departure ?? origin.arrival ?? startTime;
+    final arrives = destination.arrival ?? destination.departure ?? endTime;
+
+    return Leg(
+      mode: mode,
+      from: origin,
+      to: destination,
+      startTime: departs,
+      endTime: arrives,
+      scheduledStartTime: origin.scheduledDeparture ?? scheduledStartTime,
+      scheduledEndTime: destination.scheduledArrival ?? scheduledEndTime,
+      duration: arrives.difference(departs).inSeconds,
+      distance: distance,
+      realTime: realTime,
+      scheduled: scheduled,
+      routeShortName: routeShortName,
+      routeLongName: routeLongName,
+      displayName: displayName,
+      headsign: headsign,
+      routeId: routeId,
+      routeUrl: routeUrl,
+      routeColor: routeColor,
+      routeTextColor: routeTextColor,
+      routeType: routeType,
+      directionId: directionId,
+      agencyName: agencyName,
+      agencyUrl: agencyUrl,
+      agencyFareUrl: agencyFareUrl,
+      agencyId: agencyId,
+      tripId: tripId,
+      tripShortName: tripShortName,
+      // The whole service either side of the slice, which is exactly what
+      // these two are for.
+      tripFrom: tripFrom ?? sequence.first,
+      tripTo: tripTo ?? sequence.last,
+      category: category,
+      source: source,
+      cancelled: cancelled,
+      intermediateStops: sequence.sublist(start + 1, end),
+      alerts: alerts,
+      legGeometry: legGeometry,
+      steps: steps,
+      rental: rental,
+      alternatives: alternatives,
+      interlineWithPreviousLeg: interlineWithPreviousLeg,
+      fareTransferIndex: fareTransferIndex,
+      effectiveFareLegIndex: effectiveFareLegIndex,
+      loopedCalendarSince: loopedCalendarSince,
+      bikesAllowed: bikesAllowed,
+      wheelchairAccessible: wheelchairAccessible,
+      reservation: reservation,
+      ticketUrls: ticketUrls,
+    );
+  }
+
+  /// Whether two places are the same station.
+  ///
+  /// A stop id may name a platform (`…:900170004:2:52`) where the other side
+  /// names the station (`…:900170004`), so the parent counts as an id too.
+  /// Names decide it when no id matches, which is what makes two platforms of
+  /// one station meet.
+  static bool _samePlace(TransitPlace a, TransitPlace b) {
+    Set<String> keys(TransitPlace p) => {
+      for (final key in [p.stopId, p.parentId])
+        if (key != null && key.isNotEmpty) key,
+    };
+
+    final aKeys = keys(a);
+    final bKeys = keys(b);
+    if (aKeys.intersection(bKeys).isNotEmpty) return true;
+    return a.name.isNotEmpty && a.name == b.name;
   }
 
   factory Leg.fromJson(Map<String, dynamic> json) {
     try {
-      final from = json['from'];
-      final to = json['to'];
-
-      final Map<String, dynamic> fromMap = from is Map<String, dynamic>
-          ? from
-          : {};
-      final Map<String, dynamic> toMap = to is Map<String, dynamic> ? to : {};
-
-      List<IntermediateStop> intermediateStops = [];
-      try {
-        if (json['intermediateStops'] is List) {
-          intermediateStops = (json['intermediateStops'] as List)
-              .map((s) {
-                try {
-                  return IntermediateStop.fromJson(s);
-                } catch (_) {
-                  return null;
-                }
-              })
-              .whereType<IntermediateStop>()
-              .toList();
-        }
-      } catch (_) {}
-
-      List<Alert> alerts = [];
-      try {
-        if (json['alerts'] is List) {
-          alerts = (json['alerts'] as List)
-              .map((a) {
-                try {
-                  return Alert.fromJson(a);
-                } catch (_) {
-                  return null;
-                }
-              })
-              .whereType<Alert>()
-              .toList();
-        }
-      } catch (_) {}
-
-      EncodedPolyline? legGeometry;
-      try {
-        if (json['legGeometry'] is Map &&
-            (json['legGeometry'] as Map).isNotEmpty) {
-          legGeometry = EncodedPolyline.fromJson(json['legGeometry']);
-        }
-      } catch (e, stackTrace) {
-        developer.log(
-          'Error parsing legGeometry',
-          name: 'Itinerary',
-          error: e,
-          stackTrace: stackTrace,
-        );
-      }
+      final legGeometry = asMap(json['legGeometry']);
+      final tripFrom = asMap(json['tripFrom']);
+      final tripTo = asMap(json['tripTo']);
+      final category = asMap(json['category']);
+      final rental = asMap(json['rental']);
+      final ticketUrls = asMap(json['ticketUrls']);
 
       return Leg(
-        mode: json['mode'] ?? 'WALK',
-        fromName: fromMap['name'] ?? '',
-        toName: toMap['name'] ?? '',
+        mode: asString(json['mode']) ?? 'WALK',
+        from: TransitPlace.fromJson(asMap(json['from']) ?? const {}),
+        to: TransitPlace.fromJson(asMap(json['to']) ?? const {}),
         startTime: DateTime.parse(json['startTime']),
         endTime: DateTime.parse(json['endTime']),
-        scheduledStartTime: json['scheduledStartTime'] != null
-            ? DateTime.parse(json['scheduledStartTime'])
-            : null,
-        scheduledEndTime: json['scheduledEndTime'] != null
-            ? DateTime.parse(json['scheduledEndTime'])
-            : null,
-        duration: json['duration'] ?? 0,
-        distance: json['distance']?.toDouble(),
-        routeShortName: json['routeShortName'],
-        routeLongName: json['routeLongName'],
-        displayName: json['displayName'],
-        headsign: json['headsign'],
-        routeColor: json['routeColor'],
-        routeTextColor: json['routeTextColor'],
-        routeType: json['routeType'],
-        agencyName: json['agencyName'],
-        agencyUrl: json['agencyUrl'],
-        agencyId: json['agencyId'],
-        tripId: json['tripId'],
-        tripShortName: json['tripShortName'],
-        realTime: json['realTime'] ?? false,
-        cancelled: json['cancelled'] ?? false,
-        fromTrack: fromMap['track'],
-        toTrack: toMap['track'],
-        fromScheduledTrack: fromMap['scheduledTrack'],
-        toScheduledTrack: toMap['scheduledTrack'],
-        fromStopId: fromMap['stopId'],
-        toStopId: toMap['stopId'],
-        fromLat: fromMap['lat']?.toDouble() ?? 0.0,
-        fromLon: fromMap['lon']?.toDouble() ?? 0.0,
-        toLat: toMap['lat']?.toDouble() ?? 0.0,
-        toLon: toMap['lon']?.toDouble() ?? 0.0,
-        intermediateStops: intermediateStops,
-        alerts: alerts,
-        legGeometry: legGeometry,
-        interlineWithPreviousLeg: json['interlineWithPreviousLeg'] ?? false,
-        fareTransferIndex: json['fareTransferIndex'],
-        effectiveFareLegIndex: json['effectiveFareLegIndex'],
+        scheduledStartTime: asDateTime(json['scheduledStartTime']),
+        scheduledEndTime: asDateTime(json['scheduledEndTime']),
+        duration: asInt(json['duration']) ?? 0,
+        distance: asDouble(json['distance']),
+        realTime: asBool(json['realTime']) ?? false,
+        scheduled: asBool(json['scheduled']) ?? true,
+        routeShortName: asString(json['routeShortName']),
+        routeLongName: asString(json['routeLongName']),
+        displayName: asString(json['displayName']),
+        headsign: asString(json['headsign']),
+        routeId: asString(json['routeId']),
+        routeUrl: asString(json['routeUrl']),
+        routeColor: asString(json['routeColor']),
+        routeTextColor: asString(json['routeTextColor']),
+        routeType: asInt(json['routeType']),
+        directionId: asString(json['directionId']),
+        agencyName: asString(json['agencyName']),
+        agencyUrl: asString(json['agencyUrl']),
+        agencyFareUrl: asString(json['agencyFareUrl']),
+        agencyId: asString(json['agencyId']),
+        tripId: asString(json['tripId']),
+        tripShortName: asString(json['tripShortName']),
+        tripFrom: tripFrom == null ? null : TransitPlace.fromJson(tripFrom),
+        tripTo: tripTo == null ? null : TransitPlace.fromJson(tripTo),
+        category: category == null ? null : Category.fromJson(category),
+        source: asString(json['source']),
+        cancelled: asBool(json['cancelled']) ?? false,
+        intermediateStops: asList(
+          json['intermediateStops'],
+          IntermediateStop.fromJson,
+        ),
+        alerts: asList(json['alerts'], Alert.fromJson),
+        legGeometry: legGeometry == null || legGeometry.isEmpty
+            ? null
+            : EncodedPolyline.fromJson(legGeometry),
+        steps: asList(json['steps'], StepInstruction.fromJson),
+        rental: rental == null ? null : Rental.fromJson(rental),
+        alternatives: asList(json['alternatives'], Leg.fromJson),
+        interlineWithPreviousLeg:
+            asBool(json['interlineWithPreviousLeg']) ?? false,
+        fareTransferIndex: asInt(json['fareTransferIndex']),
+        effectiveFareLegIndex: asInt(json['effectiveFareLegIndex']),
+        loopedCalendarSince: asDateTime(json['loopedCalendarSince']),
+        bikesAllowed: asBool(json['bikesAllowed']),
+        wheelchairAccessible: WheelchairAccessibility.fromWire(
+          json['wheelchairAccessible'],
+        ),
+        reservation: Reservation.fromWire(json['reservation']),
+        ticketUrls: ticketUrls == null ? null : TicketUrls.fromJson(ticketUrls),
       );
     } catch (e, stackTrace) {
       developer.log(

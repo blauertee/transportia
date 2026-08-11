@@ -1,12 +1,13 @@
-import 'dart:convert';
 import 'dart:developer' as developer;
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
-import '../constants/prefs_keys.dart';
-import '../environment.dart';
+
+import '../api/endpoints/plan_endpoint.dart';
+import '../api/query.dart';
+import '../api/transitous_api_exception.dart';
 import '../models/itinerary.dart';
-import '../models/time_selection.dart';
 import '../models/itinerary_response.dart';
+import '../models/routing_options.dart';
+import '../models/time_selection.dart';
+import 'routing_options_service.dart';
 
 class RoutingService {
   static Future<List<Itinerary>> findRoutes({
@@ -15,6 +16,7 @@ class RoutingService {
     required double toLat,
     required double toLon,
     TimeSelection? timeSelection,
+    RoutingOptions? options,
   }) async {
     final response = await findRoutesPaginated(
       fromLat: fromLat,
@@ -22,10 +24,14 @@ class RoutingService {
       toLat: toLat,
       toLon: toLon,
       timeSelection: timeSelection,
+      options: options,
     );
     return response.itineraries;
   }
 
+  /// [options] are the ones configured for this search. Falling back to the
+  /// stored defaults is for journeys nobody configured — a deep link, or a
+  /// second opinion on an itinerary opened from history.
   static Future<ItineraryResponse> findRoutesPaginated({
     required double fromLat,
     required double fromLon,
@@ -33,72 +39,27 @@ class RoutingService {
     required double toLon,
     TimeSelection? timeSelection,
     String? pageCursor,
+    RoutingOptions? options,
   }) async {
-    final params = {
-      'fromPlace': '$fromLat,$fromLon',
-      'toPlace': '$toLat,$toLon',
-      'withFares': 'true',
-      'useRoutedTransfers': 'true',
-    };
+    final resolved = options ?? await RoutingOptionsService.load();
 
-    final prefs = SharedPreferencesAsync();
-    final walkingSpeedKmh = await prefs.getDouble(
-      PrefsKeys.transitWalkingSpeed,
-    );
-    final transferBuffer = await prefs.getInt(PrefsKeys.transitTransferBuffer);
-    final selectedModes = await prefs.getStringList(
-      PrefsKeys.transitSelectedModes,
-    );
-
-    if (walkingSpeedKmh != null) {
-      params['pedestrianSpeed'] = (walkingSpeedKmh / 3.6).toStringAsFixed(3);
-    }
-    if (transferBuffer != null && transferBuffer > 0) {
-      params['additionalTransferTime'] = transferBuffer.toString();
-    }
-    if (selectedModes != null && selectedModes.isNotEmpty) {
-      params['transitModes'] = selectedModes.join(',');
-    }
-
-    if (pageCursor != null) {
-      params['pageCursor'] = pageCursor;
-    }
-
-    if (timeSelection != null && !timeSelection.isNow) {
-      params['time'] = timeSelection.dateTime.toUtc().toIso8601String();
-      if (timeSelection.isArriveBy) {
-        params['arriveBy'] = 'true';
-      }
-    }
-
-    final uri = Uri.https(
-      Environment.transitousHost,
-      '/api/${Environment.planApiVersion}/plan',
-      params,
+    final params = resolved.toPlanParams(
+      fromPlace: Q.latLonComma(fromLat, fromLon),
+      toPlace: Q.latLonComma(toLat, toLon),
+      pageCursor: pageCursor,
+      time: timeSelection == null || timeSelection.isNow
+          ? null
+          : timeSelection.dateTime,
+      arriveBy: timeSelection != null && !timeSelection.isNow
+          ? timeSelection.isArriveBy
+          : null,
     );
 
     try {
-      final response = await http.get(
-        uri,
-        headers: Environment.transitousHeaders(),
-      );
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body) as Map<String, dynamic>;
-        return ItineraryResponse.fromJson(data);
-      } else {
-        developer.log(
-          'API error status: ${response.statusCode}',
-          name: 'RoutingService',
-        );
-        developer.log(
-          'API error body: ${response.body}',
-          name: 'RoutingService',
-        );
-        throw Exception('Failed to load routes: ${response.statusCode}');
-      }
-    } catch (e, stackTrace) {
+      return await PlanEndpoint.plan(params);
+    } on TransitousApiException catch (e, stackTrace) {
       developer.log(
-        'Exception in findRoutesPaginated',
+        'Failed to load routes',
         name: 'RoutingService',
         error: e,
         stackTrace: stackTrace,

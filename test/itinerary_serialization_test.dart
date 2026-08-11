@@ -105,6 +105,10 @@ void main() {
         expect(b.fromTrack, a.fromTrack);
         expect(b.realTime, a.realTime);
         expect(b.intermediateStops.length, a.intermediateStops.length);
+        // The street path a leg was routed over. Losing it draws a walk as a
+        // straight line from origin to station.
+        expect(b.legGeometry?.points, a.legGeometry?.points);
+        expect(b.legGeometry?.precision, a.legGeometry?.precision);
       }
     });
 
@@ -114,16 +118,16 @@ void main() {
       // Simulate the refresh path: the transit leg comes back delayed.
       final freshTransit = Leg(
         mode: 'RAIL',
-        fromName: 'Hauptbahnhof',
-        toName: 'Airport',
+        from: const TransitPlace(
+          name: 'Hauptbahnhof',
+          lat: 52.525,
+          lon: 13.369,
+        ),
+        to: const TransitPlace(name: 'Airport', lat: 52.366, lon: 13.503),
         startTime: DateTime.parse('2026-08-05T07:19:00Z'),
         endTime: DateTime.parse('2026-08-05T07:34:00Z'),
         duration: 900,
         realTime: true,
-        fromLat: 52.525,
-        fromLon: 13.369,
-        toLat: 52.366,
-        toLon: 13.503,
       );
       final refreshed = original.withLegs([
         original.legs.first,

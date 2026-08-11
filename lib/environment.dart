@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'api/transitous_endpoint.dart';
 import 'providers/backend_provider.dart';
 import 'utils/app_version.dart';
 
@@ -18,26 +19,34 @@ class Environment {
       BackendProvider.instance?.host ?? BackendProvider.defaultHost;
 
   static String get _mainApiVersion =>
-      BackendProvider.instance?.apiVersion ??
-      (transitousHost.contains('transitous') ? 'v5' : 'v1');
+      transitousHost.contains('transitous') ? 'v6' : 'v1';
 
-  static String get planApiVersion =>
-      BackendProvider.instance?.planVersion ?? _mainApiVersion;
+  /// API version segment for [endpoint], honouring any per-endpoint override.
+  ///
+  /// Falls back to the endpoint's declared default when no [BackendProvider]
+  /// exists yet, which is the case in tests that exercise services directly.
+  static String versionFor(TransitousEndpoint endpoint) =>
+      BackendProvider.instance?.versionFor(endpoint) ??
+      endpoint.defaultVersion(_mainApiVersion);
 
-  static String get tripApiVersion =>
-      BackendProvider.instance?.tripVersion ?? _mainApiVersion;
+  /// Full request path for [endpoint], e.g. `/api/v6/map/trips`.
+  static String pathFor(TransitousEndpoint endpoint) =>
+      endpoint.requestPath(versionFor(endpoint));
+
+  static String get planApiVersion => versionFor(TransitousEndpoint.plan);
+
+  static String get tripApiVersion => versionFor(TransitousEndpoint.trip);
 
   static String get stopTimesApiVersion =>
-      BackendProvider.instance?.stopTimesVersion ?? _mainApiVersion;
+      versionFor(TransitousEndpoint.stopTimes);
 
   static String get mapTripsApiVersion =>
-      BackendProvider.instance?.mapTripsVersion ?? _mainApiVersion;
+      versionFor(TransitousEndpoint.mapTrips);
 
   static String get mapStopsApiVersion =>
-      BackendProvider.instance?.mapStopsVersion ?? 'v1';
+      versionFor(TransitousEndpoint.mapStops);
 
-  static String get geocodeApiVersion =>
-      BackendProvider.instance?.geocodeVersion ?? 'v1';
+  static String get geocodeApiVersion => versionFor(TransitousEndpoint.geocode);
 
   static String get transitousUserAgent =>
       '$appName/${AppVersion.current} (+$contactUrl; $contactEmail)';

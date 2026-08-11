@@ -12,8 +12,15 @@ import '../widgets/custom_app_bar.dart';
 import '../widgets/validation_toast.dart';
 import '../widgets/skeletons/skeleton_shimmer.dart';
 
+/// Points at a place on the map.
+///
+/// Used both to keep a favourite and to answer a location search, because
+/// some places are easier to point at than to name. [saveAsFavourite] picks
+/// which: it either stores the place, or hands it back to the caller.
 class AddFavouriteMapScreen extends StatefulWidget {
-  const AddFavouriteMapScreen({super.key});
+  const AddFavouriteMapScreen({super.key, this.saveAsFavourite = true});
+
+  final bool saveAsFavourite;
 
   @override
   State<AddFavouriteMapScreen> createState() => _AddFavouriteMapScreenState();
@@ -196,6 +203,11 @@ class _AddFavouriteMapScreenState extends State<AddFavouriteMapScreen> {
       lon: _selectedLocation!.longitude,
       addedAt: DateTime.now(),
     );
+
+    if (!widget.saveAsFavourite) {
+      Navigator.of(context).pop(favorite);
+      return;
+    }
 
     try {
       await FavoritesService.saveFavorite(favorite);

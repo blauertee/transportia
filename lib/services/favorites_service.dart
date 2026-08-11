@@ -5,11 +5,26 @@ import '../constants/prefs_keys.dart';
 
 class FavoritePlace {
   final String id;
+
+  /// What the place is actually called, as searched for.
+  ///
+  /// Kept even when the place is renamed, so clearing the alias restores it
+  /// rather than leaving the place nameless.
   final String name;
+
+  /// The rider's name for it — "Home", "Work". Null means [name] stands.
+  final String? label;
+
   final double lat;
   final double lon;
   final DateTime addedAt;
   final String iconName;
+
+  /// What the geocoder called this place — `STOP`, `ADDRESS`, `PLACE`.
+  ///
+  /// Kept so a screen can ask which favourites are stations without
+  /// re-geocoding them; the timetable screen offers only those.
+  final String type;
 
   const FavoritePlace({
     required this.id,
@@ -17,12 +32,26 @@ class FavoritePlace {
     required this.lat,
     required this.lon,
     required this.addedAt,
+    this.label,
+    this.type = 'PLACE',
     this.iconName = 'mapPin',
   });
+
+  bool get isStation => type.toUpperCase() == 'STOP';
+
+  /// What to show. The alias when there is one, the searched name otherwise.
+  String get displayName => (label?.trim().isNotEmpty ?? false) ? label! : name;
+
+  /// True when the alias says something the searched name does not, so a row
+  /// can show both without repeating itself.
+  bool get hasAlias => displayName != name;
 
   FavoritePlace copyWith({
     String? id,
     String? name,
+    String? label,
+    bool clearLabel = false,
+    String? type,
     double? lat,
     double? lon,
     DateTime? addedAt,
@@ -31,6 +60,8 @@ class FavoritePlace {
     return FavoritePlace(
       id: id ?? this.id,
       name: name ?? this.name,
+      label: clearLabel ? null : (label ?? this.label),
+      type: type ?? this.type,
       lat: lat ?? this.lat,
       lon: lon ?? this.lon,
       addedAt: addedAt ?? this.addedAt,
@@ -42,6 +73,8 @@ class FavoritePlace {
     return {
       'id': id,
       'name': name,
+      'label': label,
+      'type': type,
       'lat': lat,
       'lon': lon,
       'addedAt': addedAt.toIso8601String(),
@@ -53,6 +86,8 @@ class FavoritePlace {
     return FavoritePlace(
       id: json['id'] as String,
       name: json['name'] as String,
+      label: json['label'] as String?,
+      type: json['type'] as String? ?? 'PLACE',
       lat: (json['lat'] as num).toDouble(),
       lon: (json['lon'] as num).toDouble(),
       addedAt: DateTime.parse(json['addedAt'] as String),
@@ -123,6 +158,49 @@ class FavoritesService {
     } catch (e) {
       rethrow;
     }
+  }
+
+  /// The favourite at these coordinates, if there is one.
+  ///
+  /// Matched on position rather than id: a place hearted from a search and the
+  /// same place reached from a deep link carry different ids, and a rider
+  /// would not call them two places. Five decimals is about a metre.
+  static FavoritePlace? findAt(double lat, double lon) {
+    final key = _coordinateKey(lat, lon);
+    for (final favourite in favoritesListenable.value) {
+      if (_coordinateKey(favourite.lat, favourite.lon) == key) return favourite;
+    }
+    return null;
+  }
+
+  static String _coordinateKey(double lat, double lon) =>
+      '${lat.toStringAsFixed(5)},${lon.toStringAsFixed(5)}';
+
+  /// Adds a place, or removes it when it is already there.
+  ///
+  /// Returns the favourite that was added, or null when one was removed, so
+  /// the caller can say which happened.
+  static Future<FavoritePlace?> toggleAt({
+    required String name,
+    required double lat,
+    required double lon,
+    String type = 'PLACE',
+  }) async {
+    final existing = findAt(lat, lon);
+    if (existing != null) {
+      await removeFavorite(existing.id);
+      return null;
+    }
+    final place = FavoritePlace(
+      id: 'fav_${DateTime.now().microsecondsSinceEpoch}',
+      name: name,
+      lat: lat,
+      lon: lon,
+      type: type,
+      addedAt: DateTime.now(),
+    );
+    await saveFavorite(place);
+    return place;
   }
 
   static Future<bool> isFavorite(String id) async {

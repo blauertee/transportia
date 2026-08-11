@@ -1,0 +1,230 @@
+import 'transitous/enums.dart';
+
+/// The four transport groups the search screen offers as icons.
+///
+/// MOTIS has two dozen transit modes, and a rider does not think in that
+/// vocabulary — they think "train, metro, bus, boat". The groups are a
+/// shorthand for picking several modes at once, not a replacement for them:
+/// every mode is still individually selectable, so a search can ask for
+/// intercity rail alone the way the server allows.
+enum TransitModeGroup {
+  rail('Rail', [
+    TransitMode.highspeedRail,
+    TransitMode.longDistance,
+    TransitMode.nightRail,
+    TransitMode.regionalRail,
+    TransitMode.suburban,
+  ]),
+
+  /// Tram sits here rather than with [rail]: light rail and metro are the same
+  /// kind of trip for a rider, and it keeps "Rail" meaning mainline.
+  metro('Metro', [TransitMode.subway, TransitMode.tram]),
+
+  bus('Bus', [TransitMode.bus, TransitMode.coach]),
+
+  boat('Boat', [TransitMode.ferry]);
+
+  const TransitModeGroup(this.label, this.modes);
+
+  final String label;
+  final List<TransitMode> modes;
+
+  /// Modes worth offering but not worth an icon of their own.
+  static const List<TransitMode> extras = [
+    TransitMode.airplane,
+    TransitMode.funicular,
+    TransitMode.aerialLift,
+    TransitMode.odm,
+    TransitMode.rideSharing,
+    TransitMode.flex,
+    TransitMode.other,
+  ];
+
+  /// Every mode a rider can pick, in the order the dropdown lists them.
+  ///
+  /// Excludes the server-side expanders (`TRANSIT`, `RAIL`), the debug routes,
+  /// and the deprecated aliases: offering both "Metro" and "Subway" as ticks
+  /// would be two names for one thing.
+  static const List<TransitMode> allSelectable = [
+    ...[
+      TransitMode.highspeedRail,
+      TransitMode.longDistance,
+      TransitMode.nightRail,
+      TransitMode.regionalRail,
+      TransitMode.suburban,
+    ],
+    ...[TransitMode.subway, TransitMode.tram],
+    ...[TransitMode.bus, TransitMode.coach],
+    TransitMode.ferry,
+    ...extras,
+  ];
+
+  /// Canonical mode for a stored one, folding the upstream aliases in.
+  static TransitMode canonical(TransitMode mode) => switch (mode) {
+    TransitMode.metro => TransitMode.subway,
+    TransitMode.regionalFastRail => TransitMode.regionalRail,
+    TransitMode.cableCar || TransitMode.arealLift => TransitMode.aerialLift,
+    _ => mode,
+  };
+
+  /// Rider-facing name for any selectable mode.
+  ///
+  /// Names match the ones the reference web client uses, so a rider who has
+  /// seen one recognises the other — "Intercity Rail" rather than
+  /// `LONG_DISTANCE`.
+  static String modeLabel(TransitMode mode) => switch (canonical(mode)) {
+    TransitMode.highspeedRail => 'High-speed rail',
+    TransitMode.longDistance => 'Intercity rail',
+    TransitMode.nightRail => 'Night rail',
+    TransitMode.regionalRail => 'Regional rail',
+    TransitMode.suburban => 'Suburban rail',
+    TransitMode.subway => 'Subway',
+    TransitMode.tram => 'Tram',
+    TransitMode.bus => 'Bus',
+    TransitMode.coach => 'Long-distance bus',
+    TransitMode.ferry => 'Ferry',
+    TransitMode.airplane => 'Flights',
+    TransitMode.funicular => 'Funicular',
+    TransitMode.aerialLift => 'Cable car',
+    TransitMode.odm => 'On demand',
+    TransitMode.rideSharing => 'Ride share',
+    TransitMode.flex => 'Flexible',
+    _ => 'Other',
+  };
+
+  /// Which of this group's modes are selected.
+  GroupState stateIn(Set<TransitMode> selected) {
+    final on = modes.where(selected.contains).length;
+    if (on == 0) return GroupState.none;
+    return on == modes.length ? GroupState.all : GroupState.some;
+  }
+}
+
+/// How much of a group is switched on.
+enum GroupState { none, some, all }
+
+/// The transit modes a search may use.
+///
+/// Held as one flat set rather than as group switches plus a handful of
+/// extras: the server takes any subset, and a rider who wants intercity rail
+/// but not regional should be able to say so. The groups are shortcuts over
+/// this set, not a coarser model behind it.
+///
+/// Kept as one type so the icon row, the chips, the summary line and
+/// `toPlanParams()` cannot disagree about what is selected.
+class TransitSelection {
+  const TransitSelection(this.modes);
+
+  final Set<TransitMode> modes;
+
+  /// Everything on — the state the server assumes when `transitModes` is
+  /// absent.
+  static final TransitSelection everything = TransitSelection(
+    TransitModeGroup.allSelectable.toSet(),
+  );
+
+  bool get isEverything =>
+      modes.length == TransitModeGroup.allSelectable.length;
+
+  bool get isEmpty => modes.isEmpty;
+
+  bool has(TransitMode mode) =>
+      modes.contains(TransitModeGroup.canonical(mode));
+
+  GroupState stateOf(TransitModeGroup group) => group.stateIn(modes);
+
+  /// Turns a whole group on, or off when all of it is already on.
+  ///
+  /// Partly on counts as off for this purpose: tapping a half-lit icon should
+  /// complete it rather than clear the modes you just picked by hand.
+  TransitSelection toggleGroup(TransitModeGroup group) {
+    final next = Set.of(modes);
+    if (group.stateIn(modes) == GroupState.all) {
+      next.removeAll(group.modes);
+    } else {
+      next.addAll(group.modes);
+    }
+    return TransitSelection(next);
+  }
+
+  TransitSelection toggleMode(TransitMode mode) {
+    final canonical = TransitModeGroup.canonical(mode);
+    final next = Set.of(modes);
+    if (!next.remove(canonical)) next.add(canonical);
+    return TransitSelection(next);
+  }
+
+  /// Modes that are on but that nothing on screen is showing, so they need a
+  /// chip of their own for the row to carry the whole selection.
+  ///
+  /// A mode is covered when everything it belongs to is on: its group, whose
+  /// icon is then lit, or the extras taken together, which are all on unless
+  /// somebody narrowed them.
+  List<TransitMode> get uncoveredModes => [
+    for (final mode in TransitModeGroup.allSelectable)
+      if (modes.contains(mode) && !_isCovered(mode)) mode,
+  ];
+
+  bool get _allExtrasOn => TransitModeGroup.extras.every(modes.contains);
+
+  bool _isCovered(TransitMode mode) {
+    for (final group in TransitModeGroup.values) {
+      if (group.modes.contains(mode)) {
+        return group.stateIn(modes) == GroupState.all;
+      }
+    }
+    return _allExtrasOn;
+  }
+
+  /// Flat mode list for `/plan`.
+  ///
+  /// Empty when everything is on, because sending the full list would pin the
+  /// set to the modes this build happens to know about.
+  List<TransitMode> toModes() {
+    if (isEverything) return const [];
+    return [
+      for (final mode in TransitModeGroup.allSelectable)
+        if (modes.contains(mode)) mode,
+    ];
+  }
+
+  /// Rebuilds the selection from a stored flat list.
+  ///
+  /// Aliases fold onto their canonical mode, and anything this build does not
+  /// recognise is dropped rather than discarding the whole list.
+  factory TransitSelection.fromModes(List<TransitMode> modes) {
+    if (modes.isEmpty) return everything;
+    final canonical = modes.map(TransitModeGroup.canonical).toSet();
+    return TransitSelection({
+      for (final mode in TransitModeGroup.allSelectable)
+        if (canonical.contains(mode)) mode,
+    });
+  }
+
+  /// One line naming what is on, for the collapsed section.
+  ///
+  /// Says "All transport" rather than listing everything: enumerating twenty
+  /// modes truncates mid-word in the common case where nothing is excluded.
+  /// Whole groups are named by their group, so narrowing to rail reads "Rail"
+  /// rather than five rail modes.
+  String summary() {
+    if (isEverything) return 'All transport';
+    if (isEmpty) return 'No transport';
+    return [
+      for (final group in TransitModeGroup.values)
+        if (group.stateIn(modes) == GroupState.all) group.label,
+      if (_allExtrasOn) 'more',
+      for (final mode in uncoveredModes) TransitModeGroup.modeLabel(mode),
+    ].join(', ');
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is TransitSelection &&
+          other.modes.length == modes.length &&
+          other.modes.containsAll(modes));
+
+  @override
+  int get hashCode => Object.hashAllUnordered(modes);
+}

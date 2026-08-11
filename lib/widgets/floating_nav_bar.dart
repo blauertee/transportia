@@ -17,6 +17,16 @@ class FloatingNavBar extends StatelessWidget {
   final ValueChanged<int> onIndexChanged;
   final double visibility;
 
+  /// What the bar takes at the bottom of the screen, above the safe-area
+  /// inset: its own height plus the margin it floats on.
+  ///
+  /// The bar is a sibling of the screens it sits over, so anything pinned to
+  /// the bottom of one has to clear this itself or end up underneath.
+  static const double reservedHeight = _barHeight + _barMargin;
+
+  static const double _barHeight = 64;
+  static const double _barMargin = 16;
+
   @override
   Widget build(BuildContext context) {
     context.watch<ThemeProvider>();
@@ -36,9 +46,13 @@ class FloatingNavBar extends StatelessWidget {
             child: ImageFiltered(
               imageFilter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
               child: Padding(
-                padding: const EdgeInsets.only(left: 16, right: 16, bottom: 16),
+                padding: const EdgeInsets.only(
+                  left: 16,
+                  right: 16,
+                  bottom: _barMargin,
+                ),
                 child: Container(
-                  height: 64,
+                  height: _barHeight,
                   decoration: BoxDecoration(
                     color: AppColors.white,
                     borderRadius: BorderRadius.circular(20),
@@ -57,7 +71,7 @@ class FloatingNavBar extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
                       _NavBarItem(
-                        icon: LucideIcons.mapPinned,
+                        icon: LucideIcons.route,
                         isSelected: currentIndex == 0,
                         onTap: () => onIndexChanged(0),
                       ),
@@ -67,9 +81,14 @@ class FloatingNavBar extends StatelessWidget {
                         onTap: () => onIndexChanged(1),
                       ),
                       _NavBarItem(
-                        icon: LucideIcons.user,
+                        icon: LucideIcons.bookmark,
                         isSelected: currentIndex == 2,
                         onTap: () => onIndexChanged(2),
+                      ),
+                      _NavBarItem(
+                        icon: LucideIcons.settings,
+                        isSelected: currentIndex == 3,
+                        onTap: () => onIndexChanged(3),
                       ),
                     ],
                   ),

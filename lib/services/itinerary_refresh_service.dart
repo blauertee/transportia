@@ -1,4 +1,7 @@
+import '../api/endpoints/trip_endpoint.dart';
 import '../models/itinerary.dart';
+import '../models/routing_options.dart';
+import '../models/transitous/itinerary_id.dart';
 import 'trip_details_service.dart';
 
 /// How much the app actually knows about an itinerary's current state after
@@ -45,6 +48,10 @@ class ItineraryRefreshResult {
 typedef TripDetailsFetcher =
     Future<Itinerary> Function({required String tripId});
 
+/// Signature of the whole-itinerary refresh, so tests can supply their own
+/// result without going over the network.
+typedef ItineraryFetcher = Future<Itinerary> Function(Itinerary itinerary);
+
 /// Re-fetches real-time data for the transit legs of an itinerary.
 ///
 /// An itinerary is a snapshot of what the planner returned. Delays, track
@@ -53,8 +60,12 @@ typedef TripDetailsFetcher =
 class ItineraryRefreshService {
   const ItineraryRefreshService._();
 
-  /// Looks up every distinct `tripId` in [itinerary] and merges the fresh
-  /// real-time fields back into the matching legs.
+  /// Re-checks [itinerary] against current real-time data.
+  ///
+  /// Prefers `/refresh-itinerary`, which re-plans the whole journey in one
+  /// request. Falls back to a `/trip` lookup per distinct trip when that is
+  /// unavailable — for an itinerary restored from an older saved trip, or
+  /// when the endpoint fails.
   ///
   /// The returned itinerary is [itinerary] itself when nothing could be
   /// refreshed; read [ItineraryRefreshResult.freshness] to tell the cases
@@ -62,29 +73,144 @@ class ItineraryRefreshService {
   static Future<ItineraryRefreshResult> refresh(
     Itinerary itinerary, {
     TripDetailsFetcher? fetchTripDetails,
+    ItineraryFetcher? fetchItinerary,
+    RoutingOptions? options,
   }) async {
-    final fetch = fetchTripDetails ?? TripDetailsService.fetchTripDetails;
-
-    final tripIds = itinerary.legs
-        .map((leg) => leg.tripId)
-        .whereType<String>()
-        .where((id) => id.isNotEmpty)
-        .toSet();
-
-    if (tripIds.isEmpty) {
+    if (!_hasTransitLegs(itinerary)) {
       return ItineraryRefreshResult(
         itinerary: itinerary,
         freshness: ItineraryFreshness.notRefreshable,
       );
     }
 
+    // The single-request path. Skipped when a caller has pinned only the
+    // per-trip fetcher, which is how the older tests drive this — pinning
+    // both says "try the whole refresh, then fall back", which is what
+    // production does and so the only way to test the fall-back.
+    if (fetchTripDetails == null || fetchItinerary != null) {
+      final refreshed = await _refreshWhole(
+        itinerary,
+        fetchItinerary ??
+            (i) => _refreshViaApi(i, options ?? RoutingOptions.defaults),
+      );
+      if (refreshed != null) return refreshed;
+    }
+
+    return _refreshPerTrip(
+      itinerary,
+      fetchTripDetails ?? TripDetailsService.fetchTripDetails,
+    );
+  }
+
+  static bool _hasTransitLegs(Itinerary itinerary) =>
+      itinerary.legs.any((leg) => leg.tripId != null && leg.tripId!.isNotEmpty);
+
+  /// Refreshes the itinerary in one request, or returns null so the caller
+  /// falls back to the per-trip path.
+  static Future<ItineraryRefreshResult?> _refreshWhole(
+    Itinerary itinerary,
+    ItineraryFetcher fetch,
+  ) async {
+    final Itinerary fresh;
+    try {
+      fresh = await fetch(itinerary);
+    } catch (_) {
+      return null;
+    }
+    if (!_isSameJourney(itinerary, fresh)) {
+      // The server re-planned rather than refreshed, so the legs no longer
+      // line up with what is on screen. Fall back rather than swap the
+      // journey out from under the user — a substituted journey would show
+      // up as "this connection has changed" for a connection that did not.
+      return null;
+    }
+
+    final merged = itinerary.withLegs(_merge(itinerary.legs, fresh.legs));
+
+    return ItineraryRefreshResult(
+      itinerary: merged,
+      freshness: merged.legs.any((leg) => leg.cancelled)
+          ? ItineraryFreshness.changed
+          : ItineraryFreshness.live,
+    );
+  }
+
+  /// True when the refreshed legs are the same journey re-timed, rather than
+  /// a different one that happens to be the same length.
+  ///
+  /// Leg count alone is not enough: walk legs carry no `tripId` for the
+  /// server to pin them by, so they are exactly the ones it is free to
+  /// re-plan into something else.
+  static bool _isSameJourney(Itinerary before, Itinerary after) {
+    if (before.legs.length != after.legs.length) return false;
+    for (var i = 0; i < before.legs.length; i++) {
+      if (before.legs[i].mode != after.legs[i].mode) return false;
+      final beforeTrip = before.legs[i].tripId;
+      final afterTrip = after.legs[i].tripId;
+      if ((beforeTrip ?? '') != (afterTrip ?? '')) return false;
+    }
+    return true;
+  }
+
+  /// Takes the refreshed times onto the planned journey, rather than the
+  /// planned times onto a refreshed one.
+  ///
+  /// `withRealTimeFrom` is the same merge the per-trip path uses, and it
+  /// keeps what belongs to the itinerary rather than to the timetable —
+  /// fare indices, turn-by-turn steps, and the leg's geometry. That last one
+  /// is why this matters: a refresh can answer without geometry, and a street
+  /// leg with none is drawn as a straight line from origin to station, which
+  /// is not where anybody walks.
+  ///
+  /// A stored leg that never had geometry has nothing to lend, so the fresh
+  /// one is taken whole in case it brought some.
+  static List<Leg> _merge(List<Leg> before, List<Leg> after) => [
+    for (var i = 0; i < after.length; i++)
+      if (before[i].legGeometry?.points.isNotEmpty ?? false)
+        before[i].withRealTimeFrom(after[i])
+      else
+        after[i],
+  ];
+
+  static Future<Itinerary> _refreshViaApi(
+    Itinerary itinerary,
+    RoutingOptions options,
+  ) {
+    final id = itinerary.id;
+    final params = options.toRefreshParams();
+    // A saved trip parsed from a snapshot taken before the app read `id`
+    // still has its legs, which is enough to rebuild the structured form.
+    return id != null && id.isNotEmpty
+        ? TripEndpoint.refreshItinerary(itineraryId: id, options: params)
+        : TripEndpoint.refreshItineraryById(
+            id: ItineraryId.fromItinerary(itinerary),
+            options: params,
+          );
+  }
+
+  static Future<ItineraryRefreshResult> _refreshPerTrip(
+    Itinerary itinerary,
+    TripDetailsFetcher fetch,
+  ) async {
+    final tripIds = itinerary.legs
+        .map((leg) => leg.tripId)
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toSet();
+
     final updates = <String, Leg>{};
     await Future.wait(
       tripIds.map((tripId) async {
         try {
           final details = await fetch(tripId: tripId);
-          if (details.legs.isNotEmpty) {
-            updates[tripId] = details.legs.first;
+          // Not blindly the first leg: a `/trip` response that leads with a
+          // walk would otherwise lend its times and its cancellation to every
+          // transit leg in the itinerary.
+          for (final leg in details.legs) {
+            if (leg.tripId == tripId) {
+              updates[tripId] = leg;
+              break;
+            }
           }
         } catch (_) {}
       }),
@@ -101,7 +227,13 @@ class ItineraryRefreshService {
 
     final newLegs = itinerary.legs.map((leg) {
       final fresh = leg.tripId != null ? updates[leg.tripId] : null;
-      return fresh != null ? leg.withRealTimeFrom(fresh) : leg;
+      if (fresh == null) return leg;
+      // `/trip` answers with the whole service, so what came back covers the
+      // line end to end rather than the part this journey rides. Cut it down
+      // before merging, or the leg inherits every station on the line and the
+      // line's own first departure. Only this path needs it —
+      // `/refresh-itinerary` already answers leg by leg.
+      return leg.withRealTimeFrom(fresh.sliceBetween(leg.from, leg.to));
     }).toList();
 
     return ItineraryRefreshResult(

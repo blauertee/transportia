@@ -1,12 +1,10 @@
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import '../environment.dart';
+import '../api/endpoints/stoptimes_endpoint.dart';
+import '../api/transitous_api_exception.dart';
 import '../models/stop_time.dart';
-import '../utils/time_utils.dart';
 
 class StopTimesServiceException implements Exception {
-  final String message;
   StopTimesServiceException(this.message);
+  final String message;
   @override
   String toString() => 'StopTimesServiceException: $message';
 }
@@ -19,53 +17,17 @@ class StopTimesService {
     DateTime? startTime,
     bool arriveBy = false,
   }) async {
-    final params = <String, String>{
-      'stopId': stopId,
-      'n': n.toString(),
-      'radius': '30',
-    };
-
-    if (pageCursor != null) {
-      params['pageCursor'] = pageCursor;
-    }
-
-    if (startTime != null) {
-      params['time'] = formatIso8601Millis(startTime);
-    }
-
-    if (arriveBy) {
-      params['arriveBy'] = 'true';
-    }
-
-    final uri = Uri.https(
-      Environment.transitousHost,
-      '/api/${Environment.stopTimesApiVersion}/stoptimes',
-      params,
-    );
-
     try {
-      final resp = await http.get(
-        uri,
-        headers: Environment.transitousHeaders(),
+      return await StopTimesEndpoint.stopTimes(
+        stopId: stopId,
+        n: n,
+        radius: 30,
+        pageCursor: pageCursor,
+        time: startTime,
+        arriveBy: arriveBy ? true : null,
       );
-
-      if (resp.statusCode != 200) {
-        throw StopTimesServiceException('Unexpected status ${resp.statusCode}');
-      }
-
-      final body = resp.body;
-      final decoded = jsonDecode(body);
-
-      if (decoded is! Map<String, dynamic>) {
-        throw StopTimesServiceException('Unexpected payload from API');
-      }
-
-      return StopTimesResponse.fromJson(decoded);
-    } catch (e) {
-      if (e is StopTimesServiceException) {
-        rethrow;
-      }
-      throw StopTimesServiceException('Failed to fetch stop times: $e');
+    } on TransitousApiException catch (e) {
+      throw StopTimesServiceException(e.message);
     }
   }
 }

@@ -78,6 +78,7 @@ class _SavedTripsScreenState extends State<SavedTripsScreen> {
 
     return AppPageScaffold(
       title: 'Saved trips',
+      showBack: false,
       scrollable: false,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
       body: Column(
@@ -121,7 +122,8 @@ class _SavedTripsScreenState extends State<SavedTripsScreen> {
     final past = trips.where((t) => t.isPast).toList().reversed.toList();
 
     return ListView(
-      padding: const EdgeInsets.only(bottom: 24),
+      // Clears the floating navigation bar, as the timetables tab does.
+      padding: const EdgeInsets.only(bottom: 96),
       children: [
         if (upcoming.isNotEmpty) ...[
           _sectionLabel('Upcoming'),

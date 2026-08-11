@@ -45,6 +45,7 @@ class SavedTrip {
     required this.arrivalTime,
     required this.savedAt,
     required this.itineraryJson,
+    this.liveUpdatedAt,
     this.label,
     this.fromStopId,
     this.toStopId,
@@ -76,7 +77,15 @@ class SavedTrip {
   final bool isDirect;
 
   /// The raw planner output, straight from `Itinerary.sourceJson`.
+  ///
+  /// Refreshed in place when a live check comes back with the same
+  /// connection, so reopening the app shows the times the operator last
+  /// reported rather than the plan it was saved under.
   final Map<String, dynamic> itineraryJson;
+
+  /// When [itineraryJson] last picked up real-time data. Null while the trip
+  /// has only ever been the plan.
+  final DateTime? liveUpdatedAt;
 
   Itinerary? _itinerary;
 
@@ -226,6 +235,41 @@ class SavedTrip {
       savedAt: savedAt,
       isDirect: isDirect,
       itineraryJson: itineraryJson,
+      liveUpdatedAt: liveUpdatedAt,
+    );
+  }
+
+  /// The same trip carrying newer real-time data.
+  ///
+  /// Everything identifying the connection is kept — only the snapshot and
+  /// the stamp move. The caller decides whether a refresh is *the same*
+  /// connection; a different one is not an update to this trip.
+  ///
+  /// Returns this trip untouched when [refreshed] has no raw JSON to store.
+  /// Stamping it fresh over the old snapshot would claim times the trip does
+  /// not actually carry.
+  SavedTrip withLiveItinerary(Itinerary refreshed, {required DateTime at}) {
+    final json = refreshed.sourceJson;
+    if (json == null) return this;
+
+    return SavedTrip(
+      id: id,
+      label: label,
+      fromName: fromName,
+      fromLat: fromLat,
+      fromLon: fromLon,
+      fromStopId: fromStopId,
+      toName: toName,
+      toLat: toLat,
+      toLon: toLon,
+      toStopId: toStopId,
+      timeSelection: timeSelection,
+      departureTime: refreshed.startTime,
+      arrivalTime: refreshed.endTime,
+      savedAt: savedAt,
+      isDirect: isDirect,
+      itineraryJson: json,
+      liveUpdatedAt: at,
     );
   }
 
@@ -246,6 +290,8 @@ class SavedTrip {
     'savedAt': savedAt.toIso8601String(),
     'isDirect': isDirect,
     'itinerary': itineraryJson,
+    if (liveUpdatedAt != null)
+      'liveUpdatedAt': liveUpdatedAt!.toIso8601String(),
   };
 
   factory SavedTrip.fromJson(Map<String, dynamic> json) {
@@ -299,6 +345,10 @@ class SavedTrip {
       savedAt: DateTime.parse(json['savedAt'] as String),
       isDirect: isDirect,
       itineraryJson: itineraryJson,
+      liveUpdatedAt: switch (json['liveUpdatedAt']) {
+        final String at => DateTime.tryParse(at),
+        _ => null,
+      },
     );
   }
 }
