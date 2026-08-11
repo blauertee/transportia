@@ -8,7 +8,7 @@ Tick an entry off by fixing one side and deleting the row. Nothing here has
 been changed yet — resolving a contradiction is a decision about intent, not a
 cleanup.
 
-Last swept: 2026-08-11, against `7fb61a9`.
+Last swept: 2026-08-11, against `8020837`.
 
 ---
 
@@ -22,22 +22,7 @@ Last swept: 2026-08-11, against `7fb61a9`.
 - **Wrong side** — the document. A one-word fix, but the example is the only
   concrete thing that line says, so it is worth it being right.
 
-## 2. `AGENTS.md`'s module map is missing half of `lib/`
-
-- **Written** — `lib/` contains `main.dart`, `app.dart`, `api/`,
-  `models/transitous/`, `screens/`, `services/`, `widgets/`.
-- **True** — it also contains `animations/`, `constants/`, `providers/`,
-  `theme/`, `utils/`, `environment.dart`, and `models/` holds a dozen
-  app-level models outside `models/transitous/`. `utils/` in particular is
-  where shared logic is expected to go, and the map never mentions it.
-  `screens/` and `widgets/` also have subdirectories (`screens/map_screen/`,
-  `screens/transit_options/`, `widgets/journey/`, `widgets/map/`,
-  `widgets/options/`, `widgets/search/`, `widgets/buttons/`,
-  `widgets/skeletons/`) that the flat description does not suggest.
-- **Wrong side** — the document. An agent reading only `AGENTS.md` would not
-  know `lib/utils/` is the place for a shared helper.
-
-## 3. `AGENTS.md` says avoid `print`; the code logs with `debugPrint`
+## 2. `AGENTS.md` says avoid `print`; the code logs with `debugPrint`
 
 - **Written** — "Avoid `print`; use logs or comments when necessary."
 - **True** — there is no `print` anywhere in `lib/`, so the rule is being
@@ -48,7 +33,7 @@ Last swept: 2026-08-11, against `7fb61a9`.
 - **Wrong side** — arguably neither, but the guidance does not say which of the
   two to reach for, and the codebase has not picked one. Worth deciding.
 
-## 4. `README.md` points bug reports at a repository that is not this one
+## 3. `README.md` points bug reports at a repository that is not this one
 
 - **Written** — "Please open a GitHub issue:
   `https://github.com/Wafler1/transportia/issues/new/choose`".
@@ -57,7 +42,7 @@ Last swept: 2026-08-11, against `7fb61a9`.
   or this is a fork whose README was never repointed. Someone with the history
   should say which.
 
-## 5. `AGENTS.md` names an example test file that does not exist
+## 4. `AGENTS.md` names an example test file that does not exist
 
 - **Written** — "Place tests in `test/` with `_test.dart` suffix (e.g.,
   `route_field_box_test.dart`)."
@@ -67,22 +52,7 @@ Last swept: 2026-08-11, against `7fb61a9`.
 - **Wrong side** — both, in different ways. Either pick an example that exists,
   or write the test the example implies.
 
-## 6. `_legacyModeOptionCount` describes a count that no longer bounds anything
-
-- **Written** — `routing_options_service.dart`: "Size of the mode list the
-  previous Transit options screen offered", `static const int
-  _legacyModeOptionCount = 28`, used as `modes.length >= 28 ? const [] : modes`
-  to mean "everything was selected, so send no restriction".
-- **True** — `TransitMode` now has 33 values. A stored selection of 28, 29, 30,
-  31 or 32 modes is a deliberately narrowed set, and it is silently widened to
-  "no restriction".
-- **Wrong side** — the implementation, but only for data written by old builds,
-  which is the only data this path reads. Whether that window is worth closing
-  depends on how many modes the old screen really offered — the comment is the
-  only surviving record of it. Worth confirming before touching, because
-  getting it wrong silently changes what people get back from a search.
-
-## 7. `SavedTripsService`'s class doc undersells what it does
+## 5. `SavedTripsService`'s class doc undersells what it does
 
 - **Written** — "there is no cap and nothing is evicted to make room — a saved
   trip disappears only when the user removes it, or once it is long enough in
@@ -112,3 +82,10 @@ Recorded so the next sweep does not re-verify them:
 - `transitous_endpoint.dart` — the six `prefKey`s the doc says must not change
   (`plan`, `trip`, `stoptimes`, `mapTrips`, `mapStops`, `geocode`) are all
   present and spelled as stated.
+- The legacy mode-count threshold, previously entry 6. `git show
+  8cb9437:lib/screens/transit_options_screen.dart` lists exactly 28 modes in
+  `_transitModeOptions`, so 28 was right; `TransitMode` having 33 values today
+  is irrelevant, because the only data this reads was written by 1.0.3. The
+  check now lives in `MigrateV103ToV104` and runs once per install.
+- `AGENTS.md`'s module map, previously entry 2 — fixed in `7fb61a9`; the entry
+  outlived the fix by one commit.

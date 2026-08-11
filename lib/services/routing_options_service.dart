@@ -6,7 +6,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../constants/prefs_keys.dart';
 import '../models/routing_options.dart';
-import '../models/transitous/enums.dart';
 
 /// Stores the user's routing preferences.
 ///
@@ -34,17 +33,9 @@ class RoutingOptionsService {
       final prefs = SharedPreferencesAsync();
       final stored = await prefs.getString(PrefsKeys.routingOptions);
 
-      if (stored != null && stored.isNotEmpty) {
-        optionsListenable.value = _decode(stored);
-      } else {
-        // Nothing stored under the current key, so read the three separate
-        // settings older builds wrote and carry them forward.
-        final migrated = await _migrateLegacy(prefs);
-        optionsListenable.value = migrated;
-        if (migrated != RoutingOptions.defaults) {
-          await _write(prefs, migrated);
-        }
-      }
+      optionsListenable.value = (stored != null && stored.isNotEmpty)
+          ? _decode(stored)
+          : RoutingOptions.defaults;
     } catch (e, stackTrace) {
       developer.log(
         'Could not read routing options, using defaults',
@@ -93,41 +84,4 @@ class RoutingOptionsService {
     if (decoded is! Map<String, dynamic>) return RoutingOptions.defaults;
     return RoutingOptions.fromJson(decoded);
   }
-
-  /// Reads the pre-blob preference keys.
-  ///
-  /// The old keys are left in place: they are small, and removing them would
-  /// lose the settings for anyone who downgrades.
-  static Future<RoutingOptions> _migrateLegacy(
-    SharedPreferencesAsync prefs,
-  ) async {
-    final speed = await prefs.getDouble(PrefsKeys.transitWalkingSpeed);
-    final buffer = await prefs.getInt(PrefsKeys.transitTransferBuffer);
-    final modes = await prefs.getStringList(PrefsKeys.transitSelectedModes);
-
-    if (speed == null && buffer == null && modes == null) {
-      return RoutingOptions.defaults;
-    }
-
-    return RoutingOptions.defaults.copyWith(
-      walkingSpeedKmh: speed,
-      additionalTransferTime: buffer == null ? null : Duration(minutes: buffer),
-      transitModes: modes == null ? null : _modesFrom(modes),
-    );
-  }
-
-  /// Older builds stored every mode they knew when nothing was deselected.
-  /// Sending that list is not the same as sending nothing — it pins the set to
-  /// the modes that build knew about — so a full selection is normalised back
-  /// to "no restriction".
-  static List<TransitMode> _modesFrom(List<String> stored) {
-    final modes = [
-      for (final name in stored)
-        if (TransitMode.fromWire(name) case final mode?) mode,
-    ];
-    return modes.length >= _legacyModeOptionCount ? const [] : modes;
-  }
-
-  /// Size of the mode list the previous Transit options screen offered.
-  static const int _legacyModeOptionCount = 28;
 }
