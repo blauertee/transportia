@@ -37,8 +37,8 @@ class RoutingOptionsService {
       if (stored != null && stored.isNotEmpty) {
         optionsListenable.value = _decode(stored);
       } else {
-        // First run after the upgrade: carry the three separate settings the
-        // Transit options screen used to write, so nobody silently loses them.
+        // Nothing stored under the current key, so read the three separate
+        // settings older builds wrote and carry them forward.
         final migrated = await _migrateLegacy(prefs);
         optionsListenable.value = migrated;
         if (migrated != RoutingOptions.defaults) {
@@ -116,10 +116,10 @@ class RoutingOptionsService {
     );
   }
 
-  /// The old screen wrote out every mode it knew when nothing was
-  /// deselected. Sending that list is not the same as sending nothing — it
-  /// pins the set to the modes that build knew about — so a full selection is
-  /// normalised back to "no restriction".
+  /// Older builds stored every mode they knew when nothing was deselected.
+  /// Sending that list is not the same as sending nothing — it pins the set to
+  /// the modes that build knew about — so a full selection is normalised back
+  /// to "no restriction".
   static List<TransitMode> _modesFrom(List<String> stored) {
     final modes = [
       for (final name in stored)

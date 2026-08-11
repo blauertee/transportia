@@ -25,6 +25,9 @@ import 'favourites_map_screen.dart';
 ///
 /// Thin on purpose — it is [LocationSearchBody] on a page that pops the
 /// answer. A screen that is itself a place search renders the body directly.
+/// How long typing has to pause before a place lookup is sent.
+const Duration _kSearchDebounce = Duration(milliseconds: 220);
+
 class LocationSearchScreen extends StatelessWidget {
   const LocationSearchScreen({
     super.key,
@@ -211,7 +214,7 @@ class _LocationSearchBodyState extends State<LocationSearchBody> {
     }
 
     setState(() => _isFetching = true);
-    _debounce = Timer(const Duration(milliseconds: 220), () => _search(query));
+    _debounce = Timer(_kSearchDebounce, () => _search(query));
   }
 
   Future<void> _search(String query) async {

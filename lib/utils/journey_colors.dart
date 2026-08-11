@@ -60,6 +60,18 @@ double contrastRatio(Color a, Color b) {
   return (lighter + 0.05) / (darker + 0.05);
 }
 
+/// Above this luminance a background counts as light, and colours have to be
+/// darkened rather than lightened to stand out against it.
+const double _kMidLuminance = 0.5;
+
+/// How far each attempt moves the colour's lightness: fine enough that the
+/// result still looks like the feed's colour, coarse enough to settle in a
+/// few dozen iterations.
+const double _kContrastStep = 0.02;
+
+/// Enough steps to cross the whole lightness range at [_kContrastStep].
+const int _kMaxContrastSteps = 50;
+
 /// Pushes [color] away from [background] until it clears [minRatio].
 ///
 /// Hue and saturation are kept, so the line still reads as the operator's —
@@ -74,17 +86,13 @@ Color ensureContrast(Color color, Color background, {double minRatio = 3.0}) {
 
   // On a light background darken, on a dark one lighten — moving the other
   // way would have to cross the background to find contrast on the far side.
-  final darken = background.computeLuminance() > 0.5;
+  final darken = background.computeLuminance() > _kMidLuminance;
   final hsl = HSLColor.fromColor(color);
 
-  // 2% steps: fine enough that the result still looks like the feed's colour,
-  // coarse enough to settle in a few dozen iterations.
-  for (var i = 1; i <= 50; i++) {
-    final lightness =
-        (darken ? hsl.lightness - i * 0.02 : hsl.lightness + i * 0.02).clamp(
-          0.0,
-          1.0,
-        );
+  for (var step = 1; step <= _kMaxContrastSteps; step++) {
+    final shift = step * _kContrastStep;
+    final lightness = (darken ? hsl.lightness - shift : hsl.lightness + shift)
+        .clamp(0.0, 1.0);
     final candidate = hsl.withLightness(lightness).toColor();
     if (contrastRatio(candidate, background) >= minRatio) return candidate;
     if (lightness == 0.0 || lightness == 1.0) break;

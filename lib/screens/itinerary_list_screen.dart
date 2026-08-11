@@ -24,6 +24,10 @@ import '../widgets/bidirectional_paged_list.dart';
 import '../widgets/save_trip_button.dart';
 import '../widgets/skeletons/skeleton_list.dart';
 
+/// How often each result's "departs in" countdown is redrawn. A minute is
+/// the resolution the countdown itself is printed at.
+const Duration _kDepartsInTick = Duration(minutes: 1);
+
 class ItineraryListScreen extends StatefulWidget {
   final FutureOr<double> fromLat;
   final FutureOr<double> fromLon;
@@ -300,7 +304,7 @@ class _ItineraryCardState extends State<ItineraryCard>
   @override
   void initState() {
     super.initState();
-    _departInTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+    _departInTimer = Timer.periodic(_kDepartsInTick, (_) {
       if (mounted) setState(() {});
     });
     _realTimeIconController = AnimationController(

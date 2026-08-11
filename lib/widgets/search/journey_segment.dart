@@ -13,11 +13,10 @@ const double kStageLineHeight = 16;
 /// One stage of the journey being planned, as a node on the same spine the
 /// itinerary is drawn with.
 ///
-/// The three stages used to be separated by the rail *breaking* between them,
-/// which made the search read as a settings list that happened to have a line
-/// beside it. Unbroken, with the stage's own mode in a ring and street stages
-/// dotted, it reads as the shape of the trip you are asking for — which is
-/// what laying the options out in journey order was for.
+/// The rail runs unbroken through all three stages, with each stage's own mode
+/// in a ring and street stages dotted, so the search reads as the shape of the
+/// trip being asked for rather than as a settings list with a line beside
+/// it.
 class JourneySegment extends StatelessWidget {
   const JourneySegment({
     super.key,
@@ -72,9 +71,7 @@ class JourneySegment extends StatelessWidget {
         ),
       ),
       // The whole row toggles — the ring, the summary, the chevron and the
-      // space between them. It used to be only the two lines of text, whose
-      // Column was as wide as the words in it, so most of the row looked
-      // pressable and did nothing.
+      // space between them — so nothing in it looks pressable and isn't.
       onTap: () {
         Haptics.lightTick();
         onToggle();

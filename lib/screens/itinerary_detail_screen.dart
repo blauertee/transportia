@@ -359,6 +359,9 @@ class SpineTracks extends StatelessWidget {
   }
 }
 
+/// How often the "updated N ago" line and the progress fade are redrawn.
+const Duration _kAgoTick = Duration(seconds: 30);
+
 class ItineraryDetailScreen extends StatefulWidget {
   final Itinerary itinerary;
 
@@ -413,7 +416,7 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
     // screen had fetched. `_refreshRealTimeInfo` guards its own re-entry.
     unawaited(_refreshRealTimeInfo());
 
-    _agoTicker = Timer.periodic(const Duration(seconds: 30), (_) {
+    _agoTicker = Timer.periodic(_kAgoTick, (_) {
       if (mounted) setState(() {});
     });
   }
@@ -1273,7 +1276,7 @@ class LegDetailsWidget extends StatefulWidget {
   ///
   /// A node belongs to two legs at once — one gets in, the other leaves — and
   /// where those times differ you waited there. Without this the row could
-  /// only show the departure, losing a time the old two-row card printed.
+  /// only show the departure.
   final Leg? previousLeg;
 
   /// Where the clock says the traveller has got to, which decides how much of
@@ -1379,8 +1382,7 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
   /// When this leg leaves, and when the one before it got in.
   ///
   /// A node is shared between the leg arriving at it and the leg leaving it.
-  /// Where the two differ you waited there, and both are worth printing —
-  /// dropping either would lose a time the old two-row card showed.
+  /// Where the two differ you waited there, so both are printed.
   SpinePoint get _point => SpinePoint(
     arrival: widget.previousLeg?.endTime,
     scheduledArrival: widget.previousLeg?.scheduledEndTime,

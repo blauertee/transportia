@@ -33,10 +33,8 @@ const Map<TransitMode, String> mileModeExtras = {
 
 /// The vehicles the Rental icon stands for.
 ///
-/// The icon sets these directly rather than switching rentals on and leaving
-/// the vehicles to a list nobody has opened: an icon that only enables other
-/// buttons says nothing about what it did, and rentals with no vehicle picked
-/// looked identical to rentals with one.
+/// The icon sets these directly rather than only switching rentals on: an icon
+/// that enables other buttons and nothing else says nothing about what it did.
 ///
 /// The same set the defaults editor gives a mile when Rental is ticked there,
 /// so Rental means one thing across both screens.
@@ -208,7 +206,7 @@ class StreetLegSection extends StatelessWidget {
   /// Rentals are exactly the vehicles picked for them: choosing the first one
   /// turns them on, dropping the last turns them off. That is what keeps the
   /// icon honest — it cannot light up over a mile that has no vehicle to
-  /// rent, which is the state that used to look identical to a real pick.
+  /// rent.
   void _applyFormFactors(Iterable<RentalFormFactor> factors) {
     final next = [
       for (final factor in rentalFormFactorLabels.keys)

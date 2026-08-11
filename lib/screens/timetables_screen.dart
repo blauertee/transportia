@@ -122,10 +122,9 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
 
   /// Before a stop is chosen, this screen *is* the stop search.
   ///
-  /// It used to keep its own read-only field and its own copies of the
-  /// favourites and recents, then push a picker that showed the same two
-  /// lists again. One body, rendered here, is the whole of it — and the
-  /// keyboard stays down, because the lists are what you came for.
+  /// The picker's own body is rendered here rather than pushed, and the
+  /// keyboard stays down, because the favourites and recents are what you
+  /// came for.
   Widget _buildStopSearch() {
     return LocationSearchBody(
       bucket: SavedPlacesBucket.timetable,
@@ -265,8 +264,8 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
 
   /// Puts the screen back to being the stop search.
   ///
-  /// Clearing used to empty the field and nothing else, so the departures and
-  /// the stop behind them stayed and there was no way back to the lists.
+  /// Everything the chosen stop brought with it goes: the field, the stop
+  /// itself, its departures and the paging through them.
   void _clearStop() {
     _searchFocus.unfocus();
     setState(() {

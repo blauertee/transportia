@@ -23,6 +23,10 @@ import '../widgets/settings_tile.dart';
 import '../widgets/icon_badge.dart';
 import '../widgets/custom_card.dart';
 
+/// How long the version line has to be held to open the developer screen.
+/// Long enough that nobody reaches it by resting a thumb there.
+const Duration _kDebugUnlockHold = Duration(seconds: 5);
+
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
@@ -43,7 +47,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _startDebugHold() {
     _debugHoldTimer?.cancel();
     _debugOpened = false;
-    _debugHoldTimer = Timer(const Duration(seconds: 5), _openDeveloperInfo);
+    _debugHoldTimer = Timer(_kDebugUnlockHold, _openDeveloperInfo);
   }
 
   void _cancelDebugHold() {

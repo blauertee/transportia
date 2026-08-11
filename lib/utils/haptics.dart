@@ -23,7 +23,29 @@ class Haptics {
     }
   }
 
-  static Future<void> _tryVibrate({int duration = 20, int? amplitude}) async {
+  /// Vibration amplitudes, on the 1–255 scale the platform takes.
+  static const int _rumbleAmplitude = 25;
+  static const int _snapAmplitude = 90;
+  static const int _tickAmplitude = 120;
+  static const int _firmAmplitude = 200;
+
+  /// Pulse lengths in milliseconds. Anything under about ten reads as a click
+  /// rather than a buzz.
+  static const int _rumblePulseMs = 8;
+  static const int _snapMs = 10;
+  static const int _lightTickMs = 12;
+  static const int _mediumTickMs = 18;
+  static const int _defaultPulseMs = 20;
+
+  /// The swell a long press builds through: five pulses of rising strength,
+  /// spaced so they are felt as one gathering press rather than five taps.
+  static const List<int> _pressRampAmplitudes = [40, 80, 120, 160, 200];
+  static const Duration _pressRampGap = Duration(milliseconds: 40);
+
+  static Future<void> _tryVibrate({
+    int duration = _defaultPulseMs,
+    int? amplitude,
+  }) async {
     if (!isEnabled) return;
 
     try {
@@ -38,30 +60,28 @@ class Haptics {
   }
 
   static Future<void> subtlePress() async {
-    await _tryVibrate(duration: 20, amplitude: 40);
-    await Future.delayed(const Duration(milliseconds: 40));
-    await _tryVibrate(duration: 20, amplitude: 80);
-    await Future.delayed(const Duration(milliseconds: 40));
-    await _tryVibrate(duration: 20, amplitude: 120);
-    await Future.delayed(const Duration(milliseconds: 40));
-    await _tryVibrate(duration: 20, amplitude: 160);
-    await Future.delayed(const Duration(milliseconds: 40));
-    await _tryVibrate(duration: 20, amplitude: 200);
+    for (var i = 0; i < _pressRampAmplitudes.length; i++) {
+      if (i > 0) await Future.delayed(_pressRampGap);
+      await _tryVibrate(amplitude: _pressRampAmplitudes[i]);
+    }
   }
 
   static Future<void> lightTick() async {
-    await _tryVibrate(duration: 12, amplitude: 120);
+    await _tryVibrate(duration: _lightTickMs, amplitude: _tickAmplitude);
   }
 
   static Future<void> mediumTick() async {
-    await _tryVibrate(duration: 18, amplitude: 200);
+    await _tryVibrate(duration: _mediumTickMs, amplitude: _firmAmplitude);
   }
 
   static Future<void> dragRumblePulse() async {
-    await _tryVibrate(duration: 8, amplitude: 25);
+    await _tryVibrate(duration: _rumblePulseMs, amplitude: _rumbleAmplitude);
   }
 
   static Future<void> snap({required bool useCustomAmplitude}) async {
-    await _tryVibrate(duration: 10, amplitude: useCustomAmplitude ? 90 : null);
+    await _tryVibrate(
+      duration: _snapMs,
+      amplitude: useCustomAmplitude ? _snapAmplitude : null,
+    );
   }
 }

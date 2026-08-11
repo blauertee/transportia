@@ -202,10 +202,17 @@ class Itinerary {
     return totalDistance;
   }
 
-  // maybe give the user control over this?
+  /// Metres in a kilometre.
+  static const double _metresPerKilometre = 1000;
+
+  /// Rule-of-thumb energy cost of walking a kilometre, for an average adult
+  /// at an average pace. A real figure would need the traveller's weight and
+  /// stride, which the app does not ask for.
+  static const double _caloriesPerWalkedKilometre = 50;
+
   int get calories {
-    final walkingKm = walkingDistance / 1000;
-    return (walkingKm * 50).round();
+    final walkingKm = walkingDistance / _metresPerKilometre;
+    return (walkingKm * _caloriesPerWalkedKilometre).round();
   }
 
   int get alertsCount {

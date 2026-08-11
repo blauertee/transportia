@@ -228,6 +228,16 @@ class _MapScreenState extends State<MapScreen>
   static const double _focusedTransferZoomLevel = 16.5;
   static const double _focusedTransferDistanceThresholdMeters = 80.0;
   static const Duration _mapRefreshDebounce = Duration(milliseconds: 250);
+
+  /// How often vehicle markers are moved along their shapes. Roughly 12fps —
+  /// smooth enough to read as movement, cheap enough to run all the time.
+  static const Duration _vehicleAnimationFrame = Duration(milliseconds: 80);
+
+  /// How often focused-trip times are re-checked against the clock.
+  static const Duration _tripRefreshTick = Duration(seconds: 5);
+
+  /// Gap between pulses of the rumble felt while dragging the sheet.
+  static const Duration _dragRumbleInterval = Duration(milliseconds: 90);
   static const String _kShowStopsPrefKey = PrefsKeys.mapShowStops;
   static const String _kQuickButtonPrefKey = PrefsKeys.mapQuickButton;
   static const String _kShowVehiclesPrefKey = PrefsKeys.mapShowVehicles;
@@ -594,11 +604,11 @@ class _MapScreenState extends State<MapScreen>
     unawaited(_refreshRouteMarkers());
     _vehicleAnimationTimer?.cancel();
     _vehicleAnimationTimer = Timer.periodic(
-      const Duration(milliseconds: 80),
+      _vehicleAnimationFrame,
       (_) => _updateVehiclePositions(),
     );
     _tripRefreshTimer = Timer.periodic(
-      const Duration(seconds: 5),
+      _tripRefreshTick,
       (_) => _handleTripRefreshTick(),
     );
     _scheduleTripRefresh();
@@ -2266,14 +2276,14 @@ class _MapScreenState extends State<MapScreen>
   /// Longer than any real drag, and short enough that a missed stop is a
   /// blip rather than a phone that will not settle.
   ///
-  /// Three call sites have to remember to stop the rumble and any new one
-  /// will too, so the loop bounds itself rather than trusting all of them.
+  /// The loop bounds itself rather than trusting every call site to remember
+  /// to stop it.
   static const Duration _maxDragRumble = Duration(seconds: 4);
 
   void _startDragRumble() {
     _stopDragRumble();
     if (!_hasCustomVibration || !Haptics.isEnabled) return;
-    _dragVibeTimer = Timer.periodic(const Duration(milliseconds: 90), (_) {
+    _dragVibeTimer = Timer.periodic(_dragRumbleInterval, (_) {
       Haptics.dragRumblePulse();
     });
     _dragVibeDeadline = Timer(_maxDragRumble, _stopDragRumble);
