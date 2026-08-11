@@ -110,7 +110,7 @@ recent trips anywhere in Settings, which for a list of places someone has
 searched for is closer to a gap than to a missing feature. The method is the
 easy half of that.
 
-### `parseHexColorOr` — `lib/utils/color_utils.dart:23`
+### `parseHexColorOr` — `lib/utils/color_utils.dart:22`
 
 `parseHexColor(hex) ?? fallback`. Sits between `parseHexColor` (used widely)
 and `parseHexColorOrAccent` (used widely).
@@ -120,7 +120,7 @@ there is a function they already use — or want to spell `?? something` at the
 call site, which every one of them does. The middle rung of the ladder has no
 users and reads no better than the `??` it hides.
 
-### The no-op unfocus debounce — `lib/screens/map_screen.dart:4091`
+### The no-op unfocus debounce — `lib/screens/map_screen.dart:4084`
 
 Not an unused declaration but dead work. When neither route field has focus,
 `_applyFocusState` starts a 100ms timer whose callback is:
