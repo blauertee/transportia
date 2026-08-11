@@ -51,6 +51,31 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     PlanRequests.pending.addListener(_handlePlanRequested);
   }
 
+  /// Index of the map tab, the only one whose sheet can push the nav bar away.
+  static const int _kMapTabIndex = 0;
+
+  /// How far the map sheet has to be collapsed before the nav bar starts to
+  /// fade, and where it has finished fading. Between the two the bar is on its
+  /// way out rather than gone, so a slow drag does not blink it away.
+  static const double _kNavFadeStart = 0.6;
+  static const double _kNavFadeEnd = 0.9;
+
+  /// How present the floating nav bar should be, given how far the map sheet
+  /// is collapsed and whether the map is showing an overlay over everything.
+  double _navBarVisibility({
+    required double progress,
+    required bool overlaysVisible,
+  }) {
+    if (_currentIndex != _kMapTabIndex) return 1.0;
+    if (overlaysVisible) return 0.0;
+    if (progress <= _kNavFadeStart) return 1.0;
+    if (progress >= _kNavFadeEnd) return 0.0;
+
+    final fadeProgress =
+        (progress - _kNavFadeStart) / (_kNavFadeEnd - _kNavFadeStart);
+    return 1.0 - Curves.easeInOut.transform(fadeProgress);
+  }
+
   bool _handleBackGesture() {
     if (_currentIndex != 0) {
       setState(() => _currentIndex = 0);
@@ -118,30 +143,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   return ValueListenableBuilder<bool>(
                     valueListenable: _overlaysVisibleNotifier,
                     builder: (context, overlaysVisible, child) {
-                      const double hideStart = 0.6;
-                      const double hideEnd = 0.9;
-
-                      double visibility = 1.0;
-                      if (_currentIndex == 0) {
-                        if (overlaysVisible) {
-                          visibility = 0.0;
-                        } else {
-                          if (progress <= hideStart) {
-                            visibility = 1.0;
-                          } else if (progress >= hideEnd) {
-                            visibility = 0.0;
-                          } else {
-                            final t =
-                                (progress - hideStart) / (hideEnd - hideStart);
-                            visibility = 1.0 - Curves.easeInOut.transform(t);
-                          }
-                        }
-                      }
-
                       return FloatingNavBar(
                         currentIndex: _currentIndex,
                         onIndexChanged: _onNavIndexChanged,
-                        visibility: visibility,
+                        visibility: _navBarVisibility(
+                          progress: progress,
+                          overlaysVisible: overlaysVisible,
+                        ),
                       );
                     },
                   );

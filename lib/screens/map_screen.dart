@@ -1841,42 +1841,19 @@ class _MapScreenState extends State<MapScreen>
                     children: [
                       _isTripFocus
                           ? _TripFocusBottomCard(
-                              onHandleTap: () {
-                                _unfocusInputs();
-                                final target = _isSheetCollapsed
-                                    ? expandedTop
-                                    : collapsedTop;
-                                _animateTo(target, collapsedTop);
-                                _stopDragRumble();
-                              },
-                              onDragStart: () {
-                                _unfocusInputs();
-                                _snapCtrl.stop();
-                                _startDragRumble();
-                              },
-                              onDragUpdate: (dy) {
-                                final newTop = (_sheetTop! + dy).clamp(
-                                  expandedTop,
-                                  collapsedTop,
-                                );
-                                setState(() => _sheetTop = newTop);
-                              },
-                              onDragEnd: (velocityDy) {
-                                final mid = (collapsedTop + expandedTop) / 2;
-                                const vThresh = 700.0;
-                                double target;
-                                if (velocityDy.abs() > vThresh) {
-                                  target = velocityDy > 0
-                                      ? collapsedTop
-                                      : expandedTop;
-                                } else {
-                                  target = (_sheetTop! > mid)
-                                      ? collapsedTop
-                                      : expandedTop;
-                                }
-                                _animateTo(target, collapsedTop);
-                                _stopDragRumble();
-                              },
+                              onHandleTap: () =>
+                                  _toggleSheet(expandedTop, collapsedTop),
+                              onDragStart: _onSheetDragStart,
+                              onDragUpdate: (dy) => _onSheetDragUpdate(
+                                dy,
+                                expandedTop,
+                                collapsedTop,
+                              ),
+                              onDragEnd: (velocityDy) => _onSheetDragEnd(
+                                velocityDy,
+                                expandedTop,
+                                collapsedTop,
+                              ),
                               onBack: _exitTripFocus,
                               itinerary: _focusedItinerary,
                               isLoading: _isTripFocusLoading,
@@ -1888,42 +1865,19 @@ class _MapScreenState extends State<MapScreen>
                             )
                           : _isQuickSettings
                           ? _QuickSettingsBottomCard(
-                              onHandleTap: () {
-                                _unfocusInputs();
-                                final target = _isSheetCollapsed
-                                    ? expandedTop
-                                    : collapsedTop;
-                                _animateTo(target, collapsedTop);
-                                _stopDragRumble();
-                              },
-                              onDragStart: () {
-                                _unfocusInputs();
-                                _snapCtrl.stop();
-                                _startDragRumble();
-                              },
-                              onDragUpdate: (dy) {
-                                final newTop = (_sheetTop! + dy).clamp(
-                                  expandedTop,
-                                  collapsedTop,
-                                );
-                                setState(() => _sheetTop = newTop);
-                              },
-                              onDragEnd: (velocityDy) {
-                                final mid = (collapsedTop + expandedTop) / 2;
-                                const vThresh = 700.0;
-                                double target;
-                                if (velocityDy.abs() > vThresh) {
-                                  target = velocityDy > 0
-                                      ? collapsedTop
-                                      : expandedTop;
-                                } else {
-                                  target = (_sheetTop! > mid)
-                                      ? collapsedTop
-                                      : expandedTop;
-                                }
-                                _animateTo(target, collapsedTop);
-                                _stopDragRumble();
-                              },
+                              onHandleTap: () =>
+                                  _toggleSheet(expandedTop, collapsedTop),
+                              onDragStart: _onSheetDragStart,
+                              onDragUpdate: (dy) => _onSheetDragUpdate(
+                                dy,
+                                expandedTop,
+                                collapsedTop,
+                              ),
+                              onDragEnd: (velocityDy) => _onSheetDragEnd(
+                                velocityDy,
+                                expandedTop,
+                                collapsedTop,
+                              ),
                               onBack: _closeQuickSettings,
                               bottomSpacer: bottomBarHeight,
                               quickButtonAction: _quickButtonAction,
@@ -1943,14 +1897,8 @@ class _MapScreenState extends State<MapScreen>
                           : BottomCard(
                               isCollapsed: _isSheetCollapsed,
                               collapseProgress: progress,
-                              onHandleTap: () {
-                                _unfocusInputs();
-                                final target = _isSheetCollapsed
-                                    ? expandedTop
-                                    : collapsedTop;
-                                _animateTo(target, collapsedTop);
-                                _stopDragRumble();
-                              },
+                              onHandleTap: () =>
+                                  _toggleSheet(expandedTop, collapsedTop),
                               onDragStart: _onSheetDragStart,
                               onDragUpdate: (dy) => _onSheetDragUpdate(
                                 dy,
@@ -2196,34 +2144,61 @@ class _MapScreenState extends State<MapScreen>
   bool _isBottomBarResizeAnimating = false;
   bool _skipAutoCenterOnSnap = false;
 
+  /// Above this drag speed (logical pixels per second) the sheet is being
+  /// flung rather than placed, and follows the flick instead of the finger.
+  static const double _kSheetFlingVelocity = 700.0;
+
+  /// How far from a stop still counts as being on it, so a fling from a stop
+  /// moves off it rather than snapping back.
+  static const double _kSheetStopTolerance = 1.0;
+
   /// Where a drag should settle, given the stops this card has.
   ///
   /// A flick past the velocity threshold moves one stop in that direction, so
   /// a hard swipe from the middle does not skip the end; anything gentler
   /// settles on whichever stop is nearest.
   double _snapStopFor(double velocityDy, List<double> stops) {
-    const vThresh = 700.0;
     final sorted = [...stops]..sort();
     final current = _sheetTop ?? sorted.first;
 
-    if (velocityDy.abs() > vThresh) {
-      if (velocityDy > 0) {
-        for (final stop in sorted) {
-          if (stop > current + 1) return stop;
-        }
-        return sorted.last;
-      }
-      for (final stop in sorted.reversed) {
-        if (stop < current - 1) return stop;
-      }
-      return sorted.first;
+    if (velocityDy.abs() > _kSheetFlingVelocity) {
+      return _nextStopInFlingDirection(sorted, current, velocityDy > 0);
     }
+    return _nearestStop(sorted, current);
+  }
 
+  /// The first stop past [current] in the flung direction, or the far end when
+  /// there is none.
+  double _nextStopInFlingDirection(
+    List<double> sorted,
+    double current,
+    bool downwards,
+  ) {
+    if (downwards) {
+      for (final stop in sorted) {
+        if (stop > current + _kSheetStopTolerance) return stop;
+      }
+      return sorted.last;
+    }
+    for (final stop in sorted.reversed) {
+      if (stop < current - _kSheetStopTolerance) return stop;
+    }
+    return sorted.first;
+  }
+
+  double _nearestStop(List<double> sorted, double current) {
     var best = sorted.first;
     for (final stop in sorted) {
       if ((stop - current).abs() < (best - current).abs()) best = stop;
     }
     return best;
+  }
+
+  /// Sends the sheet to whichever of its two stops it is not already at.
+  void _toggleSheet(double expandedTop, double collapsedTop) {
+    _unfocusInputs();
+    _animateTo(_isSheetCollapsed ? expandedTop : collapsedTop, collapsedTop);
+    _stopDragRumble();
   }
 
   void _onSheetDragStart() {

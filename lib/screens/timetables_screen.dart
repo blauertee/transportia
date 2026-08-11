@@ -481,13 +481,183 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
     });
   }
 
+  /// The screen's title block: what this screen is, above what it shows.
+  Widget _buildHeader(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: AppColors.accentOf(context).withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Icon(
+            LucideIcons.clock,
+            size: 24,
+            color: AppColors.accentOf(context),
+          ),
+        ),
+        const SizedBox(width: 16),
+        // Flexible, or the title and its subtitle claim their natural width
+        // and overflow the row on a narrow screen.
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Timetables',
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.black,
+                  height: 1.1,
+                ),
+              ),
+              SizedBox(height: 4),
+              Text(
+                'Stop departures & arrivals',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                  color: AppColors.black.withValues(alpha: 0.4),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// The chosen stop's search field, the time picker and the search action.
+  ///
+  /// Only once a stop is chosen. Before that this screen is the stop search
+  /// itself, and a second field above the first would be a duplicate of it.
+  Widget _buildStopControls(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        CompositedTransformTarget(
+          link: _searchFieldLink,
+          child: GestureDetector(
+            onTap: () {},
+            child: Container(
+              decoration: BoxDecoration(
+                color: AppColors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: AppColors.black.withValues(alpha: 0.1),
+                ),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x14000000),
+                    blurRadius: 10,
+                    offset: Offset(0, 4),
+                  ),
+                ],
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                children: [
+                  Icon(
+                    LucideIcons.search,
+                    size: 20,
+                    color: AppColors.black.withValues(alpha: 0.4),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: CupertinoTextField(
+                      controller: _searchController,
+                      focusNode: _searchFocus,
+                      // Opens the picker rather than
+                      // typing here: favourites and recents
+                      // need more room than a dropdown.
+                      readOnly: true,
+                      showCursor: false,
+                      onTap: () => _searchFocus.unfocus(),
+                      placeholder: 'Search for a stop...',
+                      placeholderStyle: TextStyle(
+                        color: AppColors.black.withValues(alpha: 0.4),
+                        fontSize: 16,
+                      ),
+                      style: TextStyle(color: AppColors.black, fontSize: 16),
+                      decoration: null,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      cursorColor: AppColors.accentOf(context),
+                      maxLines: 1,
+                      textInputAction: TextInputAction.search,
+                      onSubmitted: (_) => _onSearch(),
+                    ),
+                  ),
+                  if (_searchController.text.isNotEmpty)
+                    GestureDetector(
+                      onTap: _clearStop,
+                      child: Padding(
+                        padding: const EdgeInsets.only(left: 8),
+                        child: Icon(
+                          LucideIcons.x,
+                          size: 20,
+                          color: AppColors.black.withValues(alpha: 0.4),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 12),
+
+        Row(
+          children: [
+            CompositedTransformTarget(
+              link: _timeSelectionLayerLink,
+              child: PillButton(
+                onTapDown: _handleTimeButtonTapDown,
+                onTapCancel: _handleTimeButtonTapCancel,
+                onTap: _handleTimeButtonTap,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(LucideIcons.clock, size: 16, color: AppColors.black),
+                    const SizedBox(width: 8),
+                    Text(
+                      _timeSelection.toDisplayString(),
+                      style: TextStyle(
+                        color: AppColors.black,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const Spacer(),
+            PrimaryButton(
+              onTap: _onSearch,
+              child: const Text(
+                'Search',
+                style: TextStyle(
+                  color: AppColors.solidWhite,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
   Widget _buildStopTimeTile(StopTime stopTime) {
     return GestureDetector(
       onTap: () {
         Navigator.of(context).push(
-          CustomPageRoute(
-            child: ConnectionInfoScreen(tripId: stopTime.tripId),
-          ),
+          CustomPageRoute(child: ConnectionInfoScreen(tripId: stopTime.tripId)),
         );
       },
       child: _StopTimeCard(stopTime: stopTime),
@@ -536,200 +706,10 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            children: [
-                              Container(
-                                width: 48,
-                                height: 48,
-                                decoration: BoxDecoration(
-                                  color: AppColors.accentOf(
-                                    context,
-                                  ).withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                                child: Icon(
-                                  LucideIcons.clock,
-                                  size: 24,
-                                  color: AppColors.accentOf(context),
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              // Flexible, or the title and its subtitle claim
-                              // their natural width and overflow the row on a
-                              // narrow screen.
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Timetables',
-                                      style: TextStyle(
-                                        fontSize: 28,
-                                        fontWeight: FontWeight.w800,
-                                        color: AppColors.black,
-                                        height: 1.1,
-                                      ),
-                                    ),
-                                    SizedBox(height: 4),
-                                    Text(
-                                      'Stop departures & arrivals',
-                                      style: TextStyle(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w500,
-                                        color: AppColors.black.withValues(
-                                          alpha: 0.4,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
+                          _buildHeader(context),
                           const SizedBox(height: 24),
-
-                          // Only once a stop is chosen. Before that this
-                          // screen is the stop search itself, and a second
-                          // field above the first would be the duplication
-                          // this replaced.
-                          if (_selectedStop != null) ...[
-                            CompositedTransformTarget(
-                              link: _searchFieldLink,
-                              child: GestureDetector(
-                                onTap: () {},
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: AppColors.white,
-                                    borderRadius: BorderRadius.circular(14),
-                                    border: Border.all(
-                                      color: AppColors.black.withValues(
-                                        alpha: 0.1,
-                                      ),
-                                    ),
-                                    boxShadow: const [
-                                      BoxShadow(
-                                        color: Color(0x14000000),
-                                        blurRadius: 10,
-                                        offset: Offset(0, 4),
-                                      ),
-                                    ],
-                                  ),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 8,
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        LucideIcons.search,
-                                        size: 20,
-                                        color: AppColors.black.withValues(
-                                          alpha: 0.4,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: CupertinoTextField(
-                                          controller: _searchController,
-                                          focusNode: _searchFocus,
-                                          // Opens the picker rather than
-                                          // typing here: favourites and recents
-                                          // need more room than a dropdown.
-                                          readOnly: true,
-                                          showCursor: false,
-                                          onTap: () => _searchFocus.unfocus(),
-                                          placeholder: 'Search for a stop...',
-                                          placeholderStyle: TextStyle(
-                                            color: AppColors.black.withValues(
-                                              alpha: 0.4,
-                                            ),
-                                            fontSize: 16,
-                                          ),
-                                          style: TextStyle(
-                                            color: AppColors.black,
-                                            fontSize: 16,
-                                          ),
-                                          decoration: null,
-                                          padding: const EdgeInsets.symmetric(
-                                            vertical: 8,
-                                          ),
-                                          cursorColor: AppColors.accentOf(
-                                            context,
-                                          ),
-                                          maxLines: 1,
-                                          textInputAction:
-                                              TextInputAction.search,
-                                          onSubmitted: (_) => _onSearch(),
-                                        ),
-                                      ),
-                                      if (_searchController.text.isNotEmpty)
-                                        GestureDetector(
-                                          onTap: _clearStop,
-                                          child: Padding(
-                                            padding: const EdgeInsets.only(
-                                              left: 8,
-                                            ),
-                                            child: Icon(
-                                              LucideIcons.x,
-                                              size: 20,
-                                              color: AppColors.black.withValues(
-                                                alpha: 0.4,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-
-                            const SizedBox(height: 12),
-
-                            Row(
-                              children: [
-                                CompositedTransformTarget(
-                                  link: _timeSelectionLayerLink,
-                                  child: PillButton(
-                                    onTapDown: _handleTimeButtonTapDown,
-                                    onTapCancel: _handleTimeButtonTapCancel,
-                                    onTap: _handleTimeButtonTap,
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          LucideIcons.clock,
-                                          size: 16,
-                                          color: AppColors.black,
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          _timeSelection.toDisplayString(),
-                                          style: TextStyle(
-                                            color: AppColors.black,
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                                const Spacer(),
-                                PrimaryButton(
-                                  onTap: _onSearch,
-                                  child: const Text(
-                                    'Search',
-                                    style: TextStyle(
-                                      color: AppColors.solidWhite,
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
+                          if (_selectedStop != null)
+                            _buildStopControls(context),
                         ],
                       ),
                     ),

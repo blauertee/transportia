@@ -653,133 +653,117 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
             ),
             if (savedTripNotice != null) savedTripNotice,
             Expanded(
-              child: Builder(
-                builder: (context) {
-                  final hasTicketInfo = _itinerary.hasTicketInfo;
-                  final ticketInsertIndex = hasTicketInfo ? 1 : 0;
-                  final hasFinishCard = _itinerary.legs.isNotEmpty;
-                  final legsInsertIndex = ticketInsertIndex;
-                  final emptyMessageIndex = displayLegs.isEmpty
-                      ? legsInsertIndex
-                      : -1;
-                  final legsEndIndex =
-                      legsInsertIndex +
-                      (displayLegs.isEmpty ? 1 : displayLegs.length);
-                  final finishInsertIndex = legsEndIndex;
-                  final shareIndex =
-                      finishInsertIndex + (hasFinishCard ? 1 : 0);
-                  final footerIndex = shareIndex + 1;
-                  final totalItems = footerIndex + 1;
-
-                  return CustomScrollView(
-                    physics: const BouncingScrollPhysics(
-                      parent: AlwaysScrollableScrollPhysics(),
-                    ),
-                    slivers: [
-                      CupertinoSliverRefreshControl(
-                        onRefresh: _refreshRealTimeInfo,
-                      ),
-                      SliverPadding(
-                        padding: const EdgeInsets.only(bottom: 16),
-                        sliver: SliverList(
-                          delegate: SliverChildBuilderDelegate((
-                            context,
-                            index,
-                          ) {
-                            if (hasTicketInfo && index == 0) {
-                              return TicketInfoCard(
-                                ticketInfo: _itinerary.ticketInfo,
-                              );
-                            }
-
-                            if (index == emptyMessageIndex) {
-                              return Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Center(
-                                  child: Text(
-                                    'No additional steps required for this journey.',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      color: AppColors.black.withValues(
-                                        alpha: 0.4,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              );
-                            }
-
-                            if (index >= legsInsertIndex &&
-                                index < legsEndIndex) {
-                              final legIndex = index - legsInsertIndex;
-                              final entry = displayLegs[legIndex];
-                              // A node belongs to the leg arriving at it as
-                              // well as the one leaving it, and where those
-                              // times differ you waited there.
-                              final previous = legIndex > 0
-                                  ? displayLegs[legIndex - 1].leg
-                                  : null;
-                              if (entry.isTransfer) {
-                                return TransferLegCard(
-                                  leg: entry.leg,
-                                  previousLeg: previous,
-                                  changeover: changeovers
-                                      .where(
-                                        (c) => identical(c.transfer, entry.leg),
-                                      )
-                                      .firstOrNull,
-                                  openStopSheet: _openStopSheet,
-                                  onShowOnMap: () => _showLegOnMap(legIndex),
-                                  progress: progress,
-                                );
-                              }
-                              return LegDetailsWidget(
-                                leg: entry.leg,
-                                previousLeg: previous,
-                                openStopSheet: _openStopSheet,
-                                onShowOnMap: () => _showLegOnMap(legIndex),
-                                progress: progress,
-                              );
-                            }
-
-                            if (hasFinishCard && index == finishInsertIndex) {
-                              final finishLeg = _itinerary.legs.last;
-                              return FinishLegCard(
-                                leg: finishLeg,
-                                arrivalTime: _itinerary.endTime,
-                                totalDuration: _itinerary.duration,
-                                openStopSheet: _openStopSheet,
-                                progress: progress,
-                              );
-                            }
-
-                            if (index == shareIndex) {
-                              return LoadMoreButton(
-                                onTap: _shareItinerary,
-                                isLoading: _isSharing,
-                                label: 'Share this trip',
-                                icon: LucideIcons.share2,
-                              );
-                            }
-
-                            if (index == footerIndex) {
-                              return LastUpdatedFooter(
-                                lastUpdated: _lastUpdated,
-                              );
-                            }
-
-                            return const SizedBox.shrink();
-                          }, childCount: totalItems),
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
+              child: _buildDetailList(displayLegs, changeovers, progress),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  /// The cards under the overview, in the order they are read.
+  ///
+  /// Each section is a builder rather than a widget so the list stays lazy,
+  /// and the delegate indexes into it rather than reconstructing where each
+  /// card falls from a running count.
+  List<Widget Function()> _buildDetailSections(
+    List<DisplayLegInfo> displayLegs,
+    List<Changeover> changeovers,
+    JourneyProgress progress,
+  ) {
+    return [
+      if (_itinerary.hasTicketInfo)
+        () => TicketInfoCard(ticketInfo: _itinerary.ticketInfo),
+      if (displayLegs.isEmpty)
+        _buildNoStepsMessage
+      else
+        for (int i = 0; i < displayLegs.length; i++)
+          () => _buildLegCard(displayLegs, changeovers, progress, i),
+      if (_itinerary.legs.isNotEmpty)
+        () => FinishLegCard(
+          leg: _itinerary.legs.last,
+          arrivalTime: _itinerary.endTime,
+          totalDuration: _itinerary.duration,
+          openStopSheet: _openStopSheet,
+          progress: progress,
+        ),
+      () => LoadMoreButton(
+        onTap: _shareItinerary,
+        isLoading: _isSharing,
+        label: 'Share this trip',
+        icon: LucideIcons.share2,
+      ),
+      () => LastUpdatedFooter(lastUpdated: _lastUpdated),
+    ];
+  }
+
+  Widget _buildDetailList(
+    List<DisplayLegInfo> displayLegs,
+    List<Changeover> changeovers,
+    JourneyProgress progress,
+  ) {
+    final sections = _buildDetailSections(displayLegs, changeovers, progress);
+    return CustomScrollView(
+      physics: const BouncingScrollPhysics(
+        parent: AlwaysScrollableScrollPhysics(),
+      ),
+      slivers: [
+        CupertinoSliverRefreshControl(onRefresh: _refreshRealTimeInfo),
+        SliverPadding(
+          padding: const EdgeInsets.only(bottom: 16),
+          sliver: SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, index) => sections[index](),
+              childCount: sections.length,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNoStepsMessage() => Padding(
+    padding: const EdgeInsets.all(16),
+    child: Center(
+      child: Text(
+        'No additional steps required for this journey.',
+        style: TextStyle(
+          fontSize: 14,
+          color: AppColors.black.withValues(alpha: 0.4),
+        ),
+      ),
+    ),
+  );
+
+  Widget _buildLegCard(
+    List<DisplayLegInfo> displayLegs,
+    List<Changeover> changeovers,
+    JourneyProgress progress,
+    int legIndex,
+  ) {
+    final entry = displayLegs[legIndex];
+    // A node belongs to the leg arriving at it as well as the one leaving it,
+    // and where those times differ you waited there.
+    final previous = legIndex > 0 ? displayLegs[legIndex - 1].leg : null;
+
+    if (entry.isTransfer) {
+      return TransferLegCard(
+        leg: entry.leg,
+        previousLeg: previous,
+        changeover: changeovers
+            .where((c) => identical(c.transfer, entry.leg))
+            .firstOrNull,
+        openStopSheet: _openStopSheet,
+        onShowOnMap: () => _showLegOnMap(legIndex),
+        progress: progress,
+      );
+    }
+    return LegDetailsWidget(
+      leg: entry.leg,
+      previousLeg: previous,
+      openStopSheet: _openStopSheet,
+      onShowOnMap: () => _showLegOnMap(legIndex),
+      progress: progress,
     );
   }
 
