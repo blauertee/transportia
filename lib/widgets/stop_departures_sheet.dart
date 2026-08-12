@@ -12,6 +12,7 @@ import '../utils/leg_helper.dart';
 import '../utils/time_utils.dart';
 import 'bottom_overlay_card.dart';
 import 'pressable_highlight.dart';
+import 'route_badge_pill.dart';
 import 'skeletons/skeleton_shimmer.dart';
 
 /// How long the sheet takes to fade in and out.
@@ -242,8 +243,10 @@ class _DepartureTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final place = stopTime.place;
     final badgeColor = parseHexColorOrAccent(context, stopTime.routeColor);
-    final badgeTextColor =
-        parseHexColor(stopTime.routeTextColor) ?? AppColors.solidWhite;
+    final badgeTextColor = parseHexColorOr(
+      stopTime.routeTextColor,
+      AppColors.solidWhite,
+    );
     final departure = place.scheduledDeparture ?? place.departure;
     final actualDeparture = place.departure;
     final delay = (departure != null && actualDeparture != null)
@@ -267,24 +270,14 @@ class _DepartureTile extends StatelessWidget {
             ),
             const SizedBox(width: 10),
             if (stopTime.displayName.isNotEmpty) ...[
-              Container(
-                constraints: const BoxConstraints(minWidth: 30),
+              RouteBadgePill(
+                label: stopTime.displayName,
+                background: badgeColor,
+                foreground: badgeTextColor,
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                decoration: BoxDecoration(
-                  color: badgeColor,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  stopTime.displayName,
-                  style: TextStyle(
-                    color: badgeTextColor,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                  ),
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                minWidth: RouteBadgePill.stackedMinWidth,
               ),
               const SizedBox(width: 10),
             ],

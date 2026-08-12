@@ -16,9 +16,6 @@ import '../empty_state.dart';
 import '../info_chip.dart';
 import 'trip_timeline.dart';
 
-/// Metres in a kilometre, for the distance chip.
-const double _kMetresPerKilometre = 1000;
-
 /// Heading over one of the trip cards.
 class _CardTitle extends StatelessWidget {
   const _CardTitle(this.text);
@@ -72,8 +69,10 @@ class TripDetailsView extends StatelessWidget {
   Widget build(BuildContext context) {
     final leg = _leg;
     final routeColor = parseHexColorOrAccent(context, leg.routeColor);
-    final routeTextColor =
-        parseHexColor(leg.routeTextColor) ?? AppColors.solidWhite;
+    final routeTextColor = parseHexColorOr(
+      leg.routeTextColor,
+      AppColors.solidWhite,
+    );
     final stops = buildJourneyStops(leg);
     final alerts = collectTripAlerts(leg, stops);
 
@@ -260,7 +259,7 @@ class _TripInfoCard extends StatelessWidget {
       if (distance != null)
         InfoChip(
           icon: LucideIcons.ruler,
-          label: '${(distance / _kMetresPerKilometre).toStringAsFixed(1)} km',
+          label: formatDistanceKm(distance, decimals: 1),
         ),
       if (agencyName != null)
         InfoChip(icon: LucideIcons.building, label: agencyName),

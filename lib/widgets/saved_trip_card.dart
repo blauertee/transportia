@@ -12,6 +12,7 @@ import '../utils/duration_formatter.dart';
 import '../utils/leg_helper.dart';
 import '../utils/time_utils.dart';
 import 'custom_card.dart';
+import 'route_badge_pill.dart';
 
 /// One entry in a list of saved trips.
 ///
@@ -321,25 +322,13 @@ class _LegBadges extends StatelessWidget {
 
   Widget _badge(BuildContext context, Leg leg) {
     final routeColor = parseHexColor(leg.routeColor);
-    final background = routeColor ?? AppColors.accentOf(context);
-    final label =
-        parseHexColor(leg.routeTextColor) ??
-        (routeColor == null ? AppColors.solidWhite : AppColors.black);
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        leg.displayName!,
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          color: label,
-        ),
-      ),
+    return RouteBadgePill(
+      label: leg.displayName!,
+      background: routeColor ?? AppColors.accentOf(context),
+      foreground:
+          parseHexColor(leg.routeTextColor) ??
+          (routeColor == null ? AppColors.solidWhite : AppColors.black),
     );
   }
 }

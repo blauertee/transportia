@@ -255,7 +255,7 @@ class _StopContents extends StatelessWidget {
   void _openStop() => onStopTap(
     stopId: stop.stopId,
     stopName: stop.name,
-    referenceTime: stop.departure ?? stop.arrival ?? DateTime.now().toUtc(),
+    referenceTime: stop.timeAtStop ?? DateTime.now().toUtc(),
   );
 
   Widget _buildNameRow() => Row(

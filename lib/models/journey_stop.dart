@@ -28,4 +28,12 @@ class JourneyStop {
   final String? scheduledTrack;
   final bool cancelled;
   final List<Alert> alerts;
+
+  /// The one time that matters at this stop: when the vehicle leaves, or when
+  /// it arrives if it never leaves again.
+  DateTime? get timeAtStop => departure ?? arrival;
+
+  /// [timeAtStop] read from the far end — at a terminus the arrival is the
+  /// moment that matters.
+  DateTime? get timeAtTerminus => arrival ?? departure;
 }

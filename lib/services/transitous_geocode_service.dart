@@ -4,6 +4,7 @@ import '../api/endpoints/geocode_endpoint.dart';
 import '../api/transitous_api_exception.dart';
 import '../models/transitous/enums.dart';
 import '../models/transitous/match.dart';
+import '../utils/geo_utils.dart';
 
 class TransitousGeocodeException implements Exception {
   TransitousGeocodeException(this.message, [this.cause]);
@@ -57,8 +58,13 @@ class TransitousLocationSuggestion {
 
   LatLng get latLng => LatLng(lat, lon);
 
+  /// One decimal is ~10 km: two results with the same name that close are
+  /// the same place under two spellings, not two places.
+  static const int _dedupeDecimals = 1;
+
   String get dedupeKey =>
-      '${name.toLowerCase()}|${lat.toStringAsFixed(1)}|${lon.toStringAsFixed(1)}';
+      '${name.toLowerCase()}|'
+      '${coordKey(lat, lon, decimals: _dedupeDecimals, separator: '|')}';
 
   String get subtitle {
     final pieces = <String>[];
@@ -82,8 +88,7 @@ class TransitousLocationSuggestion {
   factory TransitousLocationSuggestion.fromLatLon(LatLng latLng) {
     return TransitousLocationSuggestion(
       id: _fallbackId(latLng.latitude, latLng.longitude),
-      name:
-          '${latLng.latitude.toStringAsFixed(6)}, ${latLng.longitude.toStringAsFixed(6)}',
+      name: coordLabel(latLng.latitude, latLng.longitude, decimals: 6),
       lat: latLng.latitude,
       lon: latLng.longitude,
       type: 'COORDINATE',

@@ -21,6 +21,7 @@ import '../utils/duration_formatter.dart';
 import '../utils/time_utils.dart';
 import 'itinerary_detail_screen.dart';
 import '../widgets/bidirectional_paged_list.dart';
+import '../widgets/route_badge_pill.dart';
 import '../widgets/save_trip_button.dart';
 import '../widgets/skeletons/skeleton_list.dart';
 
@@ -599,22 +600,14 @@ class LegWidget extends StatelessWidget {
         ),
         const SizedBox(width: 4),
         if (leg.displayName != null)
-          Container(
+          RouteBadgePill(
+            label: leg.displayName!.isNotEmpty
+                ? leg.displayName!
+                : getTransitModeName(leg.mode),
+            background: badgeColor,
+            foreground: labelColor,
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: badgeColor,
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(
-              leg.displayName!.length > 0
-                  ? leg.displayName!
-                  : getTransitModeName(leg.mode),
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: labelColor,
-              ),
-            ),
+            fontSize: 14,
           ),
       ],
     );

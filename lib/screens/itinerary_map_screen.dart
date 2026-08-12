@@ -353,8 +353,7 @@ class _ItineraryMapScreenState extends State<ItineraryMapScreen> {
   }
 
   void _openStopDeparturesSheet(_RouteStop stop) {
-    final referenceTime =
-        stop.departure ?? stop.arrival ?? DateTime.now().toUtc();
+    final referenceTime = stop.timeAtStop ?? DateTime.now().toUtc();
     setState(() => _selectedStopPopup = null);
 
     showGeneralDialog<void>(
@@ -1039,6 +1038,10 @@ class _RouteStop {
   final DateTime? departure;
   final DateTime? scheduledArrival;
   final DateTime? scheduledDeparture;
+
+  /// The one time that matters at this stop: when the vehicle leaves, or
+  /// when it arrives if it never leaves again.
+  DateTime? get timeAtStop => departure ?? arrival;
 }
 
 class _LegCarouselCard extends StatelessWidget {
@@ -1220,7 +1223,7 @@ class _TransferCarouselCard extends StatelessWidget {
           if (leg.distance != null && leg.distance! > 0) ...[
             const SizedBox(height: 4),
             Text(
-              'Approx. ${(leg.distance! / 1000).toStringAsFixed(2)} km walk',
+              'Approx. ${formatDistanceKm(leg.distance!)} walk',
               style: TextStyle(
                 fontSize: 12,
                 color: AppColors.black.withValues(alpha: 0.6),

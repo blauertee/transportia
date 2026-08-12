@@ -1,3 +1,5 @@
+import '../utils/geo_utils.dart';
+
 class SavedPlace {
   const SavedPlace({
     required this.name,
@@ -99,8 +101,7 @@ class SavedPlace {
     required double lon,
   }) {
     final normalizedType = type.trim().toLowerCase();
-    final latKey = lat.toStringAsFixed(keyPrecision);
-    final lonKey = lon.toStringAsFixed(keyPrecision);
-    return '$normalizedType|$latKey|$lonKey';
+    return '$normalizedType|'
+        '${coordKey(lat, lon, decimals: keyPrecision, separator: '|')}';
   }
 }

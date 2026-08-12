@@ -37,6 +37,7 @@ import '../widgets/journey/spine_node.dart';
 import '../widgets/journey/spine_row.dart';
 import '../widgets/info_chip.dart';
 import '../widgets/last_updated_footer.dart';
+import '../widgets/route_badge_pill.dart';
 import '../widgets/save_trip_button.dart';
 import '../widgets/stop_departures_sheet.dart';
 import 'connection_info_screen.dart';
@@ -1195,20 +1196,14 @@ class _TicketInfoCardState extends State<TicketInfoCard> {
 
   Widget _buildRouteBadge(RouteBadge badge) {
     final routeColor = parseHexColor(badge.routeColor);
-    final bg = routeColor ?? AppColors.accentOf(context);
-    final txt =
-        parseHexColor(badge.routeTextColor) ??
-        (routeColor == null ? AppColors.solidWhite : AppColors.black);
-    return Container(
+    return RouteBadgePill(
+      label: badge.name,
+      background: routeColor ?? AppColors.accentOf(context),
+      foreground:
+          parseHexColor(badge.routeTextColor) ??
+          (routeColor == null ? AppColors.solidWhite : AppColors.black),
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        badge.name,
-        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: txt),
-      ),
+      fontWeight: FontWeight.w700,
     );
   }
 
@@ -1540,7 +1535,7 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
 
     final distance = widget.leg.distance;
     if (distance != null && distance > 0) {
-      parts.add('${(distance / 1000).toStringAsFixed(2)} km');
+      parts.add(formatDistanceKm(distance));
     }
 
     final stops = widget.leg.intermediateStops.length;
@@ -1606,7 +1601,7 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
             case final point)
           SpineRow(
             node: SpineDot(
-              color: widget.progress.hasPassed(stop.time)
+              color: widget.progress.hasPassed(stop.timeAtStop)
                   ? _faded(color)
                   : color,
             ),
@@ -1617,7 +1612,7 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
             // its exact anchors: it lands between the two stops the clock
             // falls between.
             railTravelled: widget.progress.fractionBetween(
-              stop.time,
+              stop.timeAtStop,
               index + 1 < stops.length
                   ? (stops[index + 1].arrival ?? stops[index + 1].departure)
                   : widget.leg.endTime,
@@ -1639,7 +1634,7 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
                 : () => widget.openStopSheet(
                     stopId: stop.stopId,
                     stopName: stop.name,
-                    referenceTime: stop.time ?? widget.leg.startTime,
+                    referenceTime: stop.timeAtStop ?? widget.leg.startTime,
                   ),
           ),
     ];
@@ -1703,7 +1698,7 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
       metadata.add(
         InfoChip(
           icon: LucideIcons.ruler,
-          label: '${(widget.leg.distance! / 1000).toStringAsFixed(2)} km',
+          label: formatDistanceKm(widget.leg.distance!),
         ),
       );
     }
@@ -1781,24 +1776,15 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
       // Sized to its own text. An Align here would take the whole of the
       // width the Row offered it, which put every leg's end station at the
       // same x instead of a fixed margin after its own line number.
-      final badge = Container(
+      final badge = RouteBadgePill(
+        label: widget.leg.displayName!.isNotEmpty
+            ? widget.leg.displayName!
+            : getTransitModeName(widget.leg.mode),
+        background: bg ?? const Color(0x00000000),
+        foreground: txt,
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: bg ?? const Color(0x00000000),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Text(
-          widget.leg.displayName!.isNotEmpty
-              ? widget.leg.displayName!
-              : getTransitModeName(widget.leg.mode),
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: txt,
-          ),
-          overflow: TextOverflow.ellipsis,
-          maxLines: 1,
-        ),
+        fontSize: 16,
+        fontWeight: FontWeight.bold,
       );
       final tripId = widget.leg.tripId;
       if (isWalkLeg || tripId == null || tripId.isEmpty) return badge;
@@ -1981,7 +1967,7 @@ class TransferLegCard extends StatelessWidget {
             if (leg.distance != null && leg.distance! > 0) ...[
               const SizedBox(height: 3),
               Text(
-                'Approx. ${(leg.distance! / 1000).toStringAsFixed(2)} km walk',
+                'Approx. ${formatDistanceKm(leg.distance!)} walk',
                 style: TextStyle(
                   fontSize: 13,
                   color: AppColors.black.withValues(alpha: 0.5),
@@ -2114,8 +2100,9 @@ class _TimelineStop {
     this.scheduledDeparture,
   });
 
-  /// What the row is keyed on when only one time is wanted.
-  DateTime? get time => departure ?? arrival;
+  /// The one time that matters at this stop: when the vehicle leaves, or
+  /// when it arrives if it never leaves again.
+  DateTime? get timeAtStop => departure ?? arrival;
 }
 
 /// One printable time: what the timetable promised, and how far off it is.

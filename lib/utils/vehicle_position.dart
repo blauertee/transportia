@@ -121,16 +121,14 @@ VehiclePosition _atTerminus(List<JourneyStop> stops) => VehiclePosition(
 );
 
 bool _isBeforeFirstDeparture(List<JourneyStop> stops, DateTime now) {
-  final first = stops.first;
-  final departure = first.departure ?? first.arrival;
+  final departure = stops.first.timeAtStop;
   return departure != null &&
       !isSameMinute(now, departure) &&
       now.isBefore(departure);
 }
 
 bool _isAfterLastArrival(List<JourneyStop> stops, DateTime now) {
-  final last = stops.last;
-  final arrival = last.arrival ?? last.departure;
+  final arrival = stops.last.timeAtTerminus;
   return arrival != null && !isSameMinute(now, arrival) && now.isAfter(arrival);
 }
 
@@ -147,6 +145,6 @@ bool _isStandingAt(JourneyStop stop, DateTime now) {
 }
 
 bool _isYetToReach(JourneyStop stop, DateTime now) {
-  final next = stop.departure ?? stop.arrival;
+  final next = stop.timeAtStop;
   return next != null && now.isBefore(next) && !isSameMinute(now, next);
 }

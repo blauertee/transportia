@@ -7,6 +7,7 @@ import 'transitous/leg_details.dart';
 import 'transitous/place.dart';
 import 'transitous/rental.dart';
 import 'transitous/step_instruction.dart';
+import '../utils/duration_formatter.dart';
 
 export 'transitous/alert.dart' show Alert;
 export 'transitous/enums.dart';
@@ -202,16 +203,13 @@ class Itinerary {
     return totalDistance;
   }
 
-  /// Metres in a kilometre.
-  static const double _metresPerKilometre = 1000;
-
   /// Rule-of-thumb energy cost of walking a kilometre, for an average adult
   /// at an average pace. A real figure would need the traveller's weight and
   /// stride, which the app does not ask for.
   static const double _caloriesPerWalkedKilometre = 50;
 
   int get calories {
-    final walkingKm = walkingDistance / _metresPerKilometre;
+    final walkingKm = walkingDistance / kMetresPerKilometre;
     return (walkingKm * _caloriesPerWalkedKilometre).round();
   }
 
@@ -584,8 +582,8 @@ class Leg {
 
     final origin = sequence[start];
     final destination = sequence[end];
-    final departs = origin.departure ?? origin.arrival ?? startTime;
-    final arrives = destination.arrival ?? destination.departure ?? endTime;
+    final departs = origin.timeAtStop ?? startTime;
+    final arrives = destination.timeAtTerminus ?? endTime;
 
     return Leg(
       mode: mode,

@@ -7,6 +7,7 @@ import '../../theme/app_colors.dart';
 import '../../utils/color_utils.dart';
 import '../../utils/time_utils.dart';
 import '../error_notice.dart';
+import '../route_badge_pill.dart';
 import '../skeletons/skeleton_shimmer.dart';
 import 'map_selection_modal.dart';
 
@@ -263,10 +264,11 @@ class _StopTimePreviewRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final routeColor =
-        parseHexColor(stopTime.routeColor) ?? AppColors.accentOf(context);
-    final routeTextColor =
-        parseHexColor(stopTime.routeTextColor) ?? AppColors.solidWhite;
+    final routeColor = parseHexColorOrAccent(context, stopTime.routeColor);
+    final routeTextColor = parseHexColorOr(
+      stopTime.routeTextColor,
+      AppColors.solidWhite,
+    );
     final arrival = formatTime(
       stopTime.place.arrival ?? stopTime.place.scheduledArrival,
     );
@@ -280,24 +282,14 @@ class _StopTimePreviewRow extends StatelessWidget {
     final content = Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Container(
-          constraints: const BoxConstraints(minWidth: 30),
+        RouteBadgePill(
+          label: label,
+          background: routeColor,
+          foreground: routeTextColor,
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-          decoration: BoxDecoration(
-            color: routeColor,
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              color: routeTextColor,
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-            ),
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
+          fontSize: 13,
+          fontWeight: FontWeight.w700,
+          minWidth: RouteBadgePill.stackedMinWidth,
         ),
         const SizedBox(width: 10),
         Expanded(

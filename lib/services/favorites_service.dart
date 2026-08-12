@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/prefs_keys.dart';
+import '../utils/geo_utils.dart';
 
 class FavoritePlace {
   final String id;
@@ -188,8 +189,12 @@ class FavoritesService {
     return null;
   }
 
+  /// Five decimals is ~1 m — close enough that two coordinates naming the
+  /// same doorway agree, far enough that neighbouring stops do not.
+  static const int _coordinateKeyDecimals = 5;
+
   static String _coordinateKey(double lat, double lon) =>
-      '${lat.toStringAsFixed(5)},${lon.toStringAsFixed(5)}';
+      coordKey(lat, lon, decimals: _coordinateKeyDecimals);
 
   /// Adds a place, or removes it when it is already there.
   ///

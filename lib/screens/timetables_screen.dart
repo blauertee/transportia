@@ -23,6 +23,7 @@ import '../utils/stop_time_utils.dart';
 import '../utils/time_utils.dart';
 import '../widgets/buttons/pill_button.dart';
 import '../widgets/error_notice.dart';
+import '../widgets/route_badge_pill.dart';
 import '../widgets/buttons/primary_button.dart';
 import '../widgets/skeletons/skeleton_list.dart';
 import '../widgets/bidirectional_paged_list.dart';
@@ -755,8 +756,10 @@ class _StopTimeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final routeColor = parseHexColorOrAccent(context, stopTime.routeColor);
-    final routeTextColor =
-        parseHexColor(stopTime.routeTextColor) ?? AppColors.solidWhite;
+    final routeTextColor = parseHexColorOr(
+      stopTime.routeTextColor,
+      AppColors.solidWhite,
+    );
 
     final modeIcon = getLegIcon(stopTime.mode);
 
@@ -790,27 +793,17 @@ class _StopTimeCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Container(
-                    constraints: const BoxConstraints(minWidth: 30),
+                  RouteBadgePill(
+                    label: stopTime.displayName,
+                    background: routeColor,
+                    foreground: routeTextColor,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 6,
                       vertical: 6,
                     ),
-                    decoration: BoxDecoration(
-                      color: routeColor,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      stopTime.displayName,
-                      style: TextStyle(
-                        color: routeTextColor,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                      ),
-                      textAlign: TextAlign.center,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    minWidth: RouteBadgePill.stackedMinWidth,
                   ),
                   const SizedBox(height: 8),
                   Text(
