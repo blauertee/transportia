@@ -67,6 +67,7 @@ import '../widgets/journey/trip_timeline.dart' show StopTapCallback;
 import '../widgets/map/bottom_sheet_chrome.dart';
 import '../widgets/map/long_press_selection_modal.dart';
 import '../widgets/map/stop_selection_modal.dart';
+import '../theme/app_text.dart';
 
 part 'map_screen/map_screen_models.dart';
 part 'map_screen/map_screen_controls.dart';

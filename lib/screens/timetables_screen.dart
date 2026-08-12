@@ -29,6 +29,7 @@ import '../widgets/skeletons/skeleton_list.dart';
 import '../widgets/bidirectional_paged_list.dart';
 import '../widgets/time_selection_overlay.dart';
 import '../widgets/validation_toast.dart';
+import '../theme/app_text.dart';
 
 class TimetablesScreen extends StatefulWidget {
   const TimetablesScreen({super.key, this.initialStop});
@@ -533,9 +534,7 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
               decoration: BoxDecoration(
                 color: AppColors.white,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: AppColors.black.withValues(alpha: 0.1),
-                ),
+                border: Border.all(color: AppColors.hairline),
                 boxShadow: const [
                   BoxShadow(
                     color: Color(0x14000000),
@@ -768,7 +767,7 @@ class _StopTimeCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.white,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.black.withValues(alpha: 0.1)),
+        border: Border.all(color: AppColors.hairline),
         boxShadow: const [
           BoxShadow(
             color: Color(0x0A000000),
@@ -808,11 +807,7 @@ class _StopTimeCard extends StatelessWidget {
                   const SizedBox(height: 8),
                   Text(
                     stopTime.headsign,
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.black,
-                    ),
+                    style: AppText.listTitle,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),

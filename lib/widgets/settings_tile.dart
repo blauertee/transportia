@@ -3,6 +3,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../theme/app_colors.dart';
 import 'pressable_highlight.dart';
+import '../theme/app_text.dart';
 
 class SettingsTile extends StatelessWidget {
   const SettingsTile({
@@ -34,7 +35,7 @@ class SettingsTile extends StatelessWidget {
           width: 44,
           height: 44,
           decoration: BoxDecoration(
-            color: accent.withValues(alpha: 0.12),
+            color: AppColors.accentWash(accent),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Icon(icon, size: 22, color: accent),
@@ -54,14 +55,7 @@ class SettingsTile extends StatelessWidget {
               ),
               if (subtitle != null) ...[
                 const SizedBox(height: 2),
-                Text(
-                  subtitle!,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    color: AppColors.black.withValues(alpha: 0.4),
-                  ),
-                ),
+                Text(subtitle!, style: AppText.subtitle),
               ],
             ],
           ),

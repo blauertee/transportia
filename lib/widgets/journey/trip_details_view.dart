@@ -15,6 +15,7 @@ import '../custom_card.dart';
 import '../empty_state.dart';
 import '../info_chip.dart';
 import 'trip_timeline.dart';
+import '../../theme/app_text.dart';
 
 /// Heading over one of the trip cards.
 class _CardTitle extends StatelessWidget {
@@ -23,14 +24,7 @@ class _CardTitle extends StatelessWidget {
   final String text;
 
   @override
-  Widget build(BuildContext context) => Text(
-    text,
-    style: TextStyle(
-      fontSize: 16,
-      fontWeight: FontWeight.w700,
-      color: AppColors.black,
-    ),
-  );
+  Widget build(BuildContext context) => Text(text, style: AppText.heading);
 }
 
 /// Everything there is to say about one vehicle's trip: what it is, what is

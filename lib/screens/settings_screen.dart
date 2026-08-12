@@ -22,6 +22,7 @@ import '../utils/app_version.dart';
 import '../widgets/settings_tile.dart';
 import '../widgets/icon_badge.dart';
 import '../widgets/custom_card.dart';
+import '../theme/app_text.dart';
 
 /// How long the version line has to be held to open the developer screen.
 /// Long enough that nobody reaches it by resting a thumb there.
@@ -136,7 +137,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     margin: EdgeInsets.zero,
                     padding: const EdgeInsets.all(18),
                     borderRadius: BorderRadius.circular(16),
-                    borderColor: AppColors.black.withValues(alpha: 0.1),
+                    borderColor: AppColors.hairline,
                     child: Row(
                       children: [
                         const IconBadge(
@@ -297,22 +298,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    Text(
-                      Environment.appName,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.black,
-                      ),
-                    ),
+                    Text(Environment.appName, style: AppText.heading),
                     const SizedBox(height: 4),
                     Text(
                       'Version ${AppVersion.current}',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: AppColors.black.withValues(alpha: 0.4),
-                      ),
+                      style: AppText.subtitle,
                     ),
                     const SizedBox(height: 112),
                   ],

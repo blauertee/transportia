@@ -16,6 +16,7 @@ import '../utils/haptics.dart';
 import '../widgets/app_page_scaffold.dart';
 import '../widgets/edit_favorite_overlay.dart';
 import 'favourites_map_screen.dart';
+import '../theme/app_text.dart';
 
 /// Picks a place, full screen.
 ///
@@ -421,7 +422,7 @@ class _LocationSearchBodyState extends State<LocationSearchBody> {
                 width: 46,
                 height: 46,
                 decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.12),
+                  color: AppColors.accentWash(accent),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: accent.withValues(alpha: 0.35)),
                 ),
@@ -524,13 +525,7 @@ class _LocationSearchBodyState extends State<LocationSearchBody> {
 
   Widget _hint(String text) => Padding(
     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-    child: Text(
-      text,
-      style: TextStyle(
-        fontSize: 14,
-        color: AppColors.black.withValues(alpha: 0.5),
-      ),
-    ),
+    child: Text(text, style: AppText.bodyMuted),
   );
 
   TransitousLocationSuggestion _favouriteToSuggestion(FavoritePlace f) =>
@@ -592,7 +587,7 @@ class _FavouriteRow extends StatelessWidget {
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.12),
+                  color: AppColors.accentWash(accent),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(
@@ -610,11 +605,7 @@ class _FavouriteRow extends StatelessWidget {
                       favourite.displayName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.black,
-                      ),
+                      style: AppText.listTitle,
                     ),
                     // Only once the alias says something the name does not,
                     // so an unrenamed favourite is not printed twice.
@@ -701,11 +692,7 @@ class _ResultRow extends StatelessWidget {
                       title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.black,
-                      ),
+                      style: AppText.listTitle,
                     ),
                     if (subtitle != null && subtitle!.isNotEmpty)
                       Text(

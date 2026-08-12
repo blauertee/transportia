@@ -12,6 +12,7 @@ import '../widgets/pressable_highlight.dart';
 import '../widgets/section_title.dart';
 import '../widgets/icon_badge.dart';
 import '../widgets/custom_card.dart';
+import '../theme/app_text.dart';
 
 class LocationSettingsScreen extends StatefulWidget {
   const LocationSettingsScreen({super.key});
@@ -72,10 +73,7 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
           ? Center(
               child: Text(
                 'Checking location status...',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: AppColors.black.withValues(alpha: 0.4),
-                ),
+                style: AppText.bodyFaint,
               ),
             )
           : _buildContent(),
@@ -130,11 +128,7 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
                     ],
                   ),
                 ),
-                Container(
-                  height: 20,
-                  width: 1,
-                  color: AppColors.black.withValues(alpha: 0.1),
-                ),
+                Container(height: 20, width: 1, color: AppColors.hairline),
                 PressableHighlight(
                   onPressed: _isLoading ? () {} : _checkLocationStatus,
                   enableHaptics: false,
@@ -168,7 +162,7 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
       margin: EdgeInsets.zero,
       padding: const EdgeInsets.all(16),
       borderRadius: BorderRadius.circular(12),
-      borderColor: AppColors.black.withValues(alpha: 0.1),
+      borderColor: AppColors.hairline,
       child: Row(
         children: [
           IconBadge(

@@ -245,7 +245,7 @@ class _IconPickState extends State<IconPick> {
           height: 40,
           decoration: BoxDecoration(
             color: widget.selected
-                ? accent.withValues(alpha: 0.12)
+                ? AppColors.accentWash(accent)
                 : const Color(0x00000000),
             borderRadius: BorderRadius.circular(10),
             border: Border.all(

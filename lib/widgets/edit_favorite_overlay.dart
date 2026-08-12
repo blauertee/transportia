@@ -172,7 +172,7 @@ class _IconTile extends StatelessWidget {
           color: isSelected ? accent : AppColors.black.withValues(alpha: 0.03),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: isSelected ? accent : AppColors.black.withValues(alpha: 0.1),
+            color: isSelected ? accent : AppColors.hairline,
             width: isSelected ? 2 : 1,
           ),
         ),

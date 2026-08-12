@@ -92,7 +92,7 @@ class _MapControlIconChip extends StatelessWidget {
       restingColor: AppColors.white,
       pressedColor: AppColors.white.withValues(alpha: 0.92),
       borderRadius: BorderRadius.circular(size / 2),
-      borderColor: AppColors.black.withValues(alpha: 0.1),
+      borderColor: AppColors.hairline,
       child: SizedBox(
         width: iconSize,
         height: iconSize,
@@ -127,7 +127,7 @@ class _MapControlChip extends StatelessWidget {
       restingColor: AppColors.white,
       pressedColor: AppColors.white.withValues(alpha: 0.92),
       borderRadius: BorderRadius.circular(18),
-      borderColor: AppColors.black.withValues(alpha: 0.1),
+      borderColor: AppColors.hairline,
       child: SizedBox(width: width, child: content),
     );
   }

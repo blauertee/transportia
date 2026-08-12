@@ -12,6 +12,7 @@ import '../utils/geo_utils.dart';
 import '../widgets/custom_app_bar.dart';
 import '../widgets/validation_toast.dart';
 import '../widgets/skeletons/skeleton_shimmer.dart';
+import '../theme/app_text.dart';
 
 /// Points at a place on the map.
 ///
@@ -228,7 +229,7 @@ class _AddFavouriteMapScreenState extends State<AddFavouriteMapScreen> {
       decoration: BoxDecoration(
         color: AppColors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.black.withValues(alpha: 0.1)),
+        border: Border.all(color: AppColors.hairline),
         boxShadow: const [
           BoxShadow(
             color: Color(0x26000000),
@@ -286,11 +287,7 @@ class _AddFavouriteMapScreenState extends State<AddFavouriteMapScreen> {
                           )
                         : Text(
                             _selectedLocationName ?? 'Unknown location',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.black,
-                            ),
+                            style: AppText.heading,
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -310,9 +307,7 @@ class _AddFavouriteMapScreenState extends State<AddFavouriteMapScreen> {
                     decoration: BoxDecoration(
                       color: AppColors.black.withValues(alpha: 0.03),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: AppColors.black.withValues(alpha: 0.1),
-                      ),
+                      border: Border.all(color: AppColors.hairline),
                     ),
                     child: Center(
                       child: Text(
@@ -335,7 +330,7 @@ class _AddFavouriteMapScreenState extends State<AddFavouriteMapScreen> {
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     decoration: BoxDecoration(
                       color: _isLoadingName
-                          ? AppColors.black.withValues(alpha: 0.1)
+                          ? AppColors.hairline
                           : AppColors.accentOf(context),
                       borderRadius: BorderRadius.circular(12),
                     ),

@@ -10,6 +10,7 @@ import '../error_notice.dart';
 import '../route_badge_pill.dart';
 import '../skeletons/skeleton_shimmer.dart';
 import 'map_selection_modal.dart';
+import '../../theme/app_text.dart';
 
 /// How far the stop card starts scaled up, gentler than the long-press card
 /// because this one carries a list that would otherwise seem to lurch.
@@ -297,11 +298,7 @@ class _StopTimePreviewRow extends StatelessWidget {
             stopTime.headsign,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: AppColors.black,
-            ),
+            style: AppText.bodyStrong,
           ),
         ),
         const SizedBox(width: 8),

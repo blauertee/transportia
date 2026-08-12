@@ -85,7 +85,7 @@ class _TransitOptionsScreenState extends State<TransitOptionsScreen> {
                 'What every new search starts from. To change one journey, '
                 'use the options on the search screen.',
             iconColor: accent,
-            backgroundColor: accent.withValues(alpha: 0.12),
+            backgroundColor: AppColors.accentWash(accent),
           ),
           const SizedBox(height: 28),
           // Everything below reads _options, so waiting avoids showing

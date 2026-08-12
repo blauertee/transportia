@@ -12,9 +12,17 @@ import '../services/saved_places_service.dart';
 import '../services/saved_trips_service.dart';
 import '../theme/app_colors.dart';
 import '../utils/app_version.dart';
+import '../utils/geo_utils.dart';
 import '../widgets/app_page_scaffold.dart';
 import '../widgets/custom_card.dart';
 import '../constants/prefs_keys.dart';
+import '../theme/app_text.dart';
+
+/// The metadata lines under every entry on this screen: coordinates, ids,
+/// timestamps. Local rather than in [AppText] because this screen is the only
+/// place that prints raw stored values, so the recipe means nothing elsewhere.
+TextStyle get _metaLine =>
+    TextStyle(fontSize: 12, color: AppColors.black.withValues(alpha: 0.55));
 
 class DeveloperInfoScreen extends StatefulWidget {
   const DeveloperInfoScreen({super.key});
@@ -231,13 +239,7 @@ class _DeveloperInfoScreenState extends State<DeveloperInfoScreen> {
   }
 
   Widget _emptyLabel(String message) {
-    return Text(
-      message,
-      style: TextStyle(
-        fontSize: 13,
-        color: AppColors.black.withValues(alpha: 0.5),
-      ),
-    );
+    return Text(message, style: AppText.footnote);
   }
 
   Widget _keyValueList(Map<String, Object?> values) {
@@ -316,8 +318,7 @@ class _DeveloperInfoScreenState extends State<DeveloperInfoScreen> {
       meta.add(place.countryCode!.trim());
     }
     final metaLabel = meta.join(' • ');
-    final coords =
-        '${place.lat.toStringAsFixed(5)}, ${place.lon.toStringAsFixed(5)}';
+    final coords = coordLabel(place.lat, place.lon, decimals: 5);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -329,28 +330,9 @@ class _DeveloperInfoScreenState extends State<DeveloperInfoScreen> {
             color: AppColors.black,
           ),
         ),
-        if (metaLabel.isNotEmpty)
-          Text(
-            metaLabel,
-            style: TextStyle(
-              fontSize: 12,
-              color: AppColors.black.withValues(alpha: 0.55),
-            ),
-          ),
-        Text(
-          coords,
-          style: TextStyle(
-            fontSize: 12,
-            color: AppColors.black.withValues(alpha: 0.55),
-          ),
-        ),
-        Text(
-          'Importance ${place.importance}',
-          style: TextStyle(
-            fontSize: 12,
-            color: AppColors.black.withValues(alpha: 0.55),
-          ),
-        ),
+        if (metaLabel.isNotEmpty) Text(metaLabel, style: _metaLine),
+        Text(coords, style: _metaLine),
+        Text('Importance ${place.importance}', style: _metaLine),
       ],
     );
   }
@@ -368,8 +350,7 @@ class _DeveloperInfoScreenState extends State<DeveloperInfoScreen> {
   }
 
   Widget _favoriteRow(FavoritePlace place) {
-    final coords =
-        '${place.lat.toStringAsFixed(5)}, ${place.lon.toStringAsFixed(5)}';
+    final coords = coordLabel(place.lat, place.lon, decimals: 5);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -381,19 +362,10 @@ class _DeveloperInfoScreenState extends State<DeveloperInfoScreen> {
             color: AppColors.black,
           ),
         ),
-        Text(
-          coords,
-          style: TextStyle(
-            fontSize: 12,
-            color: AppColors.black.withValues(alpha: 0.55),
-          ),
-        ),
+        Text(coords, style: _metaLine),
         Text(
           'Icon ${place.iconName} • Added ${place.addedAt.toIso8601String()}',
-          style: TextStyle(
-            fontSize: 12,
-            color: AppColors.black.withValues(alpha: 0.55),
-          ),
+          style: _metaLine,
         ),
       ],
     );
@@ -426,10 +398,7 @@ class _DeveloperInfoScreenState extends State<DeveloperInfoScreen> {
         Text(
           '${trip.departureTime.toIso8601String()} '
           '(saved ${trip.savedAt.toIso8601String()})',
-          style: TextStyle(
-            fontSize: 12,
-            color: AppColors.black.withValues(alpha: 0.55),
-          ),
+          style: _metaLine,
         ),
         Text(
           trip.id,
@@ -470,13 +439,7 @@ class _DeveloperInfoScreenState extends State<DeveloperInfoScreen> {
             color: AppColors.black,
           ),
         ),
-        Text(
-          trip.timestamp.toIso8601String(),
-          style: TextStyle(
-            fontSize: 12,
-            color: AppColors.black.withValues(alpha: 0.55),
-          ),
-        ),
+        Text(trip.timestamp.toIso8601String(), style: _metaLine),
       ],
     );
   }

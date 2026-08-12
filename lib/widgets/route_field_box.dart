@@ -106,7 +106,7 @@ class _RouteFieldBoxState extends State<RouteFieldBox> {
         decoration: BoxDecoration(
           color: AppColors.white,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.black.withValues(alpha: 0.1)),
+          border: Border.all(color: AppColors.hairline),
           boxShadow: const [
             BoxShadow(
               color: Color(0x14000000),
@@ -220,7 +220,7 @@ class _RouteFieldBoxState extends State<RouteFieldBox> {
                   ? AppColors.white.withValues(alpha: 0.92)
                   : AppColors.white,
               shape: BoxShape.circle,
-              border: Border.all(color: AppColors.black.withValues(alpha: 0.1)),
+              border: Border.all(color: AppColors.hairline),
               boxShadow: const [
                 BoxShadow(
                   color: Color(0x14000000),

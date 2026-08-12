@@ -24,6 +24,7 @@ import '../widgets/bidirectional_paged_list.dart';
 import '../widgets/route_badge_pill.dart';
 import '../widgets/save_trip_button.dart';
 import '../widgets/skeletons/skeleton_list.dart';
+import '../theme/app_text.dart';
 
 /// How often each result's "departs in" countdown is redrawn. A minute is
 /// the resolution the countdown itself is printed at.
@@ -405,10 +406,7 @@ class _ItineraryCardState extends State<ItineraryCard>
           const SizedBox(height: 8),
           Text(
             '${formatTime(itinerary.startTime)} - ${formatTime(itinerary.endTime)}',
-            style: TextStyle(
-              fontSize: 14,
-              color: AppColors.black.withValues(alpha: 0.5),
-            ),
+            style: AppText.bodyMuted,
           ),
           const SizedBox(height: 8),
           Wrap(

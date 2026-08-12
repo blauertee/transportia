@@ -78,7 +78,7 @@ class OverlayDialogHeader extends StatelessWidget {
           width: _kDialogIconBoxSize,
           height: _kDialogIconBoxSize,
           decoration: BoxDecoration(
-            color: accent.withValues(alpha: 0.12),
+            color: AppColors.accentWash(accent),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Icon(icon, size: 24, color: accent),
@@ -156,7 +156,7 @@ class OverlayTextField extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.black.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.black.withValues(alpha: 0.1)),
+        border: Border.all(color: AppColors.hairline),
       ),
       style: TextStyle(
         fontSize: 16,
@@ -190,7 +190,7 @@ class OverlayDialogActions extends StatelessWidget {
             label: 'Cancel',
             onTap: onCancel,
             background: AppColors.black.withValues(alpha: 0.03),
-            border: AppColors.black.withValues(alpha: 0.1),
+            border: AppColors.hairline,
             labelColor: AppColors.black,
           ),
         ),

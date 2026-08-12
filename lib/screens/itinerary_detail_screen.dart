@@ -43,6 +43,7 @@ import '../widgets/stop_departures_sheet.dart';
 import 'connection_info_screen.dart';
 import 'itinerary_list_screen.dart';
 import 'itinerary_map_screen.dart';
+import '../theme/app_text.dart';
 
 /// Opens the [StopDeparturesSheet] for a tapped stop. Passed down through
 /// the leg widgets so they don't need to know how the sheet is presented.
@@ -731,10 +732,7 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
     child: Center(
       child: Text(
         'No additional steps required for this journey.',
-        style: TextStyle(
-          fontSize: 14,
-          color: AppColors.black.withValues(alpha: 0.4),
-        ),
+        style: AppText.bodyFaint,
       ),
     ),
   );
@@ -936,13 +934,7 @@ class JourneyOverviewWidget extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Departure',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AppColors.black.withValues(alpha: 0.5),
-                      ),
-                    ),
+                    Text('Departure', style: AppText.caption),
                     const SizedBox(height: 4),
                     Text(
                       formatTime(itinerary.startTime),
@@ -962,11 +954,7 @@ class JourneyOverviewWidget extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       formatDuration(itinerary.duration),
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.black,
-                      ),
+                      style: AppText.bodyStrong,
                     ),
                   ],
                 ),
@@ -975,13 +963,7 @@ class JourneyOverviewWidget extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Text(
-                      'Arrival',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AppColors.black.withValues(alpha: 0.5),
-                      ),
-                    ),
+                    Text('Arrival', style: AppText.caption),
                     const SizedBox(height: 4),
                     Text(
                       formatTime(itinerary.endTime),
@@ -1127,14 +1109,7 @@ class _TicketInfoCardState extends State<TicketInfoCard> {
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(
-                    'Ticket information',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.black,
-                    ),
-                  ),
+                  child: Text('Ticket information', style: AppText.bodyStrong),
                 ),
                 Icon(
                   _isExpanded ? LucideIcons.chevronUp : LucideIcons.chevronDown,
@@ -1235,25 +1210,11 @@ class _TicketInfoCardState extends State<TicketInfoCard> {
                     color: AppColors.black.withValues(alpha: 0.8),
                   ),
                 ),
-                if (media.isNotEmpty)
-                  Text(
-                    media,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppColors.black.withValues(alpha: 0.5),
-                    ),
-                  ),
+                if (media.isNotEmpty) Text(media, style: AppText.caption),
               ],
             ),
           ),
-          Text(
-            price,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: AppColors.black,
-            ),
-          ),
+          Text(price, style: AppText.bodyStrong),
         ],
       ),
     );
@@ -1454,11 +1415,7 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
               Expanded(
                 child: Text(
                   subtitle,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.black,
-                  ),
+                  style: AppText.bodyStrong,
                   overflow: TextOverflow.ellipsis,
                   maxLines: 1,
                 ),
@@ -1481,10 +1438,7 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
             Expanded(
               child: Text(
                 _buildNoteLine(),
-                style: TextStyle(
-                  fontSize: 13,
-                  color: AppColors.black.withValues(alpha: 0.5),
-                ),
+                style: AppText.footnote,
                 overflow: TextOverflow.ellipsis,
                 maxLines: 1,
               ),
@@ -1956,22 +1910,13 @@ class TransferLegCard extends StatelessWidget {
             ],
             if (_platforms() case final platforms?) ...[
               const SizedBox(height: 3),
-              Text(
-                platforms,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: AppColors.black.withValues(alpha: 0.5),
-                ),
-              ),
+              Text(platforms, style: AppText.footnote),
             ],
             if (leg.distance != null && leg.distance! > 0) ...[
               const SizedBox(height: 3),
               Text(
                 'Approx. ${formatDistanceKm(leg.distance!)} walk',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: AppColors.black.withValues(alpha: 0.5),
-                ),
+                style: AppText.footnote,
               ),
             ],
           ],
@@ -2061,10 +2006,7 @@ class FinishLegCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               'Finish · ${formatDuration(totalDuration)} total',
-              style: TextStyle(
-                fontSize: 13,
-                color: AppColors.black.withValues(alpha: 0.5),
-              ),
+              style: AppText.footnote,
             ),
           ],
         ),

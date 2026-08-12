@@ -17,6 +17,7 @@ import 'buttons/primary_button.dart';
 import 'search/journey_spine.dart';
 import 'search/save_default_row.dart';
 import 'skeletons/skeleton_shimmer.dart';
+import '../theme/app_text.dart';
 
 class BottomCard extends StatefulWidget {
   const BottomCard({
@@ -365,14 +366,7 @@ class _BottomCardState extends State<BottomCard> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                'Recent trips',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.black,
-                                ),
-                              ),
+                              Text('Recent trips', style: AppText.heading),
                               const SizedBox(height: 12),
                               ...widget.recentTrips.map(
                                 (trip) => Padding(

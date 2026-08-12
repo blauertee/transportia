@@ -11,6 +11,7 @@ import '../../utils/haptics.dart';
 import '../../widgets/custom_card.dart';
 import '../../widgets/section_title.dart';
 import '../../widgets/options/value_controls.dart';
+import '../../theme/app_text.dart';
 
 /// Stops every journey should pass through.
 ///
@@ -318,11 +319,7 @@ class _ViaStopRow extends StatelessWidget {
                 stop.name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.black,
-                ),
+                style: AppText.listTitle,
               ),
             ),
             GestureDetector(

@@ -49,6 +49,16 @@ class AppColors {
   static Color get white =>
       _resolveThemeColor((provider) => provider.backgroundColor, solidWhite);
 
+  /// The rule that separates one surface from the next — a card border, a
+  /// divider, the outline of an unselected control. Everywhere it appears it
+  /// means the same thing: an edge, not a mark.
+  static Color get hairline => black.withValues(alpha: 0.1);
+
+  /// The fill behind something the user has selected, in whichever accent
+  /// they picked. Enough tint to read as chosen, not enough to compete with
+  /// the text on top of it.
+  static Color accentWash(Color accent) => accent.withValues(alpha: 0.12);
+
   static Color _resolveThemeColor(
     Color Function(ThemeProvider provider) resolver,
     Color fallback,

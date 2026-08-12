@@ -344,11 +344,7 @@ class _QuickButtonSelectFieldState extends State<_QuickButtonSelectField> {
                 selected.label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.black,
-                ),
+                style: AppText.bodyStrong,
               ),
             ),
             Icon(

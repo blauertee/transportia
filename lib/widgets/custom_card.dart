@@ -116,7 +116,7 @@ class CustomCard extends StatelessWidget {
       case CustomCardPreset.subtle:
         return AppColors.black.withValues(alpha: 0.04);
       case CustomCardPreset.elevated:
-        return AppColors.black.withValues(alpha: 0.1);
+        return AppColors.hairline;
       case CustomCardPreset.outlined:
         return AppColors.black.withValues(alpha: 0.2);
       case CustomCardPreset.filled:

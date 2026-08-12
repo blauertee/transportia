@@ -93,7 +93,7 @@ class _SavedTripCardState extends State<SavedTripCard> {
                     width: 36,
                     height: 36,
                     decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.12),
+                      color: AppColors.accentWash(accent),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     alignment: Alignment.center,
