@@ -10,7 +10,7 @@ reference count — the judgement column is the point of the file.
 `flutter analyze` already reports unused *private* members, and reports none;
 everything below is public, which is why it goes unflagged.
 
-Last swept: 2026-08-11, against `8020837`.
+Last swept: 2026-08-12, against `e60c97e`.
 
 ---
 
@@ -29,15 +29,42 @@ writes it again.
 
 ### `TransitPlace.effectiveArrival` / `effectiveDeparture` — `lib/models/transitous/place.dart:97,100`
 
-"Real-time if we have it, scheduled otherwise." The pattern is written out by
-hand in several places instead (`stop.departure ?? stop.arrival` in the trip
-timeline, `stopTime.place.arrival ?? stopTime.place.scheduledArrival` in the
-stop modal).
+"Real-time if we have it, scheduled otherwise." Still zero callers. Two sites
+write the same expression out by hand — `stop_selection_modal.dart:274,277`,
+which is `effectiveArrival` and `effectiveDeparture` exactly.
 
-**Judgement:** keep, and start using them. These are not unused so much as
-un-adopted — the fallback they express is repeated at four or five call sites
-that could just call the getter. This one is a refactor waiting to happen
-rather than dead weight.
+A third site is the interesting one: `stop_departures_sheet.dart:245` reads
+`place.scheduledDeparture ?? place.departure`, the *reverse* preference. That
+is either a deliberate "show the timetable, not the estimate" on a departure
+board, or a slip — and nothing in the file says which.
+
+The earlier note here also listed `stop.departure ?? stop.arrival` as a copy
+of this pattern. It is not: that picks *which event* matters at a stop, not
+real-time versus scheduled for one event. It now has its own name,
+`timeAtStop`.
+
+**Judgement:** keep, and adopt at the two modal sites. Settle the departures
+sheet first, because adopting there would change what a rider sees.
+
+### `TransitPlace.arrivalDelay` / `departureDelay` — `lib/models/transitous/place.dart:115,121`
+
+Real-time minus scheduled, as a `Duration`.
+
+**Judgement:** delete, rather than adopt. `computeDelay`
+(`lib/utils/time_utils.dart:23`, 12 callers) answers the same question and
+returns null below a one-minute threshold — the whole app therefore treats a
+40-second delay as on time. These two do not, so adopting them anywhere would
+quietly introduce a second definition of "late". Two getters that disagree
+with the adopted helper are worse than none.
+
+### `TicketUrls.isEmpty` — `lib/models/transitous/leg_details.dart:32`
+
+`web == null && android == null && ios == null`.
+
+**Judgement:** delete, together with the field it guards, unless ticket links
+are planned. `Leg.ticketUrls` is parsed and carried through `copyWith`, but no
+widget anywhere reads it — so this is a null-check on data that never reaches
+a screen. Either wire the links into the fare card, or drop both.
 
 ### `Alert.isInEffectAt` — `lib/models/transitous/alert.dart:59`
 
@@ -110,15 +137,6 @@ recent trips anywhere in Settings, which for a list of places someone has
 searched for is closer to a gap than to a missing feature. The method is the
 easy half of that.
 
-### `parseHexColorOr` — `lib/utils/color_utils.dart:22`
-
-`parseHexColor(hex) ?? fallback`. Sits between `parseHexColor` (used widely)
-and `parseHexColorOrAccent` (used widely).
-
-**Judgement:** delete. Callers either want the accent fallback — for which
-there is a function they already use — or want to spell `?? something` at the
-call site, which every one of them does. The middle rung of the ladder has no
-users and reads no better than the `??` it hides.
 
 ### The no-op unfocus debounce — `lib/screens/map_screen.dart:4084`
 
@@ -139,3 +157,13 @@ like something was removed and its scaffolding left behind; there is no future
 in which an if-statement with no body is what was wanted. Worth a moment
 first to check the branch is meant to be a no-op at all, since the alternative
 reading is that a behaviour went missing here.
+
+---
+
+## Resolved since the last sweep
+
+- `parseHexColorOr` — `lib/utils/color_utils.dart:22`. Was listed for
+  deletion as the unused middle rung between `parseHexColor` and
+  `parseHexColorOrAccent`. It now has four callers: every route badge wanted
+  exactly `?? AppColors.solidWhite`, and all four were spelling it out. The
+  earlier judgement was wrong about which rung was missing a user.

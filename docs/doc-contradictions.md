@@ -8,7 +8,7 @@ Tick an entry off by fixing one side and deleting the row. Nothing here has
 been changed yet — resolving a contradiction is a decision about intent, not a
 cleanup.
 
-Last swept: 2026-08-11, against `8020837`.
+Last swept: 2026-08-12, against `e60c97e`.
 
 ---
 
@@ -62,6 +62,28 @@ Last swept: 2026-08-11, against `8020837`.
   constant to learn a saved trip is dropped after a month.
 - **Wrong side** — the document, mildly. Naming the window in the class doc
   would make the one surprising behaviour discoverable.
+
+## 6. `TransitModeGroup.allSelectable` re-lists what the enum already declares
+
+Not a doc mismatch — a latent bug. Filed here because this is where findings
+that need a decision live.
+
+- **Written** — the doc comment on `allSelectable`
+  (`lib/models/transit_mode_group.dart:48`) presents it as "every mode a rider
+  can pick", derived from the groups.
+- **True** — it is a hand-written list. The five rail modes, the two metro
+  modes and the two bus modes are spelled out again as literal
+  sub-lists, and they are the same values already passed to
+  `rail(...)`, `metro(...)` and `bus(...)` a few lines above. Only `extras` is
+  spread from its own constant.
+- **Consequence** — adding a mode to a group's constructor arguments does not
+  add it to the picker, and nothing fails: the mode simply never appears as a
+  tick. `transit_mode_group_test.dart` asserts every *group* mode is in
+  `allSelectable`, so the test would catch it — but only if someone runs it
+  while wondering why their new mode is missing.
+- **Wrong side** — the code. `allSelectable` should be built from
+  `values.expand((group) => group.modes)` plus `extras`, at which point the
+  duplication cannot drift.
 
 ---
 

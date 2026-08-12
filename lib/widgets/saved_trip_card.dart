@@ -12,6 +12,7 @@ import '../utils/duration_formatter.dart';
 import '../utils/leg_helper.dart';
 import '../utils/time_utils.dart';
 import 'custom_card.dart';
+import 'icon_badge.dart';
 import 'route_badge_pill.dart';
 
 /// One entry in a list of saved trips.
@@ -89,15 +90,13 @@ class _SavedTripCardState extends State<SavedTripCard> {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: AppColors.accentWash(accent),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    alignment: Alignment.center,
-                    child: Icon(LucideIcons.bookmark, size: 18, color: accent),
+                  IconBadge(
+                    icon: LucideIcons.bookmark,
+                    size: 36,
+                    iconSize: 18,
+                    backgroundColor: AppColors.accentWash(accent),
+                    iconColor: accent,
+                    borderRadius: BorderRadius.circular(10),
                   ),
                   const SizedBox(width: 12),
                   Expanded(child: _routeSummary(trip)),
