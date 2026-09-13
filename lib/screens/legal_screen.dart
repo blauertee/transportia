@@ -11,6 +11,7 @@ import '../widgets/app_page_scaffold.dart';
 import '../widgets/custom_card.dart';
 import '../widgets/validation_toast.dart';
 import '../widgets/icon_badge.dart';
+import '../theme/app_text.dart';
 
 class LegalScreen extends StatelessWidget {
   const LegalScreen({super.key});
@@ -86,14 +87,7 @@ class LegalScreen extends StatelessWidget {
                           color: AppColors.accentOf(context),
                         ),
                         const SizedBox(width: 8),
-                        Text(
-                          'Data We Collect',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.black,
-                          ),
-                        ),
+                        Text('Data We Collect', style: AppText.heading),
                       ],
                     ),
                     const SizedBox(height: 12),
@@ -127,11 +121,7 @@ class LegalScreen extends StatelessWidget {
                   children: [
                     Text(
                       '© ${year} Wafler.one. All rights reserved.',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: AppColors.black.withValues(alpha: 0.4),
-                      ),
+                      style: AppText.subtitle,
                     ),
                   ],
                 ),
@@ -157,7 +147,7 @@ class LegalScreen extends StatelessWidget {
         margin: EdgeInsets.zero,
         padding: const EdgeInsets.all(16),
         borderRadius: BorderRadius.circular(12),
-        borderColor: AppColors.black.withValues(alpha: 0.1),
+        borderColor: AppColors.hairline,
         child: Row(
           children: [
             IconBadge(
@@ -175,14 +165,7 @@ class LegalScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.black,
-                    ),
-                  ),
+                  Text(title, style: AppText.heading),
                   const SizedBox(height: 4),
                   Text(
                     description,
@@ -219,15 +202,7 @@ class LegalScreen extends StatelessWidget {
               fontWeight: FontWeight.w700,
             ),
           ),
-          Expanded(
-            child: Text(
-              text,
-              style: TextStyle(
-                fontSize: 14,
-                color: AppColors.black.withValues(alpha: 0.5),
-              ),
-            ),
-          ),
+          Expanded(child: Text(text, style: AppText.bodyMuted)),
         ],
       ),
     );

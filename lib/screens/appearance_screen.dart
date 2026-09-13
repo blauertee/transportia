@@ -10,6 +10,7 @@ import '../widgets/app_page_scaffold.dart';
 import '../widgets/app_toggle_switch.dart';
 import '../widgets/section_title.dart';
 import '../widgets/settings_tile.dart';
+import '../theme/app_text.dart';
 
 class AppearanceScreen extends StatefulWidget {
   const AppearanceScreen({super.key});
@@ -84,10 +85,7 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
               const SizedBox(height: 8),
               Text(
                 'Choose your preferred accent color',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: AppColors.black.withValues(alpha: 0.4),
-                ),
+                style: AppText.bodyFaint,
               ),
               const SizedBox(height: 16),
               LayoutBuilder(
@@ -172,10 +170,7 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
               const SizedBox(height: 8),
               Text(
                 'Pick light, dark, or follow your system',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: AppColors.black.withValues(alpha: 0.4),
-                ),
+                style: AppText.bodyFaint,
               ),
               const SizedBox(height: 16),
               Row(
@@ -219,10 +214,7 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
               const SizedBox(height: 8),
               Text(
                 'Select your preferred map appearance',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: AppColors.black.withValues(alpha: 0.4),
-                ),
+                style: AppText.bodyFaint,
               ),
               const SizedBox(height: 16),
               Row(
@@ -272,10 +264,7 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
               const SizedBox(height: 8),
               Text(
                 'Choose whether the app should use tactile feedback',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: AppColors.black.withValues(alpha: 0.4),
-                ),
+                style: AppText.bodyFaint,
               ),
               const SizedBox(height: 16),
               Container(
@@ -329,9 +318,7 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
               ? BorderRadius.circular(15)
               : BorderRadius.circular(14),
           border: Border.all(
-            color: isSelected
-                ? selectedAccentColor
-                : AppColors.black.withValues(alpha: 0.1),
+            color: isSelected ? selectedAccentColor : AppColors.hairline,
             width: isSelected ? 2.5 : 1,
           ),
         ),
@@ -411,9 +398,7 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
               ? BorderRadius.circular(15)
               : BorderRadius.circular(14),
           border: Border.all(
-            color: isSelected
-                ? selectedAccentColor
-                : AppColors.black.withValues(alpha: 0.1),
+            color: isSelected ? selectedAccentColor : AppColors.hairline,
             width: isSelected ? 2.5 : 1,
           ),
         ),

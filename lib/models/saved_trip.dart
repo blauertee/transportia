@@ -1,12 +1,12 @@
 import 'itinerary.dart';
 import 'time_selection.dart';
+import '../utils/geo_utils.dart';
 import '../utils/itinerary_leg_utils.dart';
 import '../utils/time_utils.dart';
 
 /// Last resort when a journey has no named place anywhere in it — a walk
 /// between two coordinates.
-String _coordinateLabel(double lat, double lon) =>
-    '${lat.toStringAsFixed(4)}, ${lon.toStringAsFixed(4)}';
+String _coordinateLabel(double lat, double lon) => coordLabel(lat, lon);
 
 /// Picks the best available name for one end of a journey: what the user
 /// searched for, else the stop they board or leave from, else coordinates.
@@ -106,6 +106,11 @@ class SavedTrip {
   /// Identity of a saved connection: the same departure of the same trip
   /// between the same two points. Re-saving one replaces it rather than
   /// piling up duplicates.
+  /// Four decimals is ~10 m: the same street corner counts as the same
+  /// endpoint, so re-saving a trip planned from a slightly different tap
+  /// replaces it rather than piling up near-identical rows.
+  static const int _identityDecimals = 4;
+
   static String buildId({
     required Itinerary itinerary,
     required double fromLat,
@@ -118,8 +123,8 @@ class SavedTrip {
         .whereType<String>()
         .where((tripId) => tripId.isNotEmpty)
         .firstOrNull;
-    final from = '${fromLat.toStringAsFixed(4)},${fromLon.toStringAsFixed(4)}';
-    final to = '${toLat.toStringAsFixed(4)},${toLon.toStringAsFixed(4)}';
+    final from = coordKey(fromLat, fromLon, decimals: _identityDecimals);
+    final to = coordKey(toLat, toLon, decimals: _identityDecimals);
     final departure = itinerary.startTime.toUtc().toIso8601String();
     return '$from>$to@$departure#${firstTripId ?? 'walk'}';
   }

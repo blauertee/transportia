@@ -99,6 +99,18 @@ class TransitPlace {
   /// Best known departure, preferring real-time over scheduled.
   DateTime? get effectiveDeparture => departure ?? scheduledDeparture;
 
+  /// The one time that matters at this stop: when the vehicle leaves, or when
+  /// it arrives if it never leaves again.
+  ///
+  /// Distinct from [effectiveArrival], which picks between real-time and
+  /// scheduled for the *same* event. This picks *which event*.
+  DateTime? get timeAtStop => departure ?? arrival;
+
+  /// [timeAtStop] read from the far end: at a terminus the arrival is the
+  /// moment that matters, and a departure — if the feed gives one at all — is
+  /// the vehicle starting its next run.
+  DateTime? get timeAtTerminus => arrival ?? departure;
+
   /// Delay against the scheduled departure, or null when either is unknown.
   Duration? get departureDelay =>
       (departure == null || scheduledDeparture == null)

@@ -6,6 +6,7 @@ import '../api/endpoints/map_endpoint.dart';
 import '../api/transitous_api_exception.dart';
 import '../models/transitous/place.dart';
 import '../models/transitous/trip_segment.dart';
+import '../utils/geo_utils.dart';
 
 class TransitousMapServiceException implements Exception {
   TransitousMapServiceException(this.message);
@@ -39,7 +40,7 @@ class MapStop {
   factory MapStop.fromPlace(TransitPlace place) {
     final stopId = place.stopId;
     final id = (stopId == null || stopId.isEmpty)
-        ? 'stop-${place.lat.toStringAsFixed(6)}-${place.lon.toStringAsFixed(6)}'
+        ? 'stop-${coordKey(place.lat, place.lon, separator: '-')}'
         : stopId;
     return MapStop(
       id: id,

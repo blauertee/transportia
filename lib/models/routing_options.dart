@@ -422,10 +422,22 @@ class RoutingOptions {
   static List<TransitMode> _atLeastWalking(List<TransitMode> modes) =>
       modes.isEmpty ? const [TransitMode.walk] : modes;
 
+  /// Below this much difference in km/h the value is the default, allowing
+  /// for the rounding a slider does on the way there and back.
+  static const double _speedEqualityToleranceKmh = 0.05;
+
+  static const double _kmhPerMetrePerSecond = 3.6;
+
+  /// Millimetres per second is as fine as the wire needs; more digits only
+  /// make two identical requests look different.
+  static const int _speedWireDecimals = 3;
+
   /// km/h to m/s, or null when the value is the server's own default.
   static double? _msFrom(double kmh, double defaultKmh) {
-    if ((kmh - defaultKmh).abs() < 0.05) return null;
-    return double.parse((kmh / 3.6).toStringAsFixed(3));
+    if ((kmh - defaultKmh).abs() < _speedEqualityToleranceKmh) return null;
+    return double.parse(
+      (kmh / _kmhPerMetrePerSecond).toStringAsFixed(_speedWireDecimals),
+    );
   }
 
   Map<String, dynamic> toJson() => {

@@ -7,6 +7,7 @@ import '../theme/app_colors.dart';
 import '../widgets/app_icon_header.dart';
 import '../widgets/app_page_scaffold.dart';
 import '../widgets/feature_bullet.dart';
+import '../theme/app_text.dart';
 
 class StatisticsScreen extends StatelessWidget {
   const StatisticsScreen({super.key});
@@ -34,21 +35,12 @@ class StatisticsScreen extends StatelessWidget {
               decoration: BoxDecoration(
                 color: AppColors.black.withValues(alpha: 0.02),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: AppColors.black.withValues(alpha: 0.1),
-                ),
+                border: Border.all(color: AppColors.hairline),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Planned Features:',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.black,
-                    ),
-                  ),
+                  Text('Planned Features:', style: AppText.heading),
                   const SizedBox(height: 16),
                   FeatureBullet(label: 'Total trips and distance traveled'),
                   const SizedBox(height: 12),

@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../theme/app_colors.dart';
 import 'pressable_highlight.dart';
+import '../theme/app_text.dart';
 
 class BottomOverlayCard extends StatefulWidget {
   const BottomOverlayCard({
@@ -94,16 +95,7 @@ class _BottomOverlayCardState extends State<BottomOverlayCard> {
               Row(
                 children: [
                   if (widget.title != null)
-                    Expanded(
-                      child: Text(
-                        widget.title!,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.black,
-                        ),
-                      ),
-                    )
+                    Expanded(child: Text(widget.title!, style: AppText.heading))
                   else
                     const Spacer(),
                   if (widget.showClose)

@@ -26,7 +26,7 @@ class SelectableIconCard extends StatelessWidget {
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: selected ? accent.withValues(alpha: 0.12) : AppColors.white,
+          color: selected ? AppColors.accentWash(accent) : AppColors.white,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: selected ? accent : const Color(0x14000000),

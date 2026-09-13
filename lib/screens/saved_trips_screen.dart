@@ -15,6 +15,8 @@ import '../widgets/edit_saved_trip_overlay.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/saved_trip_card.dart';
 import 'itinerary_detail_screen.dart';
+import '../theme/app_text.dart';
+import '../widgets/icon_badge.dart';
 
 /// The full list of kept connections, split into what is still ahead and
 /// what has already happened.
@@ -138,11 +140,7 @@ class _SavedTripsScreenState extends State<SavedTripsScreen> {
           child: Text(
             'Tap a trip to open it. Long press to rename or remove.',
             textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              color: AppColors.black.withValues(alpha: 0.4),
-            ),
+            style: AppText.subtitle,
           ),
         ),
       ],
@@ -176,15 +174,13 @@ class _SavedTripsScreenState extends State<SavedTripsScreen> {
     return Center(
       child: EmptyState(
         padding: const EdgeInsets.symmetric(horizontal: 32),
-        icon: Container(
-          width: 56,
-          height: 56,
-          decoration: BoxDecoration(
-            color: accent.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          alignment: Alignment.center,
-          child: Icon(LucideIcons.bookmark, size: 28, color: accent),
+        icon: IconBadge(
+          icon: LucideIcons.bookmark,
+          size: 56,
+          iconSize: 28,
+          backgroundColor: AppColors.accentWash(accent),
+          iconColor: accent,
+          borderRadius: BorderRadius.circular(16),
         ),
         title: 'No saved trips yet',
         subtitle:

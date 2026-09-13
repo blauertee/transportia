@@ -12,6 +12,8 @@ import '../utils/duration_formatter.dart';
 import '../utils/leg_helper.dart';
 import '../utils/time_utils.dart';
 import 'custom_card.dart';
+import 'icon_badge.dart';
+import 'route_badge_pill.dart';
 
 /// One entry in a list of saved trips.
 ///
@@ -88,15 +90,13 @@ class _SavedTripCardState extends State<SavedTripCard> {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    alignment: Alignment.center,
-                    child: Icon(LucideIcons.bookmark, size: 18, color: accent),
+                  IconBadge(
+                    icon: LucideIcons.bookmark,
+                    size: 36,
+                    iconSize: 18,
+                    backgroundColor: AppColors.accentWash(accent),
+                    iconColor: accent,
+                    borderRadius: BorderRadius.circular(10),
                   ),
                   const SizedBox(width: 12),
                   Expanded(child: _routeSummary(trip)),
@@ -321,25 +321,13 @@ class _LegBadges extends StatelessWidget {
 
   Widget _badge(BuildContext context, Leg leg) {
     final routeColor = parseHexColor(leg.routeColor);
-    final background = routeColor ?? AppColors.accentOf(context);
-    final label =
-        parseHexColor(leg.routeTextColor) ??
-        (routeColor == null ? AppColors.solidWhite : AppColors.black);
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        leg.displayName!,
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          color: label,
-        ),
-      ),
+    return RouteBadgePill(
+      label: leg.displayName!,
+      background: routeColor ?? AppColors.accentOf(context),
+      foreground:
+          parseHexColor(leg.routeTextColor) ??
+          (routeColor == null ? AppColors.solidWhite : AppColors.black),
     );
   }
 }

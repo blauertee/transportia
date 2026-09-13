@@ -20,6 +20,7 @@ import 'transit_options/transit_options_backend.dart';
 import 'transit_options/transit_options_routing.dart';
 import 'transit_options/transit_options_via_stops.dart';
 import '../widgets/search/transit_section.dart';
+import '../widgets/options/selectable_tick.dart';
 import '../widgets/options/value_controls.dart';
 
 class TransitOptionsScreen extends StatefulWidget {
@@ -84,7 +85,7 @@ class _TransitOptionsScreenState extends State<TransitOptionsScreen> {
                 'What every new search starts from. To change one journey, '
                 'use the options on the search screen.',
             iconColor: accent,
-            backgroundColor: accent.withValues(alpha: 0.12),
+            backgroundColor: AppColors.accentWash(accent),
           ),
           const SizedBox(height: 28),
           // Everything below reads _options, so waiting avoids showing
@@ -201,7 +202,7 @@ class _TransitOptionsScreenState extends State<TransitOptionsScreen> {
     runSpacing: 8,
     children: [
       for (final mode in modes)
-        _ExtraModeTick(
+        SelectableTick.large(
           label: TransitModeGroup.modeLabel(mode),
           selected: _selection.has(mode),
           onPressed: () => _applySelection(_selection.toggleMode(mode)),
@@ -354,49 +355,3 @@ class _TransitOptionsScreenState extends State<TransitOptionsScreen> {
 
 /// One of the less common modes, as a tick rather than a card: a grid of
 /// eleven cards would bury the four that matter.
-class _ExtraModeTick extends StatelessWidget {
-  const _ExtraModeTick({
-    required this.label,
-    required this.selected,
-    required this.onPressed,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = AppColors.accentOf(context);
-    return Semantics(
-      button: true,
-      selected: selected,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onPressed,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 140),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: selected
-                ? accent.withValues(alpha: 0.13)
-                : const Color(0x00000000),
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(
-              color: selected
-                  ? accent
-                  : AppColors.black.withValues(alpha: 0.14),
-            ),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              color: selected ? accent : AppColors.black,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}

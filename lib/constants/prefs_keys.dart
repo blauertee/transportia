@@ -1,7 +1,11 @@
 class PrefsKeys {
   const PrefsKeys._();
 
-  static const String welcomeSeen = 'welcome_seen_v1';
+  /// App version that last wrote this storage. Absent on a 1.0.3 install and on
+  /// a fresh one; `lib/migrations/` tells the two apart.
+  static const String storageVersion = 'storage_version';
+
+  static const String welcomeSeen = 'welcome_seen';
 
   static const String accentColor = 'accent_color';
   static const String mapStyle = 'map_style';
@@ -26,17 +30,18 @@ class PrefsKeys {
 
   static const String favoritePlaces = 'favorite_places';
   static const String recentTrips = 'recent_trips';
-  static const String savedTrips = 'saved_trips_v1';
-  static const String savedPlacesSearch = 'saved_places_search_v1';
-  static const String savedPlacesTimetable = 'saved_places_timetable_v1';
+  static const String savedTrips = 'saved_trips';
+  static const String savedPlacesSearch = 'saved_places_search';
+  static const String savedPlacesTimetable = 'saved_places_timetable';
 
   static const String transitousHost = 'transitous_host';
   static const String transitousApiVersion = 'transitous_api_version';
 
-  /// All routing preferences, JSON-encoded. Supersedes the three keys below,
-  /// which are still read once to migrate existing settings.
-  static const String routingOptions = 'routing_options_v1';
+  /// All routing preferences, JSON-encoded.
+  static const String routingOptions = 'routing_options';
 
+  /// How 1.0.3 stored the same settings. Read once by the 1.0.3 migration, then
+  /// removed; nothing else touches them.
   static const String transitWalkingSpeed = 'transit_walking_speed';
   static const String transitTransferBuffer = 'transit_transfer_buffer';
   static const String transitSelectedModes = 'transit_selected_modes';

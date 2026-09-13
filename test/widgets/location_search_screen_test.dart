@@ -15,11 +15,15 @@ FavoritePlace _favourite({
   String type = 'STOP',
   double lat = 52.5,
   double lon = 13.4,
+  // A stop is only offered when its feed id is known, so the default fixture
+  // carries one; pass null to model a favourite kept before ids were stored.
+  String? stopId = 'de-DELFI_de:11000:900100003',
 }) => FavoritePlace(
   id: id,
   name: name,
   label: label,
   type: type,
+  stopId: type.toUpperCase() == 'STOP' ? stopId : null,
   lat: lat,
   lon: lon,
   addedAt: DateTime.utc(2026, 1, 1),
@@ -195,6 +199,7 @@ void main() {
             type: 'STOP',
             lat: 52.5,
             lon: 13.46,
+            stopId: 'de-DELFI_de:11000:900120005',
             importance: SavedPlacesService.initialImportance,
           ),
           SavedPlace(

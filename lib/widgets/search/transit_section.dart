@@ -4,8 +4,8 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../models/routing_options.dart';
 import '../../models/transit_mode_group.dart';
 import '../../models/transitous/enums.dart';
-import '../../theme/app_colors.dart';
 import '../options/icon_controls.dart';
+import '../options/selectable_tick.dart';
 
 /// The icon each transport group shows.
 const Map<TransitModeGroup, IconData> transitGroupIcons = {
@@ -133,34 +133,24 @@ class TransitSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         for (final group in TransitModeGroup.values) ...[
-          _listHeading(group.label),
+          OptionGroupHeading(group.label),
           const SizedBox(height: 6),
           _tickWrap(group.modes),
           const SizedBox(height: 10),
         ],
-        _listHeading('Other'),
+        OptionGroupHeading('Other'),
         const SizedBox(height: 6),
         _tickWrap(TransitModeGroup.extras),
       ],
     );
   }
 
-  Widget _listHeading(String text) => Text(
-    text.toUpperCase(),
-    style: TextStyle(
-      fontSize: 10.5,
-      fontWeight: FontWeight.w700,
-      letterSpacing: 0.7,
-      color: AppColors.black.withValues(alpha: 0.45),
-    ),
-  );
-
   Widget _tickWrap(List<TransitMode> modes) => Wrap(
     spacing: 6,
     runSpacing: 6,
     children: [
       for (final mode in modes)
-        _ModeTick(
+        SelectableTick(
           label: TransitModeGroup.modeLabel(mode),
           selected: _selection.has(mode),
           onPressed: () => onChanged(
@@ -266,73 +256,10 @@ class TransitSection extends StatelessWidget {
           onChanged: (value) =>
               onChanged(options.withTransfersSliderValue(value.round())),
         ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 2),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _scaleLabel('0'),
-              _scaleLabel('${RoutingOptions.maxTransferChoice}'),
-              _scaleLabel('Unlimited'),
-            ],
-          ),
+        SliderScaleLabels(
+          labels: ['0', '${RoutingOptions.maxTransferChoice}', 'Unlimited'],
         ),
       ],
-    );
-  }
-
-  Widget _scaleLabel(String text) => Text(
-    text,
-    style: TextStyle(
-      fontSize: 10.5,
-      color: AppColors.black.withValues(alpha: 0.45),
-    ),
-  );
-}
-
-class _ModeTick extends StatelessWidget {
-  const _ModeTick({
-    required this.label,
-    required this.selected,
-    required this.onPressed,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = AppColors.accentOf(context);
-    return Semantics(
-      button: true,
-      selected: selected,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onPressed,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 140),
-          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
-          decoration: BoxDecoration(
-            color: selected
-                ? accent.withValues(alpha: 0.13)
-                : const Color(0x00000000),
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(
-              color: selected
-                  ? accent
-                  : AppColors.black.withValues(alpha: 0.12),
-            ),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              color: selected ? accent : AppColors.black,
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

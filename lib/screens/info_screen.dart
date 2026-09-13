@@ -12,6 +12,7 @@ import '../widgets/app_page_scaffold.dart';
 import '../widgets/custom_card.dart';
 import '../widgets/section_title.dart';
 import '../widgets/icon_badge.dart';
+import '../theme/app_text.dart';
 
 class InfoScreen extends StatelessWidget {
   const InfoScreen({super.key});
@@ -71,10 +72,7 @@ class InfoScreen extends StatelessWidget {
               const SizedBox(height: 12),
               Text(
                 '$appName is built with the help of amazing open-source projects and APIs:',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: AppColors.black.withValues(alpha: 0.5),
-                ),
+                style: AppText.bodyMuted,
               ),
               const SizedBox(height: 12),
               _buildCreditItem(
@@ -151,14 +149,7 @@ class InfoScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.black,
-                    ),
-                  ),
+                  Text(title, style: AppText.listTitle),
                   const SizedBox(height: 2),
                   Text(
                     value,
@@ -210,14 +201,7 @@ class InfoScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  name,
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.black,
-                  ),
-                ),
+                Text(name, style: AppText.listTitle),
                 const SizedBox(height: 2),
                 Text(
                   description,

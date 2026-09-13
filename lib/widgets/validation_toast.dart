@@ -95,7 +95,7 @@ class _ToastCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.white.withValues(alpha: 0.93),
         borderRadius: borderRadius,
-        border: Border.all(color: AppColors.black.withValues(alpha: 0.1)),
+        border: Border.all(color: AppColors.hairline),
         boxShadow: const [
           BoxShadow(
             color: Color(0x33000000),

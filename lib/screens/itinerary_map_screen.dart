@@ -18,6 +18,7 @@ import '../utils/polyline_utils.dart';
 import '../utils/time_utils.dart';
 import '../widgets/custom_app_bar.dart';
 import '../widgets/stop_departures_sheet.dart';
+import '../theme/app_text.dart';
 
 class ItineraryMapScreen extends StatefulWidget {
   final Itinerary itinerary;
@@ -353,8 +354,7 @@ class _ItineraryMapScreenState extends State<ItineraryMapScreen> {
   }
 
   void _openStopDeparturesSheet(_RouteStop stop) {
-    final referenceTime =
-        stop.departure ?? stop.arrival ?? DateTime.now().toUtc();
+    final referenceTime = stop.timeAtStop ?? DateTime.now().toUtc();
     setState(() => _selectedStopPopup = null);
 
     showGeneralDialog<void>(
@@ -799,14 +799,7 @@ class _JourneySummaryCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'Journey overview',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: AppColors.black,
-            ),
-          ),
+          Text('Journey overview', style: AppText.bodyStrong),
           const SizedBox(height: 12),
           Row(
             children: [
@@ -824,11 +817,7 @@ class _JourneySummaryCard extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       formatDuration(itinerary.duration),
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.black,
-                      ),
+                      style: AppText.bodyStrong,
                     ),
                   ],
                 ),
@@ -919,10 +908,7 @@ class _StopInfoPopup extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     'No timetable information for this stop.',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppColors.black.withValues(alpha: 0.5),
-                    ),
+                    style: AppText.caption,
                   ),
                 ],
                 if (stop.stopId != null) ...[
@@ -1039,6 +1025,10 @@ class _RouteStop {
   final DateTime? departure;
   final DateTime? scheduledArrival;
   final DateTime? scheduledDeparture;
+
+  /// The one time that matters at this stop: when the vehicle leaves, or
+  /// when it arrives if it never leaves again.
+  DateTime? get timeAtStop => departure ?? arrival;
 }
 
 class _LegCarouselCard extends StatelessWidget {
@@ -1077,11 +1067,7 @@ class _LegCarouselCard extends StatelessWidget {
             subtitle,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              color: AppColors.black.withValues(alpha: 0.4),
-            ),
+            style: AppText.subtitle,
           ),
           const SizedBox(height: 12),
           _LegStopRow(
@@ -1164,14 +1150,7 @@ class _TransferCarouselCard extends StatelessWidget {
                 ),
               ),
               const Spacer(),
-              Text(
-                formatDuration(leg.duration),
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.black,
-                ),
-              ),
+              Text(formatDuration(leg.duration), style: AppText.bodyStrong),
             ],
           ),
           const SizedBox(height: 8),
@@ -1182,13 +1161,7 @@ class _TransferCarouselCard extends StatelessWidget {
               Expanded(
                 child: Row(
                   children: [
-                    Text(
-                      depTime,
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: AppColors.black.withValues(alpha: 0.5),
-                      ),
-                    ),
+                    Text(depTime, style: AppText.bodyMuted),
                     if (depDelay != null) ...[
                       const SizedBox(width: 6),
                       Text(
@@ -1220,7 +1193,7 @@ class _TransferCarouselCard extends StatelessWidget {
           if (leg.distance != null && leg.distance! > 0) ...[
             const SizedBox(height: 4),
             Text(
-              'Approx. ${(leg.distance! / 1000).toStringAsFixed(2)} km walk',
+              'Approx. ${formatDistanceKm(leg.distance!)} walk',
               style: TextStyle(
                 fontSize: 12,
                 color: AppColors.black.withValues(alpha: 0.6),
@@ -1235,13 +1208,7 @@ class _TransferCarouselCard extends StatelessWidget {
               Expanded(
                 child: Row(
                   children: [
-                    Text(
-                      arrTime,
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: AppColors.black.withValues(alpha: 0.5),
-                      ),
-                    ),
+                    Text(arrTime, style: AppText.bodyMuted),
                     if (arrDelay != null) ...[
                       const SizedBox(width: 6),
                       Text(
@@ -1360,14 +1327,7 @@ class _LegStopRow extends StatelessWidget {
         Text.rich(
           TextSpan(
             children: [
-              TextSpan(
-                text: displayTime,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.black,
-                ),
-              ),
+              TextSpan(text: displayTime, style: AppText.bodyStrong),
               if (delay != null)
                 TextSpan(
                   text: ' ${formatDelay(delay)}',

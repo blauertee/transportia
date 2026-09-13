@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../theme/app_colors.dart';
+import '../../theme/app_text.dart';
 
 /// Value controls shared by the search screen and the defaults editor.
 ///
@@ -31,7 +32,7 @@ class QuickValueCard extends StatelessWidget {
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(vertical: 18),
         decoration: BoxDecoration(
-          color: selected ? accent.withValues(alpha: 0.12) : AppColors.white,
+          color: selected ? AppColors.accentWash(accent) : AppColors.white,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: selected ? accent : const Color(0x14000000),
@@ -199,13 +200,7 @@ class StepperSelectorState extends State<StepperSelector> {
                     ),
                   ),
                   const SizedBox(height: 2),
-                  Text(
-                    widget.label,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppColors.black.withValues(alpha: 0.5),
-                    ),
-                  ),
+                  Text(widget.label, style: AppText.caption),
                 ],
               ),
             ),

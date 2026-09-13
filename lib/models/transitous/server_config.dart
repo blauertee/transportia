@@ -53,9 +53,9 @@ class ServerConfig {
     hasRoutedTransfers: true,
     hasStreetRouting: true,
     maxOneToManySize: 128,
-    maxOneToAllTravelTime: Duration(minutes: 2880),
-    maxPrePostTransitTime: Duration(seconds: 7200),
-    maxDirectTime: Duration(seconds: 21600),
+    maxOneToAllTravelTime: Duration(days: 2),
+    maxPrePostTransitTime: Duration(hours: 2),
+    maxDirectTime: Duration(hours: 6),
     shapesDebugEnabled: false,
   );
 

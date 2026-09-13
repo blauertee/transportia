@@ -11,12 +11,16 @@ import '../../utils/haptics.dart';
 import '../../widgets/custom_card.dart';
 import '../../widgets/section_title.dart';
 import '../../widgets/options/value_controls.dart';
+import '../../theme/app_text.dart';
 
 /// Stops every journey should pass through.
 ///
 /// Only stops can be used: the server matches `via` against a feed-prefixed
 /// stop id and rejects anything else, so addresses and plain coordinates are
 /// filtered out of the suggestions.
+/// How long typing has to pause before a via-stop lookup is sent.
+const Duration _kViaSearchDebounce = Duration(milliseconds: 300);
+
 class TransitOptionsViaStopsCard extends StatefulWidget {
   const TransitOptionsViaStopsCard({
     super.key,
@@ -64,7 +68,7 @@ class _TransitOptionsViaStopsCardState
       return;
     }
     setState(() => _isSearching = true);
-    _debounce = Timer(const Duration(milliseconds: 300), () => _search(query));
+    _debounce = Timer(_kViaSearchDebounce, () => _search(query));
   }
 
   Future<void> _search(String query) async {
@@ -315,11 +319,7 @@ class _ViaStopRow extends StatelessWidget {
                 stop.name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.black,
-                ),
+                style: AppText.listTitle,
               ),
             ),
             GestureDetector(

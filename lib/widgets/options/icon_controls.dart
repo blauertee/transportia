@@ -245,7 +245,7 @@ class _IconPickState extends State<IconPick> {
           height: 40,
           decoration: BoxDecoration(
             color: widget.selected
-                ? accent.withValues(alpha: 0.12)
+                ? AppColors.accentWash(accent)
                 : const Color(0x00000000),
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
@@ -463,4 +463,52 @@ class OptionSlider extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The endpoints and midpoint printed under an [OptionSlider], so a position
+/// on the track can be read without dragging it.
+class SliderScaleLabels extends StatelessWidget {
+  const SliderScaleLabels({super.key, required this.labels});
+
+  final List<String> labels;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          for (final label in labels)
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 10.5,
+                color: AppColors.black.withValues(alpha: 0.45),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The small-caps label over a group of options — a transport group's name, a
+/// street leg's stage. Quiet enough to organise the ticks under it without
+/// competing with them.
+class OptionGroupHeading extends StatelessWidget {
+  const OptionGroupHeading(this.text, {super.key});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Text(
+    text.toUpperCase(),
+    style: TextStyle(
+      fontSize: 10.5,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 0.7,
+      color: AppColors.black.withValues(alpha: 0.45),
+    ),
+  );
 }

@@ -16,6 +16,7 @@ import '../utils/haptics.dart';
 import '../widgets/app_page_scaffold.dart';
 import '../widgets/edit_favorite_overlay.dart';
 import 'favourites_map_screen.dart';
+import '../theme/app_text.dart';
 
 /// Picks a place, full screen.
 ///
@@ -25,6 +26,9 @@ import 'favourites_map_screen.dart';
 ///
 /// Thin on purpose — it is [LocationSearchBody] on a page that pops the
 /// answer. A screen that is itself a place search renders the body directly.
+/// How long typing has to pause before a place lookup is sent.
+const Duration _kSearchDebounce = Duration(milliseconds: 220);
+
 class LocationSearchScreen extends StatelessWidget {
   const LocationSearchScreen({
     super.key,
@@ -171,17 +175,26 @@ class _LocationSearchBodyState extends State<LocationSearchBody> {
 
   /// True when this search can only answer with a timetabled stop.
   ///
-  /// The geocoder is already told, but the two lists below the field were
-  /// not, so a timetable search offered addresses it could not open a
-  /// departure board for. Same predicate the timetable screen uses on its own
-  /// lists — [FavoritePlace.isStation] and the saved place's own type.
+  /// The geocoder is already told, but the two lists below the field were not,
+  /// so a timetable search offered addresses it could not open a departure
+  /// board for.
   bool get _stopsOnly => widget.type?.toUpperCase() == 'STOP';
 
-  List<FavoritePlace> get _offerableFavourites =>
-      _stopsOnly ? _favourites.where((f) => f.isStation).toList() : _favourites;
+  /// Being a station is not enough — a departure board needs the feed's id for
+  /// it, and places kept before the app recorded that have none. Offering one
+  /// would fail the moment it was tapped.
+  List<FavoritePlace> get _offerableFavourites => _stopsOnly
+      ? _favourites.where((f) => f.hasTimetable).toList()
+      : _favourites;
 
   List<SavedPlace> get _offerableRecents => _stopsOnly
-      ? _recents.where((p) => p.type.toUpperCase() == 'STOP').toList()
+      ? _recents
+            .where(
+              (p) =>
+                  p.type.toUpperCase() == 'STOP' &&
+                  (p.stopId?.isNotEmpty ?? false),
+            )
+            .toList()
       : _recents;
 
   String get _query => _controller.text.trim();
@@ -211,7 +224,7 @@ class _LocationSearchBodyState extends State<LocationSearchBody> {
     }
 
     setState(() => _isFetching = true);
-    _debounce = Timer(const Duration(milliseconds: 220), () => _search(query));
+    _debounce = Timer(_kSearchDebounce, () => _search(query));
   }
 
   Future<void> _search(String query) async {
@@ -409,7 +422,7 @@ class _LocationSearchBodyState extends State<LocationSearchBody> {
                 width: 46,
                 height: 46,
                 decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.12),
+                  color: AppColors.accentWash(accent),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: accent.withValues(alpha: 0.35)),
                 ),
@@ -512,27 +525,23 @@ class _LocationSearchBodyState extends State<LocationSearchBody> {
 
   Widget _hint(String text) => Padding(
     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-    child: Text(
-      text,
-      style: TextStyle(
-        fontSize: 14,
-        color: AppColors.black.withValues(alpha: 0.5),
-      ),
-    ),
+    child: Text(text, style: AppText.bodyMuted),
   );
 
   TransitousLocationSuggestion _favouriteToSuggestion(FavoritePlace f) =>
       TransitousLocationSuggestion(
         id: 'fav-${f.id}',
+        stopId: f.stopId,
         name: f.displayName,
         lat: f.lat,
         lon: f.lon,
-        type: 'PLACE',
+        type: f.type,
       );
 
   TransitousLocationSuggestion _savedToSuggestion(SavedPlace place) =>
       TransitousLocationSuggestion(
         id: 'saved-${place.key}',
+        stopId: place.stopId,
         name: place.name,
         lat: place.lat,
         lon: place.lon,
@@ -578,7 +587,7 @@ class _FavouriteRow extends StatelessWidget {
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.12),
+                  color: AppColors.accentWash(accent),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(
@@ -596,11 +605,7 @@ class _FavouriteRow extends StatelessWidget {
                       favourite.displayName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.black,
-                      ),
+                      style: AppText.listTitle,
                     ),
                     // Only once the alias says something the name does not,
                     // so an unrenamed favourite is not printed twice.
@@ -687,11 +692,7 @@ class _ResultRow extends StatelessWidget {
                       title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.black,
-                      ),
+                      style: AppText.listTitle,
                     ),
                     if (subtitle != null && subtitle!.isNotEmpty)
                       Text(

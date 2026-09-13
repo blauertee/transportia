@@ -9,6 +9,17 @@ String formatTime(DateTime? dateTime, {String nullPlaceholder = '-'}) {
   return '$hour:$minute';
 }
 
+/// Whether [a] and [b] fall in the same local wall-clock minute.
+bool isSameMinute(DateTime a, DateTime b) {
+  final aLocal = a.toLocal();
+  final bLocal = b.toLocal();
+  return aLocal.year == bLocal.year &&
+      aLocal.month == bLocal.month &&
+      aLocal.day == bLocal.day &&
+      aLocal.hour == bLocal.hour &&
+      aLocal.minute == bLocal.minute;
+}
+
 Duration? computeDelay(
   DateTime? scheduledTime,
   DateTime actualTime, {

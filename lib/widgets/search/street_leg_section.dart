@@ -5,6 +5,7 @@ import '../../models/routing_options.dart';
 import '../../models/transitous/enums.dart';
 import '../../theme/app_colors.dart';
 import '../options/icon_controls.dart';
+import '../options/selectable_tick.dart';
 
 /// Which street mode a mile can use, and what each is called.
 ///
@@ -32,10 +33,8 @@ const Map<TransitMode, String> mileModeExtras = {
 
 /// The vehicles the Rental icon stands for.
 ///
-/// The icon sets these directly rather than switching rentals on and leaving
-/// the vehicles to a list nobody has opened: an icon that only enables other
-/// buttons says nothing about what it did, and rentals with no vehicle picked
-/// looked identical to rentals with one.
+/// The icon sets these directly rather than only switching rentals on: an icon
+/// that enables other buttons and nothing else says nothing about what it did.
 ///
 /// The same set the defaults editor gives a mile when Rental is ticked there,
 /// so Rental means one thing across both screens.
@@ -207,7 +206,7 @@ class StreetLegSection extends StatelessWidget {
   /// Rentals are exactly the vehicles picked for them: choosing the first one
   /// turns them on, dropping the last turns them off. That is what keeps the
   /// icon honest — it cannot light up over a mile that has no vehicle to
-  /// rent, which is the state that used to look identical to a real pick.
+  /// rent.
   void _applyFormFactors(Iterable<RentalFormFactor> factors) {
     final next = [
       for (final factor in rentalFormFactorLabels.keys)
@@ -308,14 +307,14 @@ class StreetLegSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _heading('Other ways to travel'),
+        OptionGroupHeading('Other ways to travel'),
         const SizedBox(height: 6),
         Wrap(
           spacing: 6,
           runSpacing: 6,
           children: [
             for (final entry in mileModeExtras.entries)
-              _Tick(
+              SelectableTick(
                 label: entry.value,
                 selected: modes.contains(entry.key),
                 onPressed: () => _toggleMode(entry.key),
@@ -323,7 +322,7 @@ class StreetLegSection extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 12),
-        _heading('Shared vehicles'),
+        OptionGroupHeading('Shared vehicles'),
         const SizedBox(height: 6),
         Text(
           formFactors.isEmpty
@@ -340,7 +339,7 @@ class StreetLegSection extends StatelessWidget {
           runSpacing: 6,
           children: [
             for (final entry in rentalFormFactorLabels.entries)
-              _Tick(
+              SelectableTick(
                 label: entry.value,
                 selected: formFactors.contains(entry.key),
                 onPressed: () => _toggleFormFactor(entry.key),
@@ -348,63 +347,6 @@ class StreetLegSection extends StatelessWidget {
           ],
         ),
       ],
-    );
-  }
-
-  Widget _heading(String text) => Text(
-    text.toUpperCase(),
-    style: TextStyle(
-      fontSize: 10.5,
-      fontWeight: FontWeight.w700,
-      letterSpacing: 0.7,
-      color: AppColors.black.withValues(alpha: 0.45),
-    ),
-  );
-}
-
-class _Tick extends StatelessWidget {
-  const _Tick({
-    required this.label,
-    required this.selected,
-    required this.onPressed,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = AppColors.accentOf(context);
-    return Semantics(
-      button: true,
-      selected: selected,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onPressed,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 140),
-          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
-          decoration: BoxDecoration(
-            color: selected
-                ? accent.withValues(alpha: 0.13)
-                : const Color(0x00000000),
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(
-              color: selected
-                  ? accent
-                  : AppColors.black.withValues(alpha: 0.12),
-            ),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              color: selected ? accent : AppColors.black,
-            ),
-          ),
-        ),
-      ),
     );
   }
 }
@@ -435,26 +377,14 @@ class _BudgetSlider extends StatelessWidget {
           onChanged: (value) =>
               onChanged(Duration(minutes: (value / step).round() * step)),
         ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 2),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _scaleLabel(context, '0'),
-              _scaleLabel(context, budgetSummaryText(maxBudget ~/ 2)),
-              _scaleLabel(context, budgetSummaryText(maxBudget)),
-            ],
-          ),
+        SliderScaleLabels(
+          labels: [
+            '0',
+            budgetSummaryText(maxBudget ~/ 2),
+            budgetSummaryText(maxBudget),
+          ],
         ),
       ],
     );
   }
-
-  Widget _scaleLabel(BuildContext context, String text) => Text(
-    text,
-    style: TextStyle(
-      fontSize: 10.5,
-      color: AppColors.black.withValues(alpha: 0.45),
-    ),
-  );
 }

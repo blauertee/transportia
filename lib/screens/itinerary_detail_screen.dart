@@ -30,17 +30,20 @@ import '../utils/journey_colors.dart';
 import '../utils/journey_progress.dart';
 import '../utils/leg_helper.dart';
 import '../utils/time_utils.dart';
+import '../widgets/alert_notice.dart';
 import '../widgets/custom_app_bar.dart';
 import '../widgets/custom_card.dart';
 import '../widgets/journey/spine_node.dart';
 import '../widgets/journey/spine_row.dart';
 import '../widgets/info_chip.dart';
 import '../widgets/last_updated_footer.dart';
+import '../widgets/route_badge_pill.dart';
 import '../widgets/save_trip_button.dart';
 import '../widgets/stop_departures_sheet.dart';
 import 'connection_info_screen.dart';
 import 'itinerary_list_screen.dart';
 import 'itinerary_map_screen.dart';
+import '../theme/app_text.dart';
 
 /// Opens the [StopDeparturesSheet] for a tapped stop. Passed down through
 /// the leg widgets so they don't need to know how the sheet is presented.
@@ -358,6 +361,9 @@ class SpineTracks extends StatelessWidget {
   }
 }
 
+/// How often the "updated N ago" line and the progress fade are redrawn.
+const Duration _kAgoTick = Duration(seconds: 30);
+
 class ItineraryDetailScreen extends StatefulWidget {
   final Itinerary itinerary;
 
@@ -412,7 +418,7 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
     // screen had fetched. `_refreshRealTimeInfo` guards its own re-entry.
     unawaited(_refreshRealTimeInfo());
 
-    _agoTicker = Timer.periodic(const Duration(seconds: 30), (_) {
+    _agoTicker = Timer.periodic(_kAgoTick, (_) {
       if (mounted) setState(() {});
     });
   }
@@ -427,28 +433,12 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
     required String? stopId,
     required String stopName,
     required DateTime referenceTime,
-  }) {
-    if (stopId == null || stopId.isEmpty) return;
-
-    showGeneralDialog<void>(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: 'Stop departures',
-      barrierColor: const Color(0x00000000),
-      transitionDuration: const Duration(milliseconds: 180),
-      pageBuilder: (context, _, __) {
-        return StopDeparturesSheet(
-          stopId: stopId,
-          stopName: stopName,
-          referenceTime: referenceTime,
-          onDismiss: () => Navigator.of(context, rootNavigator: true).pop(),
-        );
-      },
-      transitionBuilder: (context, animation, _, child) {
-        return FadeTransition(opacity: animation, child: child);
-      },
-    );
-  }
+  }) => showStopDeparturesSheet(
+    context,
+    stopId: stopId,
+    stopName: stopName,
+    referenceTime: referenceTime,
+  );
 
   /// Opens the journey map on one leg.
   ///
@@ -668,133 +658,114 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
             ),
             if (savedTripNotice != null) savedTripNotice,
             Expanded(
-              child: Builder(
-                builder: (context) {
-                  final hasTicketInfo = _itinerary.hasTicketInfo;
-                  final ticketInsertIndex = hasTicketInfo ? 1 : 0;
-                  final hasFinishCard = _itinerary.legs.isNotEmpty;
-                  final legsInsertIndex = ticketInsertIndex;
-                  final emptyMessageIndex = displayLegs.isEmpty
-                      ? legsInsertIndex
-                      : -1;
-                  final legsEndIndex =
-                      legsInsertIndex +
-                      (displayLegs.isEmpty ? 1 : displayLegs.length);
-                  final finishInsertIndex = legsEndIndex;
-                  final shareIndex =
-                      finishInsertIndex + (hasFinishCard ? 1 : 0);
-                  final footerIndex = shareIndex + 1;
-                  final totalItems = footerIndex + 1;
-
-                  return CustomScrollView(
-                    physics: const BouncingScrollPhysics(
-                      parent: AlwaysScrollableScrollPhysics(),
-                    ),
-                    slivers: [
-                      CupertinoSliverRefreshControl(
-                        onRefresh: _refreshRealTimeInfo,
-                      ),
-                      SliverPadding(
-                        padding: const EdgeInsets.only(bottom: 16),
-                        sliver: SliverList(
-                          delegate: SliverChildBuilderDelegate((
-                            context,
-                            index,
-                          ) {
-                            if (hasTicketInfo && index == 0) {
-                              return TicketInfoCard(
-                                ticketInfo: _itinerary.ticketInfo,
-                              );
-                            }
-
-                            if (index == emptyMessageIndex) {
-                              return Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Center(
-                                  child: Text(
-                                    'No additional steps required for this journey.',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      color: AppColors.black.withValues(
-                                        alpha: 0.4,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              );
-                            }
-
-                            if (index >= legsInsertIndex &&
-                                index < legsEndIndex) {
-                              final legIndex = index - legsInsertIndex;
-                              final entry = displayLegs[legIndex];
-                              // A node belongs to the leg arriving at it as
-                              // well as the one leaving it, and where those
-                              // times differ you waited there.
-                              final previous = legIndex > 0
-                                  ? displayLegs[legIndex - 1].leg
-                                  : null;
-                              if (entry.isTransfer) {
-                                return TransferLegCard(
-                                  leg: entry.leg,
-                                  previousLeg: previous,
-                                  changeover: changeovers
-                                      .where(
-                                        (c) => identical(c.transfer, entry.leg),
-                                      )
-                                      .firstOrNull,
-                                  openStopSheet: _openStopSheet,
-                                  onShowOnMap: () => _showLegOnMap(legIndex),
-                                  progress: progress,
-                                );
-                              }
-                              return LegDetailsWidget(
-                                leg: entry.leg,
-                                previousLeg: previous,
-                                openStopSheet: _openStopSheet,
-                                onShowOnMap: () => _showLegOnMap(legIndex),
-                                progress: progress,
-                              );
-                            }
-
-                            if (hasFinishCard && index == finishInsertIndex) {
-                              final finishLeg = _itinerary.legs.last;
-                              return FinishLegCard(
-                                leg: finishLeg,
-                                arrivalTime: _itinerary.endTime,
-                                totalDuration: _itinerary.duration,
-                                openStopSheet: _openStopSheet,
-                                progress: progress,
-                              );
-                            }
-
-                            if (index == shareIndex) {
-                              return LoadMoreButton(
-                                onTap: _shareItinerary,
-                                isLoading: _isSharing,
-                                label: 'Share this trip',
-                                icon: LucideIcons.share2,
-                              );
-                            }
-
-                            if (index == footerIndex) {
-                              return LastUpdatedFooter(
-                                lastUpdated: _lastUpdated,
-                              );
-                            }
-
-                            return const SizedBox.shrink();
-                          }, childCount: totalItems),
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
+              child: _buildDetailList(displayLegs, changeovers, progress),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  /// The cards under the overview, in the order they are read.
+  ///
+  /// Each section is a builder rather than a widget so the list stays lazy,
+  /// and the delegate indexes into it rather than reconstructing where each
+  /// card falls from a running count.
+  List<Widget Function()> _buildDetailSections(
+    List<DisplayLegInfo> displayLegs,
+    List<Changeover> changeovers,
+    JourneyProgress progress,
+  ) {
+    return [
+      if (_itinerary.hasTicketInfo)
+        () => TicketInfoCard(ticketInfo: _itinerary.ticketInfo),
+      if (displayLegs.isEmpty)
+        _buildNoStepsMessage
+      else
+        for (int i = 0; i < displayLegs.length; i++)
+          () => _buildLegCard(displayLegs, changeovers, progress, i),
+      if (_itinerary.legs.isNotEmpty)
+        () => FinishLegCard(
+          leg: _itinerary.legs.last,
+          arrivalTime: _itinerary.endTime,
+          totalDuration: _itinerary.duration,
+          openStopSheet: _openStopSheet,
+          progress: progress,
+        ),
+      () => LoadMoreButton(
+        onTap: _shareItinerary,
+        isLoading: _isSharing,
+        label: 'Share this trip',
+        icon: LucideIcons.share2,
+      ),
+      () => LastUpdatedFooter(lastUpdated: _lastUpdated),
+    ];
+  }
+
+  Widget _buildDetailList(
+    List<DisplayLegInfo> displayLegs,
+    List<Changeover> changeovers,
+    JourneyProgress progress,
+  ) {
+    final sections = _buildDetailSections(displayLegs, changeovers, progress);
+    return CustomScrollView(
+      physics: const BouncingScrollPhysics(
+        parent: AlwaysScrollableScrollPhysics(),
+      ),
+      slivers: [
+        CupertinoSliverRefreshControl(onRefresh: _refreshRealTimeInfo),
+        SliverPadding(
+          padding: const EdgeInsets.only(bottom: 16),
+          sliver: SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, index) => sections[index](),
+              childCount: sections.length,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNoStepsMessage() => Padding(
+    padding: const EdgeInsets.all(16),
+    child: Center(
+      child: Text(
+        'No additional steps required for this journey.',
+        style: AppText.bodyFaint,
+      ),
+    ),
+  );
+
+  Widget _buildLegCard(
+    List<DisplayLegInfo> displayLegs,
+    List<Changeover> changeovers,
+    JourneyProgress progress,
+    int legIndex,
+  ) {
+    final entry = displayLegs[legIndex];
+    // A node belongs to the leg arriving at it as well as the one leaving it,
+    // and where those times differ you waited there.
+    final previous = legIndex > 0 ? displayLegs[legIndex - 1].leg : null;
+
+    if (entry.isTransfer) {
+      return TransferLegCard(
+        leg: entry.leg,
+        previousLeg: previous,
+        changeover: changeovers
+            .where((c) => identical(c.transfer, entry.leg))
+            .firstOrNull,
+        openStopSheet: _openStopSheet,
+        onShowOnMap: () => _showLegOnMap(legIndex),
+        progress: progress,
+      );
+    }
+    return LegDetailsWidget(
+      leg: entry.leg,
+      previousLeg: previous,
+      openStopSheet: _openStopSheet,
+      onShowOnMap: () => _showLegOnMap(legIndex),
+      progress: progress,
     );
   }
 
@@ -963,13 +934,7 @@ class JourneyOverviewWidget extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Departure',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AppColors.black.withValues(alpha: 0.5),
-                      ),
-                    ),
+                    Text('Departure', style: AppText.caption),
                     const SizedBox(height: 4),
                     Text(
                       formatTime(itinerary.startTime),
@@ -989,11 +954,7 @@ class JourneyOverviewWidget extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       formatDuration(itinerary.duration),
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.black,
-                      ),
+                      style: AppText.bodyStrong,
                     ),
                   ],
                 ),
@@ -1002,13 +963,7 @@ class JourneyOverviewWidget extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Text(
-                      'Arrival',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AppColors.black.withValues(alpha: 0.5),
-                      ),
-                    ),
+                    Text('Arrival', style: AppText.caption),
                     const SizedBox(height: 4),
                     Text(
                       formatTime(itinerary.endTime),
@@ -1154,14 +1109,7 @@ class _TicketInfoCardState extends State<TicketInfoCard> {
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(
-                    'Ticket information',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.black,
-                    ),
-                  ),
+                  child: Text('Ticket information', style: AppText.bodyStrong),
                 ),
                 Icon(
                   _isExpanded ? LucideIcons.chevronUp : LucideIcons.chevronDown,
@@ -1223,20 +1171,14 @@ class _TicketInfoCardState extends State<TicketInfoCard> {
 
   Widget _buildRouteBadge(RouteBadge badge) {
     final routeColor = parseHexColor(badge.routeColor);
-    final bg = routeColor ?? AppColors.accentOf(context);
-    final txt =
-        parseHexColor(badge.routeTextColor) ??
-        (routeColor == null ? AppColors.solidWhite : AppColors.black);
-    return Container(
+    return RouteBadgePill(
+      label: badge.name,
+      background: routeColor ?? AppColors.accentOf(context),
+      foreground:
+          parseHexColor(badge.routeTextColor) ??
+          (routeColor == null ? AppColors.solidWhite : AppColors.black),
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        badge.name,
-        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: txt),
-      ),
+      fontWeight: FontWeight.w700,
     );
   }
 
@@ -1268,25 +1210,11 @@ class _TicketInfoCardState extends State<TicketInfoCard> {
                     color: AppColors.black.withValues(alpha: 0.8),
                   ),
                 ),
-                if (media.isNotEmpty)
-                  Text(
-                    media,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppColors.black.withValues(alpha: 0.5),
-                    ),
-                  ),
+                if (media.isNotEmpty) Text(media, style: AppText.caption),
               ],
             ),
           ),
-          Text(
-            price,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: AppColors.black,
-            ),
-          ),
+          Text(price, style: AppText.bodyStrong),
         ],
       ),
     );
@@ -1304,7 +1232,7 @@ class LegDetailsWidget extends StatefulWidget {
   ///
   /// A node belongs to two legs at once — one gets in, the other leaves — and
   /// where those times differ you waited there. Without this the row could
-  /// only show the departure, losing a time the old two-row card printed.
+  /// only show the departure.
   final Leg? previousLeg;
 
   /// Where the clock says the traveller has got to, which decides how much of
@@ -1410,8 +1338,7 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
   /// When this leg leaves, and when the one before it got in.
   ///
   /// A node is shared between the leg arriving at it and the leg leaving it.
-  /// Where the two differ you waited there, and both are worth printing —
-  /// dropping either would lose a time the old two-row card showed.
+  /// Where the two differ you waited there, so both are printed.
   SpinePoint get _point => SpinePoint(
     arrival: widget.previousLeg?.endTime,
     scheduledArrival: widget.previousLeg?.scheduledEndTime,
@@ -1488,11 +1415,7 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
               Expanded(
                 child: Text(
                   subtitle,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.black,
-                  ),
+                  style: AppText.bodyStrong,
                   overflow: TextOverflow.ellipsis,
                   maxLines: 1,
                 ),
@@ -1515,10 +1438,7 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
             Expanded(
               child: Text(
                 _buildNoteLine(),
-                style: TextStyle(
-                  fontSize: 13,
-                  color: AppColors.black.withValues(alpha: 0.5),
-                ),
+                style: AppText.footnote,
                 overflow: TextOverflow.ellipsis,
                 maxLines: 1,
               ),
@@ -1569,7 +1489,7 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
 
     final distance = widget.leg.distance;
     if (distance != null && distance > 0) {
-      parts.add('${(distance / 1000).toStringAsFixed(2)} km');
+      parts.add(formatDistanceKm(distance));
     }
 
     final stops = widget.leg.intermediateStops.length;
@@ -1635,7 +1555,7 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
             case final point)
           SpineRow(
             node: SpineDot(
-              color: widget.progress.hasPassed(stop.time)
+              color: widget.progress.hasPassed(stop.timeAtStop)
                   ? _faded(color)
                   : color,
             ),
@@ -1646,7 +1566,7 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
             // its exact anchors: it lands between the two stops the clock
             // falls between.
             railTravelled: widget.progress.fractionBetween(
-              stop.time,
+              stop.timeAtStop,
               index + 1 < stops.length
                   ? (stops[index + 1].arrival ?? stops[index + 1].departure)
                   : widget.leg.endTime,
@@ -1668,7 +1588,7 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
                 : () => widget.openStopSheet(
                     stopId: stop.stopId,
                     stopName: stop.name,
-                    referenceTime: stop.time ?? widget.leg.startTime,
+                    referenceTime: stop.timeAtStop ?? widget.leg.startTime,
                   ),
           ),
     ];
@@ -1732,7 +1652,7 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
       metadata.add(
         InfoChip(
           icon: LucideIcons.ruler,
-          label: '${(widget.leg.distance! / 1000).toStringAsFixed(2)} km',
+          label: formatDistanceKm(widget.leg.distance!),
         ),
       );
     }
@@ -1786,55 +1706,10 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
     return Wrap(spacing: 8, runSpacing: 8, children: metadata);
   }
 
-  Widget _buildAlertWidget(Alert alert) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8.0),
-      padding: const EdgeInsets.all(8.0),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF3CD),
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: const Color(0xFFFFC107)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            LucideIcons.triangleAlert,
-            size: 16,
-            color: const Color(0xFFF57C00),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (alert.headerText != null && alert.headerText!.isNotEmpty)
-                  Text(
-                    alert.headerText!,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.solidBlack,
-                    ),
-                  ),
-                if (alert.descriptionText != null &&
-                    alert.descriptionText!.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    alert.descriptionText!,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppColors.solidBlack.withValues(alpha: 0.8),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget _buildAlertWidget(Alert alert) => Padding(
+    padding: const EdgeInsets.only(bottom: 8.0),
+    child: AlertNotice.compact(alert: alert),
+  );
 
   Duration? get _departureDelay =>
       computeDelay(widget.leg.scheduledStartTime, widget.leg.startTime);
@@ -1855,24 +1730,15 @@ class _LegDetailsWidgetState extends State<LegDetailsWidget> {
       // Sized to its own text. An Align here would take the whole of the
       // width the Row offered it, which put every leg's end station at the
       // same x instead of a fixed margin after its own line number.
-      final badge = Container(
+      final badge = RouteBadgePill(
+        label: widget.leg.displayName!.isNotEmpty
+            ? widget.leg.displayName!
+            : getTransitModeName(widget.leg.mode),
+        background: bg ?? const Color(0x00000000),
+        foreground: txt,
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: bg ?? const Color(0x00000000),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Text(
-          widget.leg.displayName!.isNotEmpty
-              ? widget.leg.displayName!
-              : getTransitModeName(widget.leg.mode),
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: txt,
-          ),
-          overflow: TextOverflow.ellipsis,
-          maxLines: 1,
-        ),
+        fontSize: 16,
+        fontWeight: FontWeight.bold,
       );
       final tripId = widget.leg.tripId;
       if (isWalkLeg || tripId == null || tripId.isEmpty) return badge;
@@ -2044,22 +1910,13 @@ class TransferLegCard extends StatelessWidget {
             ],
             if (_platforms() case final platforms?) ...[
               const SizedBox(height: 3),
-              Text(
-                platforms,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: AppColors.black.withValues(alpha: 0.5),
-                ),
-              ),
+              Text(platforms, style: AppText.footnote),
             ],
             if (leg.distance != null && leg.distance! > 0) ...[
               const SizedBox(height: 3),
               Text(
-                'Approx. ${(leg.distance! / 1000).toStringAsFixed(2)} km walk',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: AppColors.black.withValues(alpha: 0.5),
-                ),
+                'Approx. ${formatDistanceKm(leg.distance!)} walk',
+                style: AppText.footnote,
               ),
             ],
           ],
@@ -2149,10 +2006,7 @@ class FinishLegCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               'Finish · ${formatDuration(totalDuration)} total',
-              style: TextStyle(
-                fontSize: 13,
-                color: AppColors.black.withValues(alpha: 0.5),
-              ),
+              style: AppText.footnote,
             ),
           ],
         ),
@@ -2188,8 +2042,9 @@ class _TimelineStop {
     this.scheduledDeparture,
   });
 
-  /// What the row is keyed on when only one time is wanted.
-  DateTime? get time => departure ?? arrival;
+  /// The one time that matters at this stop: when the vehicle leaves, or
+  /// when it arrives if it never leaves again.
+  DateTime? get timeAtStop => departure ?? arrival;
 }
 
 /// One printable time: what the timetable promised, and how far off it is.

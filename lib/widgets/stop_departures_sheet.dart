@@ -12,7 +12,45 @@ import '../utils/leg_helper.dart';
 import '../utils/time_utils.dart';
 import 'bottom_overlay_card.dart';
 import 'pressable_highlight.dart';
+import 'route_badge_pill.dart';
 import 'skeletons/skeleton_shimmer.dart';
+import '../theme/app_text.dart';
+
+/// How long the sheet takes to fade in and out.
+const Duration _kStopSheetFadeDuration = Duration(milliseconds: 180);
+
+/// Fully transparent, so the sheet floats over the screen it was opened from
+/// rather than dimming it.
+const Color _kStopSheetBarrierColor = Color(0x00000000);
+
+/// Shows [StopDeparturesSheet] over the current screen.
+///
+/// Does nothing when [stopId] is missing, so callers can hand it a tapped
+/// place without first checking whether that place is a real stop.
+void showStopDeparturesSheet(
+  BuildContext context, {
+  required String? stopId,
+  required String stopName,
+  required DateTime referenceTime,
+}) {
+  if (stopId == null || stopId.isEmpty) return;
+
+  showGeneralDialog<void>(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: 'Stop departures',
+    barrierColor: _kStopSheetBarrierColor,
+    transitionDuration: _kStopSheetFadeDuration,
+    pageBuilder: (context, _, __) => StopDeparturesSheet(
+      stopId: stopId,
+      stopName: stopName,
+      referenceTime: referenceTime,
+      onDismiss: () => Navigator.of(context, rootNavigator: true).pop(),
+    ),
+    transitionBuilder: (context, animation, _, child) =>
+        FadeTransition(opacity: animation, child: child),
+  );
+}
 
 /// Bottom sheet shown when a stop in the itinerary (or on the map) is
 /// tapped. Shows a live list of the stop's upcoming departures. Tolerant of
@@ -162,13 +200,7 @@ class _EmptyNote extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 16),
-      child: Text(
-        message,
-        style: TextStyle(
-          fontSize: 14,
-          color: AppColors.black.withValues(alpha: 0.5),
-        ),
-      ),
+      child: Text(message, style: AppText.bodyMuted),
     );
   }
 }
@@ -206,8 +238,10 @@ class _DepartureTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final place = stopTime.place;
     final badgeColor = parseHexColorOrAccent(context, stopTime.routeColor);
-    final badgeTextColor =
-        parseHexColor(stopTime.routeTextColor) ?? AppColors.solidWhite;
+    final badgeTextColor = parseHexColorOr(
+      stopTime.routeTextColor,
+      AppColors.solidWhite,
+    );
     final departure = place.scheduledDeparture ?? place.departure;
     final actualDeparture = place.departure;
     final delay = (departure != null && actualDeparture != null)
@@ -231,35 +265,21 @@ class _DepartureTile extends StatelessWidget {
             ),
             const SizedBox(width: 10),
             if (stopTime.displayName.isNotEmpty) ...[
-              Container(
-                constraints: const BoxConstraints(minWidth: 30),
+              RouteBadgePill(
+                label: stopTime.displayName,
+                background: badgeColor,
+                foreground: badgeTextColor,
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                decoration: BoxDecoration(
-                  color: badgeColor,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  stopTime.displayName,
-                  style: TextStyle(
-                    color: badgeTextColor,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                  ),
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                minWidth: RouteBadgePill.stackedMinWidth,
               ),
               const SizedBox(width: 10),
             ],
             Expanded(
               child: Text(
                 stopTime.headsign,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.black,
-                ),
+                style: AppText.bodyStrong,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -270,11 +290,7 @@ class _DepartureTile extends StatelessWidget {
               children: [
                 Text(
                   formatTime(departure, nullPlaceholder: '--:--'),
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.black,
-                  ),
+                  style: AppText.bodyStrong,
                 ),
                 if (delay != null)
                   Text(

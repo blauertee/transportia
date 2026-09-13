@@ -4,6 +4,7 @@ import '../api/endpoints/geocode_endpoint.dart';
 import '../api/transitous_api_exception.dart';
 import '../models/transitous/enums.dart';
 import '../models/transitous/match.dart';
+import '../utils/geo_utils.dart';
 
 class TransitousGeocodeException implements Exception {
   TransitousGeocodeException(this.message, [this.cause]);
@@ -26,12 +27,25 @@ class TransitousLocationSuggestion {
     required this.lat,
     required this.lon,
     required this.type,
+    this.stopId,
     this.country,
     this.defaultArea,
     this.match,
   });
 
+  /// Identity for display and de-duplication only.
+  ///
+  /// Every source mints its own — the geocoder falls back to a coordinate when
+  /// a match has no id, and favourites, recents, map picks and history all
+  /// prefix their own. Never send it to the API; use [stopId].
   final String id;
+
+  /// The feed's id for this stop, e.g. `de-DELFI_de:11000:900100003`.
+  ///
+  /// Null unless the place is a stop the server named. Only a suggestion with
+  /// one can answer a departure board.
+  final String? stopId;
+
   final String name;
   final double lat;
   final double lon;
@@ -44,8 +58,13 @@ class TransitousLocationSuggestion {
 
   LatLng get latLng => LatLng(lat, lon);
 
+  /// One decimal is ~10 km: two results with the same name that close are
+  /// the same place under two spellings, not two places.
+  static const int _dedupeDecimals = 1;
+
   String get dedupeKey =>
-      '${name.toLowerCase()}|${lat.toStringAsFixed(1)}|${lon.toStringAsFixed(1)}';
+      '${name.toLowerCase()}|'
+      '${coordKey(lat, lon, decimals: _dedupeDecimals, separator: '|')}';
 
   String get subtitle {
     final pieces = <String>[];
@@ -69,8 +88,7 @@ class TransitousLocationSuggestion {
   factory TransitousLocationSuggestion.fromLatLon(LatLng latLng) {
     return TransitousLocationSuggestion(
       id: _fallbackId(latLng.latitude, latLng.longitude),
-      name:
-          '${latLng.latitude.toStringAsFixed(6)}, ${latLng.longitude.toStringAsFixed(6)}',
+      name: coordLabel(latLng.latitude, latLng.longitude, decimals: 6),
       lat: latLng.latitude,
       lon: latLng.longitude,
       type: 'COORDINATE',
@@ -81,12 +99,18 @@ class TransitousLocationSuggestion {
     if (match.name.isEmpty) {
       throw TransitousGeocodeException('Incomplete suggestion payload');
     }
+    final type = match.type?.wireName ?? 'STOP';
     return TransitousLocationSuggestion(
       id: match.id.isEmpty ? _fallbackId(match.lat, match.lon) : match.id,
+      // Only a named stop gets one: an address or a coordinate has an id the
+      // geocoder invented, which /stoptimes rejects.
+      stopId: type.toUpperCase() == 'STOP' && match.id.isNotEmpty
+          ? match.id
+          : null,
       name: match.name,
       lat: match.lat,
       lon: match.lon,
-      type: match.type?.wireName ?? 'STOP',
+      type: type,
       country: match.country,
       defaultArea: _defaultAreaOf(match),
       match: match,

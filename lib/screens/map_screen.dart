@@ -11,7 +11,6 @@ import 'package:maplibre_gl/maplibre_gl.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:timelines_plus/timelines_plus.dart';
 import '../animations/curves.dart';
 import '../constants/prefs_keys.dart';
 import '../providers/theme_provider.dart';
@@ -19,7 +18,6 @@ import '../models/route_field_kind.dart';
 import '../models/routing_options.dart';
 import '../models/transitous/server_config.dart';
 import '../models/itinerary.dart';
-import '../models/journey_stop.dart';
 import '../models/my_location.dart';
 import '../models/saved_place.dart';
 import '../models/stop_time.dart';
@@ -43,7 +41,6 @@ import '../services/transitous_geocode_service.dart';
 import '../services/trip_details_service.dart';
 import '../theme/app_colors.dart';
 import '../utils/color_utils.dart';
-import '../utils/duration_formatter.dart';
 import '../utils/geo_utils.dart';
 import '../utils/haptics.dart';
 import '../utils/custom_page_route.dart';
@@ -51,10 +48,8 @@ import '../utils/leg_helper.dart';
 import '../utils/map_marker_utils.dart';
 import '../utils/polyline_utils.dart';
 import '../utils/stop_time_utils.dart';
-import '../utils/journey_utils.dart';
 import '../widgets/custom_card.dart';
 import '../widgets/error_notice.dart';
-import '../widgets/info_chip.dart';
 import '../widgets/app_toggle_switch.dart';
 import '../widgets/pressable_highlight.dart';
 import '../widgets/quick_button_picker_sheet.dart';
@@ -67,10 +62,12 @@ import '../widgets/skeletons/skeleton_card.dart';
 import '../widgets/skeletons/skeleton_shimmer.dart';
 import '../widgets/last_updated_footer.dart';
 import '../widgets/stop_departures_sheet.dart';
-import '../widgets/stop_schedule_row.dart';
-import '../widgets/timeline_indicator_box.dart';
+import '../widgets/journey/trip_details_view.dart';
+import '../widgets/journey/trip_timeline.dart' show StopTapCallback;
+import '../widgets/map/bottom_sheet_chrome.dart';
 import '../widgets/map/long_press_selection_modal.dart';
 import '../widgets/map/stop_selection_modal.dart';
+import '../theme/app_text.dart';
 
 part 'map_screen/map_screen_models.dart';
 part 'map_screen/map_screen_controls.dart';
@@ -103,8 +100,8 @@ class MapScreen extends StatefulWidget {
 class _MapScreenState extends State<MapScreen>
     with SingleTickerProviderStateMixin {
   static const CameraPosition _initCam = CameraPosition(
-    target: LatLng(50.087, 14.420),
-    zoom: 13.0,
+    target: LatLng(kFallbackMapLat, kFallbackMapLon),
+    zoom: kFallbackMapZoom,
     tilt: 0.0,
     bearing: 0.0,
   );
@@ -233,6 +230,16 @@ class _MapScreenState extends State<MapScreen>
   static const double _focusedTransferZoomLevel = 16.5;
   static const double _focusedTransferDistanceThresholdMeters = 80.0;
   static const Duration _mapRefreshDebounce = Duration(milliseconds: 250);
+
+  /// How often vehicle markers are moved along their shapes. Roughly 12fps —
+  /// smooth enough to read as movement, cheap enough to run all the time.
+  static const Duration _vehicleAnimationFrame = Duration(milliseconds: 80);
+
+  /// How often focused-trip times are re-checked against the clock.
+  static const Duration _tripRefreshTick = Duration(seconds: 5);
+
+  /// Gap between pulses of the rumble felt while dragging the sheet.
+  static const Duration _dragRumbleInterval = Duration(milliseconds: 90);
   static const String _kShowStopsPrefKey = PrefsKeys.mapShowStops;
   static const String _kQuickButtonPrefKey = PrefsKeys.mapQuickButton;
   static const String _kShowVehiclesPrefKey = PrefsKeys.mapShowVehicles;
@@ -599,11 +606,11 @@ class _MapScreenState extends State<MapScreen>
     unawaited(_refreshRouteMarkers());
     _vehicleAnimationTimer?.cancel();
     _vehicleAnimationTimer = Timer.periodic(
-      const Duration(milliseconds: 80),
+      _vehicleAnimationFrame,
       (_) => _updateVehiclePositions(),
     );
     _tripRefreshTimer = Timer.periodic(
-      const Duration(seconds: 5),
+      _tripRefreshTick,
       (_) => _handleTripRefreshTick(),
     );
     _scheduleTripRefresh();
@@ -1606,23 +1613,11 @@ class _MapScreenState extends State<MapScreen>
       _showTimeSelectionOverlay = true;
     });
     _notifyOverlayVisibility();
-    showGeneralDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      barrierLabel: 'Time selection',
-      barrierColor: const Color(0x00000000),
-      transitionDuration: const Duration(milliseconds: 180),
-      pageBuilder: (context, _, __) {
-        return TimeSelectionOverlay(
-          currentSelection: _timeSelection,
-          onSelectionChanged: _onTimeSelectionChanged,
-          onDismiss: _closeTimeSelectionOverlay,
-          showDepartArriveToggle: true,
-        );
-      },
-      transitionBuilder: (context, animation, _, child) {
-        return FadeTransition(opacity: animation, child: child);
-      },
+    showTimeSelectionOverlay(
+      context,
+      currentSelection: _timeSelection,
+      onSelectionChanged: _onTimeSelectionChanged,
+      onDismiss: _closeTimeSelectionOverlay,
     ).then((_) {
       if (!mounted) return;
       if (_showTimeSelectionOverlay) {
@@ -1846,42 +1841,19 @@ class _MapScreenState extends State<MapScreen>
                     children: [
                       _isTripFocus
                           ? _TripFocusBottomCard(
-                              onHandleTap: () {
-                                _unfocusInputs();
-                                final target = _isSheetCollapsed
-                                    ? expandedTop
-                                    : collapsedTop;
-                                _animateTo(target, collapsedTop);
-                                _stopDragRumble();
-                              },
-                              onDragStart: () {
-                                _unfocusInputs();
-                                _snapCtrl.stop();
-                                _startDragRumble();
-                              },
-                              onDragUpdate: (dy) {
-                                final newTop = (_sheetTop! + dy).clamp(
-                                  expandedTop,
-                                  collapsedTop,
-                                );
-                                setState(() => _sheetTop = newTop);
-                              },
-                              onDragEnd: (velocityDy) {
-                                final mid = (collapsedTop + expandedTop) / 2;
-                                const vThresh = 700.0;
-                                double target;
-                                if (velocityDy.abs() > vThresh) {
-                                  target = velocityDy > 0
-                                      ? collapsedTop
-                                      : expandedTop;
-                                } else {
-                                  target = (_sheetTop! > mid)
-                                      ? collapsedTop
-                                      : expandedTop;
-                                }
-                                _animateTo(target, collapsedTop);
-                                _stopDragRumble();
-                              },
+                              onHandleTap: () =>
+                                  _toggleSheet(expandedTop, collapsedTop),
+                              onDragStart: _onSheetDragStart,
+                              onDragUpdate: (dy) => _onSheetDragUpdate(
+                                dy,
+                                expandedTop,
+                                collapsedTop,
+                              ),
+                              onDragEnd: (velocityDy) => _onSheetDragEnd(
+                                velocityDy,
+                                expandedTop,
+                                collapsedTop,
+                              ),
                               onBack: _exitTripFocus,
                               itinerary: _focusedItinerary,
                               isLoading: _isTripFocusLoading,
@@ -1893,42 +1865,19 @@ class _MapScreenState extends State<MapScreen>
                             )
                           : _isQuickSettings
                           ? _QuickSettingsBottomCard(
-                              onHandleTap: () {
-                                _unfocusInputs();
-                                final target = _isSheetCollapsed
-                                    ? expandedTop
-                                    : collapsedTop;
-                                _animateTo(target, collapsedTop);
-                                _stopDragRumble();
-                              },
-                              onDragStart: () {
-                                _unfocusInputs();
-                                _snapCtrl.stop();
-                                _startDragRumble();
-                              },
-                              onDragUpdate: (dy) {
-                                final newTop = (_sheetTop! + dy).clamp(
-                                  expandedTop,
-                                  collapsedTop,
-                                );
-                                setState(() => _sheetTop = newTop);
-                              },
-                              onDragEnd: (velocityDy) {
-                                final mid = (collapsedTop + expandedTop) / 2;
-                                const vThresh = 700.0;
-                                double target;
-                                if (velocityDy.abs() > vThresh) {
-                                  target = velocityDy > 0
-                                      ? collapsedTop
-                                      : expandedTop;
-                                } else {
-                                  target = (_sheetTop! > mid)
-                                      ? collapsedTop
-                                      : expandedTop;
-                                }
-                                _animateTo(target, collapsedTop);
-                                _stopDragRumble();
-                              },
+                              onHandleTap: () =>
+                                  _toggleSheet(expandedTop, collapsedTop),
+                              onDragStart: _onSheetDragStart,
+                              onDragUpdate: (dy) => _onSheetDragUpdate(
+                                dy,
+                                expandedTop,
+                                collapsedTop,
+                              ),
+                              onDragEnd: (velocityDy) => _onSheetDragEnd(
+                                velocityDy,
+                                expandedTop,
+                                collapsedTop,
+                              ),
                               onBack: _closeQuickSettings,
                               bottomSpacer: bottomBarHeight,
                               quickButtonAction: _quickButtonAction,
@@ -1948,14 +1897,8 @@ class _MapScreenState extends State<MapScreen>
                           : BottomCard(
                               isCollapsed: _isSheetCollapsed,
                               collapseProgress: progress,
-                              onHandleTap: () {
-                                _unfocusInputs();
-                                final target = _isSheetCollapsed
-                                    ? expandedTop
-                                    : collapsedTop;
-                                _animateTo(target, collapsedTop);
-                                _stopDragRumble();
-                              },
+                              onHandleTap: () =>
+                                  _toggleSheet(expandedTop, collapsedTop),
                               onDragStart: _onSheetDragStart,
                               onDragUpdate: (dy) => _onSheetDragUpdate(
                                 dy,
@@ -2201,34 +2144,61 @@ class _MapScreenState extends State<MapScreen>
   bool _isBottomBarResizeAnimating = false;
   bool _skipAutoCenterOnSnap = false;
 
+  /// Above this drag speed (logical pixels per second) the sheet is being
+  /// flung rather than placed, and follows the flick instead of the finger.
+  static const double _kSheetFlingVelocity = 700.0;
+
+  /// How far from a stop still counts as being on it, so a fling from a stop
+  /// moves off it rather than snapping back.
+  static const double _kSheetStopTolerance = 1.0;
+
   /// Where a drag should settle, given the stops this card has.
   ///
   /// A flick past the velocity threshold moves one stop in that direction, so
   /// a hard swipe from the middle does not skip the end; anything gentler
   /// settles on whichever stop is nearest.
   double _snapStopFor(double velocityDy, List<double> stops) {
-    const vThresh = 700.0;
     final sorted = [...stops]..sort();
     final current = _sheetTop ?? sorted.first;
 
-    if (velocityDy.abs() > vThresh) {
-      if (velocityDy > 0) {
-        for (final stop in sorted) {
-          if (stop > current + 1) return stop;
-        }
-        return sorted.last;
-      }
-      for (final stop in sorted.reversed) {
-        if (stop < current - 1) return stop;
-      }
-      return sorted.first;
+    if (velocityDy.abs() > _kSheetFlingVelocity) {
+      return _nextStopInFlingDirection(sorted, current, velocityDy > 0);
     }
+    return _nearestStop(sorted, current);
+  }
 
+  /// The first stop past [current] in the flung direction, or the far end when
+  /// there is none.
+  double _nextStopInFlingDirection(
+    List<double> sorted,
+    double current,
+    bool downwards,
+  ) {
+    if (downwards) {
+      for (final stop in sorted) {
+        if (stop > current + _kSheetStopTolerance) return stop;
+      }
+      return sorted.last;
+    }
+    for (final stop in sorted.reversed) {
+      if (stop < current - _kSheetStopTolerance) return stop;
+    }
+    return sorted.first;
+  }
+
+  double _nearestStop(List<double> sorted, double current) {
     var best = sorted.first;
     for (final stop in sorted) {
       if ((stop - current).abs() < (best - current).abs()) best = stop;
     }
     return best;
+  }
+
+  /// Sends the sheet to whichever of its two stops it is not already at.
+  void _toggleSheet(double expandedTop, double collapsedTop) {
+    _unfocusInputs();
+    _animateTo(_isSheetCollapsed ? expandedTop : collapsedTop, collapsedTop);
+    _stopDragRumble();
   }
 
   void _onSheetDragStart() {
@@ -2296,14 +2266,14 @@ class _MapScreenState extends State<MapScreen>
   /// Longer than any real drag, and short enough that a missed stop is a
   /// blip rather than a phone that will not settle.
   ///
-  /// Three call sites have to remember to stop the rumble and any new one
-  /// will too, so the loop bounds itself rather than trusting all of them.
+  /// The loop bounds itself rather than trusting every call site to remember
+  /// to stop it.
   static const Duration _maxDragRumble = Duration(seconds: 4);
 
   void _startDragRumble() {
     _stopDragRumble();
     if (!_hasCustomVibration || !Haptics.isEnabled) return;
-    _dragVibeTimer = Timer.periodic(const Duration(milliseconds: 90), (_) {
+    _dragVibeTimer = Timer.periodic(_dragRumbleInterval, (_) {
       Haptics.dragRumblePulse();
     });
     _dragVibeDeadline = Timer(_maxDragRumble, _stopDragRumble);
@@ -2393,6 +2363,7 @@ class _MapScreenState extends State<MapScreen>
       lat: selection.lat,
       lon: selection.lon,
       type: selection.type,
+      stopId: selection.stopId,
     );
     if (!mounted) return;
     showValidationToast(
@@ -3820,28 +3791,12 @@ class _MapScreenState extends State<MapScreen>
     required String? stopId,
     required String stopName,
     required DateTime referenceTime,
-  }) {
-    if (stopId == null || stopId.isEmpty) return;
-
-    showGeneralDialog<void>(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: 'Stop departures',
-      barrierColor: const Color(0x00000000),
-      transitionDuration: const Duration(milliseconds: 180),
-      pageBuilder: (context, _, __) {
-        return StopDeparturesSheet(
-          stopId: stopId,
-          stopName: stopName,
-          referenceTime: referenceTime,
-          onDismiss: () => Navigator.of(context, rootNavigator: true).pop(),
-        );
-      },
-      transitionBuilder: (context, animation, _, child) {
-        return FadeTransition(opacity: animation, child: child);
-      },
-    );
-  }
+  }) => showStopDeparturesSheet(
+    context,
+    stopId: stopId,
+    stopName: stopName,
+    referenceTime: referenceTime,
+  );
 
   void _openQuickSettings() {
     if (_isQuickSettings) return;
@@ -4062,6 +4017,7 @@ class _MapScreenState extends State<MapScreen>
   TransitousLocationSuggestion _suggestionFromStop(MapStop stop) {
     return TransitousLocationSuggestion(
       id: stop.stopId ?? stop.id,
+      stopId: stop.stopId,
       name: stop.name,
       lat: stop.lat,
       lon: stop.lon,
@@ -4167,31 +4123,15 @@ class _MapScreenState extends State<MapScreen>
   Future<void> _recordSavedPlace(
     TransitousLocationSuggestion suggestion,
   ) async {
-    final name = suggestion.name.trim();
-    if (name.isEmpty) return;
-    final selected = SavedPlace(
-      name: name,
-      type: suggestion.type,
-      lat: suggestion.lat,
-      lon: suggestion.lon,
-      importance: SavedPlace.defaultImportance,
-      city: suggestion.defaultArea,
-      countryCode: suggestion.country,
-    );
-    final updated = SavedPlacesService.applySelection(
-      _savedSearchPlaces,
-      selected,
+    final updated = SavedPlacesService.recordSelection(
+      bucket: SavedPlacesBucket.search,
+      places: _savedSearchPlaces,
+      suggestion: suggestion,
     );
     if (!mounted) return;
     setState(() {
       _savedSearchPlaces = updated;
     });
-    unawaited(
-      SavedPlacesService.savePlaces(
-        bucket: SavedPlacesBucket.search,
-        places: updated,
-      ),
-    );
   }
 
   Future<void> _loadRecentTrips() async {

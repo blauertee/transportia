@@ -26,7 +26,7 @@ class AppIconHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final textColor = context.watch<ThemeProvider>().textColor;
     final accent = iconColor ?? AppColors.accentOf(context);
-    final badgeBackground = backgroundColor ?? accent.withValues(alpha: 0.12);
+    final badgeBackground = backgroundColor ?? AppColors.accentWash(accent);
 
     return Column(
       children: [

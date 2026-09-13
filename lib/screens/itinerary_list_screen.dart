@@ -20,9 +20,15 @@ import '../utils/color_utils.dart';
 import '../utils/duration_formatter.dart';
 import '../utils/time_utils.dart';
 import 'itinerary_detail_screen.dart';
-import '../widgets/load_more_button.dart';
+import '../widgets/bidirectional_paged_list.dart';
+import '../widgets/route_badge_pill.dart';
 import '../widgets/save_trip_button.dart';
 import '../widgets/skeletons/skeleton_list.dart';
+import '../theme/app_text.dart';
+
+/// How often each result's "departs in" countdown is redrawn. A minute is
+/// the resolution the countdown itself is printed at.
+const Duration _kDepartsInTick = Duration(minutes: 1);
 
 class ItineraryListScreen extends StatefulWidget {
   final FutureOr<double> fromLat;
@@ -70,8 +76,10 @@ class _ItineraryListScreenState extends State<ItineraryListScreen> {
   RoutingOptions? _options;
   late final ScrollController _scrollController;
   bool _appliedInitialPreviousOffset = false;
-  static const double _seePreviousScrollOffset = 40.0;
   static const Key _centerKey = ValueKey('itineraries-center');
+
+  /// Breathing room under the last result.
+  static const double _kListBottomSpacing = 16.0;
 
   @override
   void initState() {
@@ -179,9 +187,7 @@ class _ItineraryListScreenState extends State<ItineraryListScreen> {
     if (_previousPageCursor == null) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      if (!_scrollController.hasClients) return;
-      final minExtent = _scrollController.position.minScrollExtent;
-      _scrollController.jumpTo(minExtent + _seePreviousScrollOffset);
+      scrollPastSeePrevious(_scrollController);
       _appliedInitialPreviousOffset = true;
     });
   }
@@ -221,102 +227,45 @@ class _ItineraryListScreenState extends State<ItineraryListScreen> {
                           ),
                         ),
                       )
-                    : Builder(
-                        builder: (context) {
-                          final hasPreviousSlot = _previousPageCursor != null;
-                          final hasNextSlot = _nextPageCursor != null;
-                          final beforeItems = _itineraries.sublist(
-                            0,
-                            _centerIndex,
-                          );
-                          final afterItems = _itineraries.sublist(_centerIndex);
-                          final beforeCount =
-                              beforeItems.length + (hasPreviousSlot ? 1 : 0);
-                          final afterCount =
-                              afterItems.length + (hasNextSlot ? 1 : 0);
-
-                          Widget buildItineraryTile(Itinerary itin) {
-                            return GestureDetector(
-                              onTap: () {
-                                Navigator.of(context).push(
-                                  CustomPageRoute(
-                                    child: ItineraryDetailScreen(
-                                      itinerary: itin,
-                                      fromName: widget.fromSelection?.name,
-                                      toName: widget.toSelection?.name,
-                                    ),
-                                  ),
-                                );
-                              },
-                              child: ItineraryCard(
-                                itinerary: itin,
-                                fromName: widget.fromSelection?.name,
-                                toName: widget.toSelection?.name,
-                              ),
-                            );
-                          }
-
-                          return CustomScrollView(
-                            controller: _scrollController,
-                            center: _centerKey,
-                            slivers: [
-                              SliverList(
-                                // Within a reverse-growth sliver, delegate
-                                // index 0 is adjacent to the center anchor, so
-                                // items must be listed nearest-first with the
-                                // "See previous" button last (i.e. farthest
-                                // away, requiring a scroll up to reach it).
-                                delegate: SliverChildBuilderDelegate((
-                                  context,
-                                  index,
-                                ) {
-                                  if (index < beforeItems.length) {
-                                    final itin =
-                                        beforeItems[beforeItems.length -
-                                            1 -
-                                            index];
-                                    return buildItineraryTile(itin);
-                                  }
-                                  return LoadMoreButton(
-                                    onTap: _loadPrevious,
-                                    isLoading: _isLoadingPrevious,
-                                    label: 'See previous',
-                                    icon: LucideIcons.chevronUp,
-                                  );
-                                }, childCount: beforeCount),
-                              ),
-                              SliverList(
-                                key: _centerKey,
-                                delegate: SliverChildBuilderDelegate((
-                                  context,
-                                  index,
-                                ) {
-                                  if (index < afterItems.length) {
-                                    return buildItineraryTile(
-                                      afterItems[index],
-                                    );
-                                  }
-                                  if (hasNextSlot &&
-                                      index == afterItems.length) {
-                                    return LoadMoreButton(
-                                      onTap: _loadMore,
-                                      isLoading: _isLoadingMore,
-                                    );
-                                  }
-                                  return const SizedBox.shrink();
-                                }, childCount: afterCount),
-                              ),
-                              const SliverToBoxAdapter(
-                                child: SizedBox(height: 16),
-                              ),
-                            ],
-                          );
-                        },
+                    : BidirectionalPagedList<Itinerary>(
+                        controller: _scrollController,
+                        centerKey: _centerKey,
+                        items: _itineraries,
+                        centerIndex: _centerIndex,
+                        itemBuilder: _buildItineraryTile,
+                        hasPrevious: _previousPageCursor != null,
+                        hasNext: _nextPageCursor != null,
+                        isLoadingPrevious: _isLoadingPrevious,
+                        isLoadingNext: _isLoadingMore,
+                        onLoadPrevious: _loadPrevious,
+                        onLoadNext: _loadMore,
+                        trailingExtent: _kListBottomSpacing,
                       ),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildItineraryTile(Itinerary itinerary) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.of(context).push(
+          CustomPageRoute(
+            child: ItineraryDetailScreen(
+              itinerary: itinerary,
+              fromName: widget.fromSelection?.name,
+              toName: widget.toSelection?.name,
+            ),
+          ),
+        );
+      },
+      child: ItineraryCard(
+        itinerary: itinerary,
+        fromName: widget.fromSelection?.name,
+        toName: widget.toSelection?.name,
       ),
     );
   }
@@ -357,7 +306,7 @@ class _ItineraryCardState extends State<ItineraryCard>
   @override
   void initState() {
     super.initState();
-    _departInTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+    _departInTimer = Timer.periodic(_kDepartsInTick, (_) {
       if (mounted) setState(() {});
     });
     _realTimeIconController = AnimationController(
@@ -457,10 +406,7 @@ class _ItineraryCardState extends State<ItineraryCard>
           const SizedBox(height: 8),
           Text(
             '${formatTime(itinerary.startTime)} - ${formatTime(itinerary.endTime)}',
-            style: TextStyle(
-              fontSize: 14,
-              color: AppColors.black.withValues(alpha: 0.5),
-            ),
+            style: AppText.bodyMuted,
           ),
           const SizedBox(height: 8),
           Wrap(
@@ -652,22 +598,14 @@ class LegWidget extends StatelessWidget {
         ),
         const SizedBox(width: 4),
         if (leg.displayName != null)
-          Container(
+          RouteBadgePill(
+            label: leg.displayName!.isNotEmpty
+                ? leg.displayName!
+                : getTransitModeName(leg.mode),
+            background: badgeColor,
+            foreground: labelColor,
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: badgeColor,
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(
-              leg.displayName!.length > 0
-                  ? leg.displayName!
-                  : getTransitModeName(leg.mode),
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: labelColor,
-              ),
-            ),
+            fontSize: 14,
           ),
       ],
     );

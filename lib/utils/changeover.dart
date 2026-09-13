@@ -10,10 +10,9 @@ const Duration kReplanHeadStart = Duration(minutes: 10);
 
 /// One change between two services, seen from both sides.
 ///
-/// The screen used to read a change off the walk leg alone, and a walk carries
-/// no real-time — so a train arriving ten minutes down looked identical to one
-/// on time, and nothing anywhere compared it against the service it was meant
-/// to catch. This holds that comparison, and only that.
+/// A walk carries no real-time of its own, so whether a change still works can
+/// only be answered by the ride arriving and the ride leaving. This holds that
+/// pair, and only that.
 class Changeover {
   const Changeover({required this.transfer, this.arriving, this.departing});
 

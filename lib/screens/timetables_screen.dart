@@ -22,11 +22,14 @@ import '../utils/leg_helper.dart' show getLegIcon;
 import '../utils/stop_time_utils.dart';
 import '../utils/time_utils.dart';
 import '../widgets/buttons/pill_button.dart';
+import '../widgets/error_notice.dart';
+import '../widgets/route_badge_pill.dart';
 import '../widgets/buttons/primary_button.dart';
 import '../widgets/skeletons/skeleton_list.dart';
-import '../widgets/load_more_button.dart';
+import '../widgets/bidirectional_paged_list.dart';
 import '../widgets/time_selection_overlay.dart';
 import '../widgets/validation_toast.dart';
+import '../theme/app_text.dart';
 
 class TimetablesScreen extends StatefulWidget {
   const TimetablesScreen({super.key, this.initialStop});
@@ -52,14 +55,24 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
   List<StopTime>? _stopTimes;
   int _centerIndex = 0;
   bool _isLoadingStopTimes = false;
+
+  /// Why the last load failed, or null. Held rather than toasted so the body
+  /// has something to show instead of falling back to the stop picker.
+  String? _stopTimesError;
+
   String? _nextPageCursor;
   bool _isLoadingMore = false;
   String? _previousPageCursor;
   bool _isLoadingPrevious = false;
   late final ScrollController _resultsScrollController;
   bool _appliedInitialPreviousOffset = false;
-  static const double _seePreviousScrollOffset = 40.0;
   static const Key _centerKey = ValueKey('stop-times-center');
+
+  /// Gutter the result cards sit inside.
+  static const double _kResultsHorizontalPadding = 20.0;
+
+  /// Clearance under the last result for the floating nav bar.
+  static const double _kResultsBottomSpacing = 96.0;
 
   bool get _hasPreviousPage => _previousPageCursor?.isNotEmpty ?? false;
   bool get _hasNextPage => _nextPageCursor?.isNotEmpty ?? false;
@@ -117,10 +130,9 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
 
   /// Before a stop is chosen, this screen *is* the stop search.
   ///
-  /// It used to keep its own read-only field and its own copies of the
-  /// favourites and recents, then push a picker that showed the same two
-  /// lists again. One body, rendered here, is the whole of it — and the
-  /// keyboard stays down, because the lists are what you came for.
+  /// The picker's own body is rendered here rather than pushed, and the
+  /// keyboard stays down, because the favourites and recents are what you
+  /// came for.
   Widget _buildStopSearch() {
     return LocationSearchBody(
       bucket: SavedPlacesBucket.timetable,
@@ -143,31 +155,15 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
   Future<void> _recordSavedPlace(
     TransitousLocationSuggestion suggestion,
   ) async {
-    final name = suggestion.name.trim();
-    if (name.isEmpty) return;
-    final selected = SavedPlace(
-      name: name,
-      type: suggestion.type,
-      lat: suggestion.lat,
-      lon: suggestion.lon,
-      importance: SavedPlace.defaultImportance,
-      city: suggestion.defaultArea,
-      countryCode: suggestion.country,
-    );
-    final updated = SavedPlacesService.applySelection(
-      _savedTimetablePlaces,
-      selected,
+    final updated = SavedPlacesService.recordSelection(
+      bucket: SavedPlacesBucket.timetable,
+      places: _savedTimetablePlaces,
+      suggestion: suggestion,
     );
     if (!mounted) return;
     setState(() {
       _savedTimetablePlaces = updated;
     });
-    unawaited(
-      SavedPlacesService.savePlaces(
-        bucket: SavedPlacesBucket.timetable,
-        places: updated,
-      ),
-    );
   }
 
   void _onFocusChanged() {
@@ -197,23 +193,13 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
     setState(() {
       _showTimeSelectionOverlay = true;
     });
-    showGeneralDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      barrierLabel: 'Time selection',
-      barrierColor: const Color(0x00000000),
-      transitionDuration: const Duration(milliseconds: 180),
-      pageBuilder: (context, _, __) {
-        return TimeSelectionOverlay(
-          currentSelection: _timeSelection,
-          onSelectionChanged: _onTimeSelectionChanged,
-          onDismiss: _closeTimeSelectionOverlay,
-          showDepartArriveToggle: false,
-        );
-      },
-      transitionBuilder: (context, animation, _, child) {
-        return FadeTransition(opacity: animation, child: child);
-      },
+    showTimeSelectionOverlay(
+      context,
+      currentSelection: _timeSelection,
+      onSelectionChanged: _onTimeSelectionChanged,
+      onDismiss: _closeTimeSelectionOverlay,
+      // Timetables ask "departures from when", never "arrivals by when".
+      showDepartArriveToggle: false,
     ).then((_) {
       if (!mounted) return;
       if (_showTimeSelectionOverlay) {
@@ -260,14 +246,15 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
 
   /// Puts the screen back to being the stop search.
   ///
-  /// Clearing used to empty the field and nothing else, so the departures and
-  /// the stop behind them stayed and there was no way back to the lists.
+  /// Everything the chosen stop brought with it goes: the field, the stop
+  /// itself, its departures and the paging through them.
   void _clearStop() {
     _searchFocus.unfocus();
     setState(() {
       _searchController.clear();
       _selectedStop = null;
       _stopTimes = null;
+      _stopTimesError = null;
       _nextPageCursor = null;
       _previousPageCursor = null;
       _isLoadingStopTimes = false;
@@ -276,6 +263,8 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
     });
   }
 
+  /// Picking a stop is the whole question this screen asks, so answering it
+  /// opens the departure board rather than filling a field and waiting.
   void _onSuggestionSelected(TransitousLocationSuggestion suggestion) {
     unawaited(_recordSavedPlace(suggestion));
     setState(() {
@@ -283,6 +272,7 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
       _selectedStop = suggestion;
       _searchFocus.unfocus();
     });
+    unawaited(_onSearch());
   }
 
   Future<void> _onSearch() async {
@@ -293,11 +283,11 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
     }
 
     var selectedStop = _selectedStop;
-    if (selectedStop?.id == null && query.length >= 3) {
+    if (selectedStop?.stopId == null && query.length >= 3) {
       selectedStop = await _resolveStopFromQuery(query);
     }
 
-    final stopId = selectedStop?.id;
+    final stopId = selectedStop?.stopId;
     if (stopId == null) {
       showValidationToast(context, 'Please select a stop from the list');
       return;
@@ -307,6 +297,7 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
 
     setState(() {
       _isLoadingStopTimes = true;
+      _stopTimesError = null;
       _stopTimes = null;
       _nextPageCursor = null;
       _previousPageCursor = null;
@@ -329,7 +320,7 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
       // The stop can have been cleared or swapped while this was in flight,
       // and a late answer would put the departures back over a screen the
       // rider has already left.
-      if (!mounted || _selectedStop?.id != stopId) return;
+      if (!mounted || _selectedStop?.stopId != stopId) return;
 
       setState(() {
         _stopTimes = deduplicateStopTimes(response.stopTimes);
@@ -340,15 +331,17 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
       });
       _maybeApplyInitialPreviousOffset();
     } catch (e) {
-      if (!mounted || _selectedStop?.id != stopId) return;
+      if (!mounted || _selectedStop?.stopId != stopId) return;
 
+      // Recorded rather than toasted: a toast leaves the body with no
+      // departures and nothing to say, so it falls back to the picker and the
+      // rider sees a second search field under the stop they just chose.
       setState(() {
         _isLoadingStopTimes = false;
+        _stopTimesError = 'Failed to load stop times';
         _previousPageCursor = null;
         _isLoadingPrevious = false;
       });
-
-      showValidationToast(context, 'Failed to load stop times');
     }
   }
 
@@ -391,7 +384,7 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
     try {
       final response = await StopTimesService.fetchStopTimes(
         stopId: _selectedStop?.id ?? '',
-        n: 25,
+        n: StopTimesService.defaultPageSize,
         pageCursor: _nextPageCursor,
         startTime: _startTimeParam,
         arriveBy: _timeSelection.isArriveBy,
@@ -433,7 +426,7 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
     try {
       final response = await StopTimesService.fetchStopTimes(
         stopId: _selectedStop?.id ?? '',
-        n: 25,
+        n: StopTimesService.defaultPageSize,
         pageCursor: _previousPageCursor,
         startTime: _startTimeParam,
         arriveBy: _timeSelection.isArriveBy,
@@ -471,11 +464,201 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      if (!_resultsScrollController.hasClients) return;
-      final minExtent = _resultsScrollController.position.minScrollExtent;
-      _resultsScrollController.jumpTo(minExtent + _seePreviousScrollOffset);
+      scrollPastSeePrevious(_resultsScrollController);
       _appliedInitialPreviousOffset = true;
     });
+  }
+
+  /// The screen's title block: what this screen is, above what it shows.
+  Widget _buildHeader(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: AppColors.accentOf(context).withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Icon(
+            LucideIcons.clock,
+            size: 24,
+            color: AppColors.accentOf(context),
+          ),
+        ),
+        const SizedBox(width: 16),
+        // Flexible, or the title and its subtitle claim their natural width
+        // and overflow the row on a narrow screen.
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Timetables',
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.black,
+                  height: 1.1,
+                ),
+              ),
+              SizedBox(height: 4),
+              Text(
+                'Stop departures & arrivals',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                  color: AppColors.black.withValues(alpha: 0.4),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// The chosen stop's search field, the time picker and the search action.
+  ///
+  /// Only once a stop is chosen. Before that this screen is the stop search
+  /// itself, and a second field above the first would be a duplicate of it.
+  Widget _buildStopControls(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        CompositedTransformTarget(
+          link: _searchFieldLink,
+          child: GestureDetector(
+            onTap: () {},
+            child: Container(
+              decoration: BoxDecoration(
+                color: AppColors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppColors.hairline),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x14000000),
+                    blurRadius: 10,
+                    offset: Offset(0, 4),
+                  ),
+                ],
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                children: [
+                  Icon(
+                    LucideIcons.search,
+                    size: 20,
+                    color: AppColors.black.withValues(alpha: 0.4),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: CupertinoTextField(
+                      controller: _searchController,
+                      focusNode: _searchFocus,
+                      // Opens the picker rather than
+                      // typing here: favourites and recents
+                      // need more room than a dropdown.
+                      readOnly: true,
+                      showCursor: false,
+                      onTap: () => _searchFocus.unfocus(),
+                      placeholder: 'Search for a stop...',
+                      placeholderStyle: TextStyle(
+                        color: AppColors.black.withValues(alpha: 0.4),
+                        fontSize: 16,
+                      ),
+                      style: TextStyle(color: AppColors.black, fontSize: 16),
+                      decoration: null,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      cursorColor: AppColors.accentOf(context),
+                      maxLines: 1,
+                      textInputAction: TextInputAction.search,
+                      onSubmitted: (_) => _onSearch(),
+                    ),
+                  ),
+                  if (_searchController.text.isNotEmpty)
+                    GestureDetector(
+                      onTap: _clearStop,
+                      child: Padding(
+                        padding: const EdgeInsets.only(left: 8),
+                        child: Icon(
+                          LucideIcons.x,
+                          size: 20,
+                          color: AppColors.black.withValues(alpha: 0.4),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 12),
+
+        Row(
+          children: [
+            CompositedTransformTarget(
+              link: _timeSelectionLayerLink,
+              child: PillButton(
+                onTapDown: _handleTimeButtonTapDown,
+                onTapCancel: _handleTimeButtonTapCancel,
+                onTap: _handleTimeButtonTap,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(LucideIcons.clock, size: 16, color: AppColors.black),
+                    const SizedBox(width: 8),
+                    Text(
+                      _timeSelection.toDisplayString(),
+                      style: TextStyle(
+                        color: AppColors.black,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const Spacer(),
+            PrimaryButton(
+              onTap: _onSearch,
+              child: const Text(
+                'Search',
+                style: TextStyle(
+                  color: AppColors.solidWhite,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// Shown in place of the departures when a load failed, so the chosen stop
+  /// stays chosen and the failure is something the rider can act on.
+  Widget _buildStopTimesError() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: ErrorNotice(message: _stopTimesError!, onRetry: _onSearch),
+      ),
+    );
+  }
+
+  Widget _buildStopTimeTile(StopTime stopTime) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.of(context).push(
+          CustomPageRoute(child: ConnectionInfoScreen(tripId: stopTime.tripId)),
+        );
+      },
+      child: _StopTimeCard(stopTime: stopTime),
+    );
   }
 
   Widget _buildLoadingSkeleton() {
@@ -520,200 +703,10 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            children: [
-                              Container(
-                                width: 48,
-                                height: 48,
-                                decoration: BoxDecoration(
-                                  color: AppColors.accentOf(
-                                    context,
-                                  ).withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                                child: Icon(
-                                  LucideIcons.clock,
-                                  size: 24,
-                                  color: AppColors.accentOf(context),
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              // Flexible, or the title and its subtitle claim
-                              // their natural width and overflow the row on a
-                              // narrow screen.
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Timetables',
-                                      style: TextStyle(
-                                        fontSize: 28,
-                                        fontWeight: FontWeight.w800,
-                                        color: AppColors.black,
-                                        height: 1.1,
-                                      ),
-                                    ),
-                                    SizedBox(height: 4),
-                                    Text(
-                                      'Stop departures & arrivals',
-                                      style: TextStyle(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w500,
-                                        color: AppColors.black.withValues(
-                                          alpha: 0.4,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
+                          _buildHeader(context),
                           const SizedBox(height: 24),
-
-                          // Only once a stop is chosen. Before that this
-                          // screen is the stop search itself, and a second
-                          // field above the first would be the duplication
-                          // this replaced.
-                          if (_selectedStop != null) ...[
-                            CompositedTransformTarget(
-                              link: _searchFieldLink,
-                              child: GestureDetector(
-                                onTap: () {},
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: AppColors.white,
-                                    borderRadius: BorderRadius.circular(14),
-                                    border: Border.all(
-                                      color: AppColors.black.withValues(
-                                        alpha: 0.1,
-                                      ),
-                                    ),
-                                    boxShadow: const [
-                                      BoxShadow(
-                                        color: Color(0x14000000),
-                                        blurRadius: 10,
-                                        offset: Offset(0, 4),
-                                      ),
-                                    ],
-                                  ),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 8,
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        LucideIcons.search,
-                                        size: 20,
-                                        color: AppColors.black.withValues(
-                                          alpha: 0.4,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: CupertinoTextField(
-                                          controller: _searchController,
-                                          focusNode: _searchFocus,
-                                          // Opens the picker rather than
-                                          // typing here: favourites and recents
-                                          // need more room than a dropdown.
-                                          readOnly: true,
-                                          showCursor: false,
-                                          onTap: () => _searchFocus.unfocus(),
-                                          placeholder: 'Search for a stop...',
-                                          placeholderStyle: TextStyle(
-                                            color: AppColors.black.withValues(
-                                              alpha: 0.4,
-                                            ),
-                                            fontSize: 16,
-                                          ),
-                                          style: TextStyle(
-                                            color: AppColors.black,
-                                            fontSize: 16,
-                                          ),
-                                          decoration: null,
-                                          padding: const EdgeInsets.symmetric(
-                                            vertical: 8,
-                                          ),
-                                          cursorColor: AppColors.accentOf(
-                                            context,
-                                          ),
-                                          maxLines: 1,
-                                          textInputAction:
-                                              TextInputAction.search,
-                                          onSubmitted: (_) => _onSearch(),
-                                        ),
-                                      ),
-                                      if (_searchController.text.isNotEmpty)
-                                        GestureDetector(
-                                          onTap: _clearStop,
-                                          child: Padding(
-                                            padding: const EdgeInsets.only(
-                                              left: 8,
-                                            ),
-                                            child: Icon(
-                                              LucideIcons.x,
-                                              size: 20,
-                                              color: AppColors.black.withValues(
-                                                alpha: 0.4,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-
-                            const SizedBox(height: 12),
-
-                            Row(
-                              children: [
-                                CompositedTransformTarget(
-                                  link: _timeSelectionLayerLink,
-                                  child: PillButton(
-                                    onTapDown: _handleTimeButtonTapDown,
-                                    onTapCancel: _handleTimeButtonTapCancel,
-                                    onTap: _handleTimeButtonTap,
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          LucideIcons.clock,
-                                          size: 16,
-                                          color: AppColors.black,
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          _timeSelection.toDisplayString(),
-                                          style: TextStyle(
-                                            color: AppColors.black,
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                                const Spacer(),
-                                PrimaryButton(
-                                  onTap: _onSearch,
-                                  child: const Text(
-                                    'Search',
-                                    style: TextStyle(
-                                      color: AppColors.solidWhite,
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
+                          if (_selectedStop != null)
+                            _buildStopControls(context),
                         ],
                       ),
                     ),
@@ -721,106 +714,25 @@ class _TimetablesScreenState extends State<TimetablesScreen> {
                     Expanded(
                       child: _isLoadingStopTimes
                           ? _buildLoadingSkeleton()
+                          : _stopTimesError != null
+                          ? _buildStopTimesError()
                           : _stopTimes != null
-                          ? Builder(
-                              builder: (context) {
-                                final hasPreviousSlot = _hasPreviousPage;
-                                final hasNextSlot = _hasNextPage;
-                                final beforeItems = _stopTimes!.sublist(
-                                  0,
-                                  _centerIndex,
-                                );
-                                final afterItems = _stopTimes!.sublist(
-                                  _centerIndex,
-                                );
-                                final beforeCount =
-                                    beforeItems.length +
-                                    (hasPreviousSlot ? 1 : 0);
-                                final afterCount =
-                                    afterItems.length + (hasNextSlot ? 1 : 0);
-
-                                Widget buildStopTimeTile(StopTime stopTime) {
-                                  return GestureDetector(
-                                    onTap: () {
-                                      Navigator.of(context).push(
-                                        CustomPageRoute(
-                                          child: ConnectionInfoScreen(
-                                            tripId: stopTime.tripId,
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                    child: _StopTimeCard(stopTime: stopTime),
-                                  );
-                                }
-
-                                return CustomScrollView(
-                                  controller: _resultsScrollController,
-                                  center: _centerKey,
-                                  slivers: [
-                                    SliverPadding(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 20,
-                                      ),
-                                      // Within a reverse-growth sliver,
-                                      // delegate index 0 is adjacent to the
-                                      // center anchor, so items are listed
-                                      // nearest-first with the "See previous"
-                                      // button last (farthest away, requiring
-                                      // a scroll up to reach it).
-                                      sliver: SliverList(
-                                        delegate: SliverChildBuilderDelegate((
-                                          context,
-                                          index,
-                                        ) {
-                                          if (index < beforeItems.length) {
-                                            final stopTime =
-                                                beforeItems[beforeItems.length -
-                                                    1 -
-                                                    index];
-                                            return buildStopTimeTile(stopTime);
-                                          }
-                                          return LoadMoreButton(
-                                            onTap: _loadPrevious,
-                                            isLoading: _isLoadingPrevious,
-                                            label: 'See previous',
-                                            icon: LucideIcons.chevronUp,
-                                          );
-                                        }, childCount: beforeCount),
-                                      ),
-                                    ),
-                                    SliverPadding(
-                                      key: _centerKey,
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 20,
-                                      ),
-                                      sliver: SliverList(
-                                        delegate: SliverChildBuilderDelegate((
-                                          context,
-                                          index,
-                                        ) {
-                                          if (index < afterItems.length) {
-                                            return buildStopTimeTile(
-                                              afterItems[index],
-                                            );
-                                          }
-                                          if (hasNextSlot &&
-                                              index == afterItems.length) {
-                                            return LoadMoreButton(
-                                              onTap: _loadMore,
-                                              isLoading: _isLoadingMore,
-                                            );
-                                          }
-                                          return const SizedBox.shrink();
-                                        }, childCount: afterCount),
-                                      ),
-                                    ),
-                                    const SliverToBoxAdapter(
-                                      child: SizedBox(height: 96),
-                                    ),
-                                  ],
-                                );
-                              },
+                          ? BidirectionalPagedList<StopTime>(
+                              controller: _resultsScrollController,
+                              centerKey: _centerKey,
+                              items: _stopTimes!,
+                              centerIndex: _centerIndex,
+                              itemBuilder: _buildStopTimeTile,
+                              hasPrevious: _hasPreviousPage,
+                              hasNext: _hasNextPage,
+                              isLoadingPrevious: _isLoadingPrevious,
+                              isLoadingNext: _isLoadingMore,
+                              onLoadPrevious: _loadPrevious,
+                              onLoadNext: _loadMore,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: _kResultsHorizontalPadding,
+                              ),
+                              trailingExtent: _kResultsBottomSpacing,
                             )
                           : _buildStopSearch(),
                     ),
@@ -843,8 +755,10 @@ class _StopTimeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final routeColor = parseHexColorOrAccent(context, stopTime.routeColor);
-    final routeTextColor =
-        parseHexColor(stopTime.routeTextColor) ?? AppColors.solidWhite;
+    final routeTextColor = parseHexColorOr(
+      stopTime.routeTextColor,
+      AppColors.solidWhite,
+    );
 
     final modeIcon = getLegIcon(stopTime.mode);
 
@@ -853,7 +767,7 @@ class _StopTimeCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.white,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.black.withValues(alpha: 0.1)),
+        border: Border.all(color: AppColors.hairline),
         boxShadow: const [
           BoxShadow(
             color: Color(0x0A000000),
@@ -878,36 +792,22 @@ class _StopTimeCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Container(
-                    constraints: const BoxConstraints(minWidth: 30),
+                  RouteBadgePill(
+                    label: stopTime.displayName,
+                    background: routeColor,
+                    foreground: routeTextColor,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 6,
                       vertical: 6,
                     ),
-                    decoration: BoxDecoration(
-                      color: routeColor,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      stopTime.displayName,
-                      style: TextStyle(
-                        color: routeTextColor,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                      ),
-                      textAlign: TextAlign.center,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    minWidth: RouteBadgePill.stackedMinWidth,
                   ),
                   const SizedBox(height: 8),
                   Text(
                     stopTime.headsign,
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.black,
-                    ),
+                    style: AppText.listTitle,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
