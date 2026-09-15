@@ -512,3 +512,92 @@ class OptionGroupHeading extends StatelessWidget {
     ),
   );
 }
+
+/// A non-binary option spelled out as a line of text: what it is, and what it
+/// is currently set to.
+///
+/// The ticks above it are on or off, and a tick can say so by being filled.
+/// These have a value to report instead — a number, a stop's name — which a
+/// tick cannot carry, so they take a line of their own under the ticks.
+class OptionValueLine extends StatelessWidget {
+  const OptionValueLine({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.onPressed,
+    this.expanded,
+  });
+
+  final String label;
+
+  /// The setting itself, as the rider would say it: `15 min`, `unlimited`,
+  /// `Warschauer Straße`.
+  final String value;
+
+  /// Whether the panel this line opens is showing. Null where it opens
+  /// something else entirely, such as the stop picker — there is no chevron to
+  /// draw then.
+  final bool? expanded;
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = AppColors.accentOf(context);
+    final open = expanded == true;
+    return Semantics(
+      button: true,
+      expanded: expanded,
+      label: '$label: $value',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          Haptics.lightTick();
+          onPressed();
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 5),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Flexible rather than fixed: a via stop's name runs longer than
+              // the card is wide, and wrapping beats clipping it.
+              Expanded(
+                child: Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: '$label: ',
+                        style: TextStyle(
+                          color: AppColors.black.withValues(alpha: 0.55),
+                        ),
+                      ),
+                      TextSpan(
+                        text: value,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: open ? accent : AppColors.black,
+                        ),
+                      ),
+                    ],
+                  ),
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ),
+              if (expanded != null) ...[
+                const SizedBox(width: 8),
+                Icon(
+                  open ? LucideIcons.chevronUp : LucideIcons.chevronDown,
+                  size: 14,
+                  color: open
+                      ? accent
+                      : AppColors.black.withValues(alpha: 0.55),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

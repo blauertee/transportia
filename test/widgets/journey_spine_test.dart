@@ -6,6 +6,7 @@ import 'package:transportia/models/transit_mode_group.dart';
 import 'package:transportia/models/transitous/enums.dart';
 import 'package:transportia/models/transitous/server_config.dart';
 import 'package:transportia/widgets/options/icon_controls.dart';
+import 'package:transportia/widgets/options/selectable_tick.dart';
 import 'package:transportia/theme/journey_metrics.dart';
 import 'package:transportia/widgets/journey/spine_node.dart';
 import 'package:transportia/widgets/journey/spine_row.dart';
@@ -81,6 +82,18 @@ Finder _valueChip(String label) => find
 
 Finder _modeChip(String label) => find
     .byWidgetPredicate((w) => w is ModeChip && w.label == label)
+    .hitTestable();
+
+/// A word-chip from an enlarged list.
+///
+/// By widget rather than by text: the announcement bubble says some of the
+/// same words, and a tick is what these tests mean to press.
+Finder _tick(String label) => find
+    .byWidgetPredicate((w) => w is SelectableTick && w.label == label)
+    .hitTestable();
+
+Finder _valueLine(String label) => find
+    .byWidgetPredicate((w) => w is OptionValueLine && w.label == label)
     .hitTestable();
 
 Future<void> _open(WidgetTester tester, String headline) async {
@@ -183,17 +196,194 @@ void main() {
 
     await tester.tap(_pick('More ways to travel'));
     await tester.pumpAndSettle();
-    for (final mode in mileModeExtras.keys) {
+    // Every mode, not just the ones without an icon: the list is what says
+    // out loud what the icons above it mean.
+    for (final mode in RoutingOptions.streetModeChoices) {
       expect(
-        find.text(mileModeLabel(mode)).hitTestable(),
+        _tick(mileModeLabel(mode)),
         findsOneWidget,
-        reason: '${mode.wireName} is not behind the chevron',
+        reason: '${mode.wireName} is not named in the enlarged list',
       );
     }
     expect({
       ...mileModeChoices.keys,
       ...mileModeExtras.keys,
     }, RoutingOptions.streetModeChoices.toSet());
+  });
+
+  group('the enlarged list names what the icons mean', () {
+    testWidgets('a street-leg tick does what its icon does', (tester) async {
+      // Two modes, so dropping one is a real change: a mile always keeps at
+      // least walking, and unticking a lone Walk is rightly a no-op.
+      final host = await _pumpSpine(
+        tester,
+        initial: RoutingOptions.defaults.copyWith(
+          firstMileModes: const [TransitMode.walk, TransitMode.bike],
+        ),
+      );
+      await _open(tester, 'TO THE STATION');
+      await tester.tap(_pick('More ways to travel'));
+      await tester.pumpAndSettle();
+
+      // Both icons are lit, so both ticks are lit.
+      expect(tester.widget<SelectableTick>(_tick('Walk')).selected, isTrue);
+      expect(tester.widget<SelectableTick>(_tick('Bike')).selected, isTrue);
+
+      await tester.tap(_tick('Walk'));
+      await tester.pump();
+
+      expect(host.options.firstMileModes, isNot(contains(TransitMode.walk)));
+      expect(tester.widget<IconPick>(_pick('Walk')).selected, isFalse);
+      expect(tester.widget<SelectableTick>(_tick('Walk')).selected, isFalse);
+      await _quiet(tester);
+    });
+
+    testWidgets('a mile keeps walking, whichever control drops it', (
+      tester,
+    ) async {
+      // The tick is an alias, so it inherits the floor the icon has: it must
+      // not be able to leave a mile with no way to cover it.
+      final host = await _pumpSpine(tester);
+      await _open(tester, 'TO THE STATION');
+      await tester.tap(_pick('More ways to travel'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(_tick('Walk'));
+      await tester.pump();
+
+      expect(host.options.firstMileModes, contains(TransitMode.walk));
+      expect(tester.widget<SelectableTick>(_tick('Walk')).selected, isTrue);
+      await _quiet(tester);
+    });
+
+    testWidgets('the rental tick stands for the same vehicles as its icon', (
+      tester,
+    ) async {
+      // The icon is not a plain mode toggle, so its tick must not be one
+      // either — otherwise the two would report different states.
+      final host = await _pumpSpine(tester);
+      await _open(tester, 'TO THE STATION');
+      await tester.tap(_pick('More ways to travel'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(_tick('Rental'));
+      await tester.pump();
+
+      expect(host.options.firstMileRentalFormFactors, kRentalIconFactors);
+      expect(tester.widget<IconPick>(_pick('Rental')).selected, isTrue);
+      expect(tester.widget<SelectableTick>(_tick('Rental')).selected, isTrue);
+      for (final factor in kRentalIconFactors) {
+        expect(_tick(rentalFormFactorLabels[factor]!), findsOneWidget);
+      }
+      await _quiet(tester);
+    });
+
+    testWidgets('the budget is reported as a line, and opens its slider', (
+      tester,
+    ) async {
+      await _pumpSpine(tester);
+      await _open(tester, 'TO THE STATION');
+      await tester.tap(_pick('More ways to travel'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Time budget: 15 min'), findsOneWidget);
+
+      await tester.tap(_valueLine('Time budget'));
+      await tester.pumpAndSettle();
+      expect(find.byType(OptionSlider), findsOneWidget);
+    });
+
+    testWidgets('every transport toggle is named behind the chevron', (
+      tester,
+    ) async {
+      final host = await _pumpSpine(tester);
+      await _open(tester, 'PUBLIC TRANSPORT');
+      // Icon-only until the list is opened.
+      expect(_tick('No reservation needed'), findsNothing);
+
+      await tester.tap(_pick('More transport'));
+      await tester.pumpAndSettle();
+      for (final label in const [
+        'Bike carried on board',
+        'Car carried on board',
+        'No reservation needed',
+      ]) {
+        expect(_tick(label), findsOneWidget, reason: '$label is icon-only');
+      }
+
+      await tester.tap(_tick('No reservation needed'));
+      await tester.pump();
+
+      expect(host.options.noCompulsoryReservation, isTrue);
+      expect(
+        tester.widget<IconPick>(_pick('No reservation needed')).selected,
+        isTrue,
+      );
+      await _quiet(tester);
+    });
+
+    testWidgets('a lit carriage icon and its tick agree', (tester) async {
+      // The icon's label flips with its state; the tick holds one name and
+      // says the state by being filled. They still have to mean the same.
+      final host = await _pumpSpine(tester);
+      await _open(tester, 'PUBLIC TRANSPORT');
+      await tester.tap(_pick('More transport'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<SelectableTick>(_tick('Bike carried on board')).selected,
+        isFalse,
+      );
+
+      await tester.tap(_tick('Bike carried on board'));
+      await tester.pump();
+
+      expect(host.options.requireBikeTransport, isTrue);
+      expect(_pick('Bike carried on board'), findsOneWidget);
+      expect(
+        tester.widget<SelectableTick>(_tick('Bike carried on board')).selected,
+        isTrue,
+      );
+      await _quiet(tester);
+    });
+
+    testWidgets('the changes limit and the via stop report their settings', (
+      tester,
+    ) async {
+      final host = await _pumpSpine(tester);
+      await _open(tester, 'PUBLIC TRANSPORT');
+      await tester.tap(_pick('More transport'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Maximum changes: unlimited'), findsOneWidget);
+      expect(find.text('Through stop: none'), findsOneWidget);
+
+      await tester.tap(_valueLine('Maximum changes'));
+      await tester.pumpAndSettle();
+      final slider = tester.widget<OptionSlider>(find.byType(OptionSlider));
+      slider.onChanged(2);
+      await tester.pump();
+      expect(find.text('Maximum changes: 2'), findsOneWidget);
+
+      // The line is the icon's alias, so it opens the same picker.
+      await tester.tap(_valueLine('Through stop'));
+      await tester.pump();
+      expect(host.viaTaps, 1);
+      await _quiet(tester);
+    });
+
+    testWidgets('a via stop is named once it is picked', (tester) async {
+      await _pumpSpine(
+        tester,
+        initial: RoutingOptions.defaults.copyWith(
+          via: const [ViaStopOption(stopId: 'de:1', name: 'Warschauer Straße')],
+        ),
+      );
+      await _open(tester, 'PUBLIC TRANSPORT');
+      await tester.tap(_pick('More transport'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Through stop: Warschauer Straße'), findsOneWidget);
+    });
   });
 
   testWidgets('a mode from the chevron comes back as a chip', (tester) async {

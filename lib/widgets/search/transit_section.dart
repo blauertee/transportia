@@ -15,6 +15,13 @@ const Map<TransitModeGroup, IconData> transitGroupIcons = {
   TransitModeGroup.boat: LucideIcons.ship,
 };
 
+/// The transfer limit as a bare setting, for the line that reports it.
+///
+/// The spine's own summary says it as a phrase ("unlimited changes"); this is
+/// the value on its own, since the line beside it already gives the name.
+String maxChangesText(int? maxTransfers) =>
+    maxTransfers == null ? 'unlimited' : '$maxTransfers';
+
 /// Which transport to use, how many changes to accept, and the qualifiers
 /// that belong to the vehicle rather than to a street leg.
 class TransitSection extends StatelessWidget {
@@ -124,10 +131,12 @@ class TransitSection extends StatelessWidget {
     );
   }
 
-  /// Every mode the server can route, under the group it belongs to.
+  /// Every mode the server can route, under the group it belongs to, followed
+  /// by the qualifiers the meta row offers as icons.
   ///
   /// The reference web client lists them flat; twenty unheaded ticks are hard
-  /// to scan, and the headings also say which icon above covers what.
+  /// to scan, and the headings also say which icon above covers what. Nothing
+  /// in the section is icon-only: opening the list names every control in it.
   Widget _buildModeList(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -141,9 +150,65 @@ class TransitSection extends StatelessWidget {
         OptionGroupHeading('Other'),
         const SizedBox(height: 6),
         _tickWrap(TransitModeGroup.extras),
+        const SizedBox(height: 12),
+        OptionGroupHeading('On board'),
+        const SizedBox(height: 6),
+        _buildBoardingTicks(context),
+        const SizedBox(height: 10),
+        // Below the ticks, because neither is an on or an off: one is a count
+        // and the other is a stop, and a tick could name them without ever
+        // saying what they are set to.
+        OptionValueLine(
+          label: 'Maximum changes',
+          value: maxChangesText(options.maxTransfers),
+          expanded: changesOpen,
+          onPressed: onChangesPressed,
+        ),
+        OptionValueLine(
+          label: options.via.length > 1 ? 'Through stops' : 'Through stop',
+          value: options.via.isEmpty
+              ? 'none'
+              : [for (final stop in options.via) stop.name].join(', '),
+          onPressed: onViaPressed,
+        ),
       ],
     );
   }
+
+  /// The meta row's toggles as words.
+  ///
+  /// Each tick names what the icon above means when it is lit. The icons keep
+  /// their flipping labels — a tooltip is all they have to report state with —
+  /// while a tick reports it by being filled, so it can hold one name.
+  Widget _buildBoardingTicks(BuildContext context) => Wrap(
+    spacing: 6,
+    runSpacing: 6,
+    children: [
+      SelectableTick(
+        label: 'Bike carried on board',
+        selected: options.requireBikeTransport,
+        onPressed: () => onChanged(
+          options.copyWith(bikeCarriageOverride: !options.requireBikeTransport),
+        ),
+      ),
+      SelectableTick(
+        label: 'Car carried on board',
+        selected: options.requireCarTransport,
+        onPressed: () => onChanged(
+          options.copyWith(carCarriageOverride: !options.requireCarTransport),
+        ),
+      ),
+      SelectableTick(
+        label: 'No reservation needed',
+        selected: options.noCompulsoryReservation,
+        onPressed: () => onChanged(
+          options.copyWith(
+            noCompulsoryReservation: !options.noCompulsoryReservation,
+          ),
+        ),
+      ),
+    ],
+  );
 
   Widget _tickWrap(List<TransitMode> modes) => Wrap(
     spacing: 6,

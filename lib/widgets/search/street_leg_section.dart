@@ -22,8 +22,9 @@ const Map<TransitMode, ({IconData icon, String label})> mileModeChoices = {
   ),
 };
 
-/// Offered behind the chevron rather than as icons: each is a real way to
-/// reach a stop, but not one most journeys use.
+/// The street modes with no icon of their own: each is a real way to reach a
+/// stop, but not one most journeys use, so the pick row leaves them to the
+/// enlarged list. This is where their names come from.
 const Map<TransitMode, String> mileModeExtras = {
   TransitMode.carDropoff: 'Drop-off',
   TransitMode.hgv: 'Lorry',
@@ -168,6 +169,11 @@ class StreetLegSection extends StatelessWidget {
     onChanged((modes: next, formFactors: formFactors));
   }
 
+  /// Whether a mode reads as picked, for the icon and its tick alike — one
+  /// answer, so the two can never disagree about the same mode.
+  bool _isSelected(TransitMode mode) =>
+      mode == TransitMode.rental ? _rentalIconSelected : modes.contains(mode);
+
   List<TransitMode> _withMode(TransitMode mode) => [
     for (final m in mileModeOrder)
       if (m == mode || modes.contains(m)) m,
@@ -252,8 +258,8 @@ class StreetLegSection extends StatelessWidget {
     );
   }
 
-  /// The five common modes, the button that opens the rest, and a chip for
-  /// anything picked from it — so the row carries the whole selection.
+  /// The five common modes, the button that opens the full list, and a chip
+  /// for anything picked from it — so the row carries the whole selection.
   Widget _buildPickRow(BuildContext context) {
     return Wrap(
       spacing: 6,
@@ -266,9 +272,7 @@ class StreetLegSection extends StatelessWidget {
             child: IconPick(
               icon: entry.value.icon,
               label: entry.value.label,
-              selected: entry.key == TransitMode.rental
-                  ? _rentalIconSelected
-                  : modes.contains(entry.key),
+              selected: _isSelected(entry.key),
               tooltips: tooltips,
               onPressed: () => _toggleMode(entry.key),
             ),
@@ -303,21 +307,28 @@ class StreetLegSection extends StatelessWidget {
     );
   }
 
+  /// Every street mode as a word, then the shared-vehicle filter, then the
+  /// budget.
+  ///
+  /// The list repeats the icons rather than only holding what they leave out:
+  /// a rider who opens it to find out what an icon means should find the icon
+  /// named here, not just the modes it never stood for.
   Widget _buildMoreList(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        OptionGroupHeading('Other ways to travel'),
+        OptionGroupHeading('Ways to travel'),
         const SizedBox(height: 6),
         Wrap(
           spacing: 6,
           runSpacing: 6,
           children: [
-            for (final entry in mileModeExtras.entries)
+            // In pick order, so the words read left to right as the icons do.
+            for (final mode in mileModeOrder)
               SelectableTick(
-                label: entry.value,
-                selected: modes.contains(entry.key),
-                onPressed: () => _toggleMode(entry.key),
+                label: mileModeLabel(mode),
+                selected: _isSelected(mode),
+                onPressed: () => _toggleMode(mode),
               ),
           ],
         ),
@@ -345,6 +356,15 @@ class StreetLegSection extends StatelessWidget {
                 onPressed: () => _toggleFormFactor(entry.key),
               ),
           ],
+        ),
+        const SizedBox(height: 10),
+        // Not a tick: a budget is a number rather than an on or an off, so it
+        // takes a line that can report what it is currently set to.
+        OptionValueLine(
+          label: 'Time budget',
+          value: budgetSummaryText(budget),
+          expanded: budgetOpen,
+          onPressed: onBudgetPressed,
         ),
       ],
     );
