@@ -82,10 +82,32 @@ String formatRelativeDay(DateTime dateTime, {DateTime? now}) {
   if (dayDifference == 0) return 'Today';
   if (dayDifference == 1) return 'Tomorrow';
   if (dayDifference == -1) return 'Yesterday';
-  if (dayDifference > 1 && dayDifference < 7) {
-    return _weekdayNames[local.weekday - 1];
-  }
-  return '${local.day} ${_monthNames[local.month - 1]}';
+  if (dayDifference > 1 && dayDifference < 7) return formatWeekday(local);
+  return formatDayMonth(local);
+}
+
+/// Short weekday name, e.g. 'Thu'.
+String formatWeekday(DateTime dateTime) => _weekdayNames[dateTime.weekday - 1];
+
+/// Day of month and short month name, e.g. '25 Sep'.
+String formatDayMonth(DateTime dateTime) =>
+    '${dateTime.day} ${_monthNames[dateTime.month - 1]}';
+
+/// Local midnight of each calendar day from [first] to [last], both included;
+/// empty when [last] is before [first].
+///
+/// Steps by calendar day rather than by 24 hours, so a daylight-saving switch
+/// neither skips nor repeats a day.
+List<DateTime> calendarDays(DateTime first, DateTime last) {
+  final end = DateTime(last.year, last.month, last.day);
+  return [
+    for (
+      var day = DateTime(first.year, first.month, first.day);
+      !day.isAfter(end);
+      day = DateTime(day.year, day.month, day.day + 1)
+    )
+      day,
+  ];
 }
 
 String formatIso8601Millis(DateTime dateTime) {
