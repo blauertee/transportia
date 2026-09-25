@@ -96,4 +96,43 @@ void main() {
       expect(formatDayMonth(DateTime(2026, 12, 31)), '31 Dec');
     });
   });
+
+  group('month grid', () {
+    test('pads to Monday before the 1st and to Sunday after the last', () {
+      // September 2026 starts on a Tuesday and ends on a Wednesday.
+      final grid = monthGrid(DateTime(2026, 9, 17));
+      expect(grid, hasLength(35));
+      expect(grid.first, isNull);
+      expect(grid[1], DateTime(2026, 9, 1));
+      expect(grid[30], DateTime(2026, 9, 30));
+      expect(grid.sublist(31), everyElement(isNull));
+    });
+
+    test('a month starting on Monday has no leading blanks', () {
+      expect(monthGrid(DateTime(2026, 6)).first, DateTime(2026, 6, 1));
+    });
+
+    test('a 28-day February from a Monday fills exactly four weeks', () {
+      final grid = monthGrid(DateTime(2027, 2));
+      expect(grid, hasLength(28));
+      expect(grid, everyElement(isNotNull));
+    });
+
+    test('a month reaching into a sixth week gets six rows', () {
+      // August 2026 starts on a Saturday.
+      final grid = monthGrid(DateTime(2026, 8));
+      expect(grid, hasLength(42));
+      expect(grid[5], DateTime(2026, 8, 1));
+      expect(grid[35], DateTime(2026, 8, 31));
+    });
+
+    test('knows the leap day', () {
+      expect(monthGrid(DateTime(2028, 2)), contains(DateTime(2028, 2, 29)));
+      expect(monthGrid(DateTime(2027, 2)), isNot(contains(null)));
+    });
+  });
+
+  test('month and year', () {
+    expect(formatMonthYear(DateTime(2026, 9, 25)), 'September 2026');
+  });
 }

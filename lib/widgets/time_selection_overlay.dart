@@ -1,4 +1,5 @@
 import 'package:flutter/widgets.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../models/time_selection.dart';
 import '../theme/app_colors.dart';
 import '../utils/time_utils.dart';
@@ -11,8 +12,11 @@ const Duration _kTimeOverlayFadeDuration = Duration(milliseconds: 180);
 /// barrier colour here would dim it twice.
 const Color _kTimeOverlayBarrierColor = Color(0x00000000);
 
-/// How many days past today the date strip reaches.
-const int _kSelectableDaysAhead = 30;
+/// How many days past today the date strip and the calendar reach.
+const int _kSelectableDaysAhead = 365;
+
+/// Any Monday, to name the calendar's weekday columns from.
+final DateTime _kAnyMonday = DateTime(2024, 1, 1);
 
 /// Shortcuts from the current time, offered under the wheels.
 const List<Duration> _kQuickOffsets = [
@@ -30,6 +34,9 @@ const int _kWheelVisibleRows = 5;
 /// Day chip width and spacing; the strip scrolls by their sum to reveal one.
 const double _kDayChipWidth = 76;
 const double _kDayChipGap = 8;
+
+/// Height of the day strip; the calendar button beside it squares to match.
+const double _kDayStripHeight = 58;
 
 /// How long a wheel or the date strip takes to travel to a value set by a
 /// shortcut rather than by the finger.
@@ -91,6 +98,7 @@ class _TimeSelectionOverlayState extends State<TimeSelectionOverlay> {
   late int _selectedHour;
   late int _selectedMinute;
   late bool _isArriveBy;
+  bool _isCalendarOpen = false;
   late final FixedExtentScrollController _hourController;
   late final FixedExtentScrollController _minuteController;
 
@@ -131,20 +139,34 @@ class _TimeSelectionOverlayState extends State<TimeSelectionOverlay> {
     );
   }
 
-  /// Every day the strip offers: today through [_kSelectableDaysAhead] days
-  /// ahead, stretched to reach a selection that already lies outside that.
-  List<DateTime> get _selectableDays {
+  DateTime get _today {
     final now = _now();
-    final today = DateTime(now.year, now.month, now.day);
+    return DateTime(now.year, now.month, now.day);
+  }
+
+  /// [_kSelectableDaysAhead] past today, or the selection when that already
+  /// lies further out.
+  DateTime get _lastSelectableDay {
+    final today = _today;
     final lastDay = DateTime(
       today.year,
       today.month,
       today.day + _kSelectableDaysAhead,
     );
-    return calendarDays(
-      _selectedDate.isBefore(today) ? _selectedDate : today,
-      _selectedDate.isAfter(lastDay) ? _selectedDate : lastDay,
-    );
+    return _selectedDate.isAfter(lastDay) ? _selectedDate : lastDay;
+  }
+
+  /// Today, or the selection when that already lies in the past.
+  DateTime get _firstSelectableDay {
+    final today = _today;
+    return _selectedDate.isBefore(today) ? _selectedDate : today;
+  }
+
+  void _selectDate(DateTime date) {
+    setState(() {
+      _selectedDate = date;
+      _isCalendarOpen = false;
+    });
   }
 
   void _jumpTo(DateTime target) {
@@ -190,27 +212,13 @@ class _TimeSelectionOverlayState extends State<TimeSelectionOverlay> {
     widget.onDismiss();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final now = _now();
-    final content = Column(
+  /// The wheels are kept out of the tree while the calendar shows, so they
+  /// are rebuilt from the controllers, which hold their place meanwhile.
+  Widget _buildTimeControls() {
+    return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (widget.showDepartArriveToggle) ...[
-          _DepartArriveToggle(
-            isArriveBy: _isArriveBy,
-            onChanged: (isArriveBy) => setState(() => _isArriveBy = isArriveBy),
-          ),
-          const SizedBox(height: 12),
-        ],
-        _DayStrip(
-          days: _selectableDays,
-          today: DateTime(now.year, now.month, now.day),
-          selectedDate: _selectedDate,
-          onChanged: (date) => setState(() => _selectedDate = date),
-        ),
-        const SizedBox(height: 12),
         _TimeWheels(
           hourController: _hourController,
           minuteController: _minuteController,
@@ -230,6 +238,56 @@ class _TimeSelectionOverlayState extends State<TimeSelectionOverlay> {
               ),
             ],
           ],
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final today = _today;
+    final content = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (widget.showDepartArriveToggle) ...[
+          _DepartArriveToggle(
+            isArriveBy: _isArriveBy,
+            onChanged: (isArriveBy) => setState(() => _isArriveBy = isArriveBy),
+          ),
+          const SizedBox(height: 12),
+        ],
+        Row(
+          children: [
+            Expanded(
+              child: _DayStrip(
+                days: calendarDays(_firstSelectableDay, _lastSelectableDay),
+                today: today,
+                selectedDate: _selectedDate,
+                onChanged: _selectDate,
+              ),
+            ),
+            const SizedBox(width: _kDayChipGap),
+            _CalendarButton(
+              isOpen: _isCalendarOpen,
+              onTap: () => setState(() => _isCalendarOpen = !_isCalendarOpen),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        AnimatedSize(
+          duration: _kJumpDuration,
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: _isCalendarOpen
+              ? _MonthCalendar(
+                  firstDay: _firstSelectableDay,
+                  lastDay: _lastSelectableDay,
+                  today: today,
+                  selectedDate: _selectedDate,
+                  onChanged: _selectDate,
+                )
+              : _buildTimeControls(),
         ),
         const SizedBox(height: 16),
         Row(
@@ -412,19 +470,24 @@ class _DayStripState extends State<_DayStrip> {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 58,
-      child: ListView.separated(
+      height: _kDayStripHeight,
+      // A fixed extent makes the scroll range exact rather than estimated
+      // from the chips built so far, so a far-off day can be scrolled to.
+      child: ListView.builder(
         controller: _controller,
         scrollDirection: Axis.horizontal,
+        itemExtent: _kDayChipWidth + _kDayChipGap,
         itemCount: widget.days.length,
-        separatorBuilder: (_, __) => const SizedBox(width: _kDayChipGap),
         itemBuilder: (context, index) {
           final day = widget.days[index];
-          return _DayChip(
-            day: day,
-            today: widget.today,
-            isSelected: day == widget.selectedDate,
-            onTap: () => widget.onChanged(day),
+          return Padding(
+            padding: const EdgeInsets.only(right: _kDayChipGap),
+            child: _DayChip(
+              day: day,
+              today: widget.today,
+              isSelected: day == widget.selectedDate,
+              onTap: () => widget.onChanged(day),
+            ),
           );
         },
       ),
@@ -485,6 +548,250 @@ class _DayChip extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CalendarButton extends StatelessWidget {
+  const _CalendarButton({required this.isOpen, required this.onTap});
+
+  final bool isOpen;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: isOpen ? 'Close calendar' : 'Open calendar',
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          width: _kDayStripHeight,
+          height: _kDayStripHeight,
+          decoration: BoxDecoration(
+            color: isOpen ? AppColors.accentOf(context) : _controlFill(),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(
+            isOpen ? LucideIcons.clock : LucideIcons.calendarDays,
+            size: 22,
+            color: isOpen ? AppColors.solidWhite : AppColors.black,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A month at a time, for reaching days too far off to tap along the strip.
+class _MonthCalendar extends StatefulWidget {
+  const _MonthCalendar({
+    required this.firstDay,
+    required this.lastDay,
+    required this.today,
+    required this.selectedDate,
+    required this.onChanged,
+  });
+
+  final DateTime firstDay;
+  final DateTime lastDay;
+  final DateTime today;
+  final DateTime selectedDate;
+  final ValueChanged<DateTime> onChanged;
+
+  @override
+  State<_MonthCalendar> createState() => _MonthCalendarState();
+}
+
+class _MonthCalendarState extends State<_MonthCalendar> {
+  late DateTime _month;
+
+  @override
+  void initState() {
+    super.initState();
+    _month = DateTime(widget.selectedDate.year, widget.selectedDate.month);
+  }
+
+  bool get _hasPreviousMonth =>
+      _month.isAfter(DateTime(widget.firstDay.year, widget.firstDay.month));
+
+  bool get _hasNextMonth =>
+      _month.isBefore(DateTime(widget.lastDay.year, widget.lastDay.month));
+
+  void _turnMonth(int months) {
+    setState(() => _month = DateTime(_month.year, _month.month + months));
+  }
+
+  bool _isSelectable(DateTime day) =>
+      !day.isBefore(widget.firstDay) && !day.isAfter(widget.lastDay);
+
+  @override
+  Widget build(BuildContext context) {
+    final cells = monthGrid(_month);
+    return Column(
+      key: const ValueKey('monthCalendar'),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            _MonthArrow(
+              icon: LucideIcons.chevronLeft,
+              label: 'Previous month',
+              onTap: _hasPreviousMonth ? () => _turnMonth(-1) : null,
+            ),
+            Expanded(
+              child: Text(
+                formatMonthYear(_month),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.black,
+                ),
+              ),
+            ),
+            _MonthArrow(
+              icon: LucideIcons.chevronRight,
+              label: 'Next month',
+              onTap: _hasNextMonth ? () => _turnMonth(1) : null,
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            for (var i = 0; i < DateTime.daysPerWeek; i++)
+              Expanded(
+                child: Text(
+                  formatWeekday(_kAnyMonday.add(Duration(days: i))),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.black.withValues(alpha: 0.5),
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        for (
+          var weekStart = 0;
+          weekStart < cells.length;
+          weekStart += DateTime.daysPerWeek
+        )
+          Row(
+            children: [
+              for (final day in cells.sublist(
+                weekStart,
+                weekStart + DateTime.daysPerWeek,
+              ))
+                Expanded(
+                  child: day == null
+                      ? const SizedBox(height: 40)
+                      : _CalendarDay(
+                          day: day,
+                          isToday: day == widget.today,
+                          isSelected: day == widget.selectedDate,
+                          onTap: _isSelectable(day)
+                              ? () => widget.onChanged(day)
+                              : null,
+                        ),
+                ),
+            ],
+          ),
+      ],
+    );
+  }
+}
+
+class _MonthArrow extends StatelessWidget {
+  const _MonthArrow({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+
+  /// Null past the last month the calendar reaches.
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      enabled: onTap != null,
+      label: label,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Icon(
+            icon,
+            size: 20,
+            color: AppColors.black.withValues(alpha: onTap == null ? 0.2 : 0.7),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CalendarDay extends StatelessWidget {
+  const _CalendarDay({
+    required this.day,
+    required this.isToday,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final DateTime day;
+  final bool isToday;
+  final bool isSelected;
+
+  /// Null for a day outside the range the overlay offers.
+  final VoidCallback? onTap;
+
+  Color _textColor(BuildContext context) {
+    if (isSelected) return AppColors.solidWhite;
+    if (onTap == null) return AppColors.black.withValues(alpha: 0.25);
+    if (isToday) return AppColors.accentOf(context);
+    return AppColors.black;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: SizedBox(
+        height: 40,
+        child: Center(
+          child: Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: isSelected ? AppColors.accentOf(context) : null,
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(
+                '${day.day}',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: isToday || isSelected
+                      ? FontWeight.w700
+                      : FontWeight.w500,
+                  color: _textColor(context),
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );

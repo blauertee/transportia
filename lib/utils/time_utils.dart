@@ -68,6 +68,21 @@ const List<String> _monthNames = [
   'Dec',
 ];
 
+const List<String> _fullMonthNames = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+
 /// Day label for a date the user is looking at in relation to now:
 /// 'Today', 'Tomorrow', a weekday name within the coming week, or a
 /// short date beyond that.
@@ -92,6 +107,28 @@ String formatWeekday(DateTime dateTime) => _weekdayNames[dateTime.weekday - 1];
 /// Day of month and short month name, e.g. '25 Sep'.
 String formatDayMonth(DateTime dateTime) =>
     '${dateTime.day} ${_monthNames[dateTime.month - 1]}';
+
+/// Month name and year, e.g. 'September 2026'.
+String formatMonthYear(DateTime dateTime) =>
+    '${_fullMonthNames[dateTime.month - 1]} ${dateTime.year}';
+
+/// The month holding [month] laid out as calendar rows, Monday first: whole
+/// weeks of seven, with null for the cells before the 1st and after the last
+/// day.
+List<DateTime?> monthGrid(DateTime month) {
+  final daysInMonth = DateTime(month.year, month.month + 1, 0).day;
+  final leadingBlanks = DateTime(month.year, month.month).weekday - 1;
+  final cellCount =
+      ((leadingBlanks + daysInMonth + DateTime.daysPerWeek - 1) ~/
+          DateTime.daysPerWeek) *
+      DateTime.daysPerWeek;
+  return [
+    for (var cell = 0; cell < cellCount; cell++)
+      cell < leadingBlanks || cell >= leadingBlanks + daysInMonth
+          ? null
+          : DateTime(month.year, month.month, cell - leadingBlanks + 1),
+  ];
+}
 
 /// Local midnight of each calendar day from [first] to [last], both included;
 /// empty when [last] is before [first].

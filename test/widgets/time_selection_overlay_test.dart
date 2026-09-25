@@ -185,4 +185,108 @@ void main() {
     await _tap(tester, 'Confirm');
     expect(confirmed.single.dateTime, DateTime(2026, 9, 22, 8, 0));
   });
+
+  group('calendar', () {
+    Finder inCalendar(String text) => find.descendant(
+      of: find.byKey(const ValueKey('monthCalendar')),
+      matching: find.text(text),
+    );
+
+    Future<void> tapLabel(WidgetTester tester, String label) async {
+      await tester.tap(find.bySemanticsLabel(label));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('reaches a day a month off in a few taps, keeping the time', (
+      tester,
+    ) async {
+      final confirmed = await _pumpOverlay(
+        tester,
+        selection: TimeSelection(
+          dateTime: DateTime(2026, 9, 24, 9, 15),
+          isArriveBy: false,
+        ),
+      );
+
+      await tapLabel(tester, 'Open calendar');
+      expect(find.text('September 2026'), findsOneWidget);
+
+      await tapLabel(tester, 'Next month');
+      await tester.tap(inCalendar('29'));
+      await tester.pumpAndSettle();
+
+      // Picking a day closes the calendar and brings the wheels back.
+      expect(find.byKey(const ValueKey('monthCalendar')), findsNothing);
+      expect(find.byKey(const ValueKey('hourWheel')), findsOneWidget);
+
+      await _tap(tester, 'Confirm');
+      expect(confirmed.single.dateTime, DateTime(2026, 10, 29, 9, 15));
+    });
+
+    testWidgets('days before today cannot be picked', (tester) async {
+      final confirmed = await _pumpOverlay(
+        tester,
+        selection: TimeSelection(
+          dateTime: DateTime(2026, 9, 24, 9, 15),
+          isArriveBy: false,
+        ),
+      );
+
+      await tapLabel(tester, 'Open calendar');
+      await tester.tap(inCalendar('23'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('monthCalendar')), findsOneWidget);
+      await _tap(tester, 'Confirm');
+      expect(confirmed.single.dateTime, DateTime(2026, 9, 24, 9, 15));
+    });
+
+    testWidgets('does not page back before the current month', (tester) async {
+      await _pumpOverlay(tester, selection: TimeSelection.now());
+
+      await tapLabel(tester, 'Open calendar');
+      await tapLabel(tester, 'Previous month');
+
+      expect(find.text('September 2026'), findsOneWidget);
+    });
+
+    testWidgets('pages no further than a year ahead', (tester) async {
+      await _pumpOverlay(tester, selection: TimeSelection.now());
+
+      await tapLabel(tester, 'Open calendar');
+      for (var i = 0; i < 14; i++) {
+        await tapLabel(tester, 'Next month');
+      }
+
+      expect(find.text('September 2027'), findsOneWidget);
+      // 24 September 2027 is the last day within reach.
+      await tester.tap(inCalendar('25'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('monthCalendar')), findsOneWidget);
+    });
+
+    testWidgets('the strip scrolls along to a day picked far off', (
+      tester,
+    ) async {
+      await _pumpOverlay(tester, selection: TimeSelection.now());
+
+      await tapLabel(tester, 'Open calendar');
+      await tapLabel(tester, 'Next month');
+      await tapLabel(tester, 'Next month');
+      await tester.tap(inCalendar('20'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('20 Nov'), findsOneWidget);
+    });
+
+    testWidgets('the calendar button closes it again', (tester) async {
+      await _pumpOverlay(tester, selection: TimeSelection.now());
+
+      await tapLabel(tester, 'Open calendar');
+      await tapLabel(tester, 'Close calendar');
+
+      expect(find.byKey(const ValueKey('monthCalendar')), findsNothing);
+      expect(find.byKey(const ValueKey('minuteWheel')), findsOneWidget);
+    });
+  });
 }
